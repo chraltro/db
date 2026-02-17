@@ -289,6 +289,8 @@ export default function App() {
             {TABS.map((tab) => (
               <button
                 key={tab}
+                data-dp-tab=""
+                data-dp-active={activeTab === tab ? "true" : "false"}
                 onClick={() => setActiveTab(tab)}
                 style={activeTab === tab ? styles.tabActive : styles.tab}
               >
@@ -298,7 +300,8 @@ export default function App() {
             {activeFile && activeTab === "Editor" && (
               <div style={styles.fileActions}>
                 <span style={styles.fileName}>
-                  {activeFile} {dirty ? "(modified)" : ""}
+                  {activeFile}
+                  {dirty && <span style={styles.modifiedDot}> *</span>}
                 </span>
                 <button onClick={saveFile} disabled={!dirty} style={styles.btn}>
                   Save
@@ -344,23 +347,24 @@ export default function App() {
 
 const styles = {
   container: { display: "flex", flexDirection: "column", height: "100vh", background: "var(--dp-bg)", color: "var(--dp-text)", fontFamily: "var(--dp-font)" },
-  loading: { display: "flex", alignItems: "center", justifyContent: "center", height: "100vh", background: "var(--dp-bg)", color: "var(--dp-text-secondary)", fontFamily: "var(--dp-font)" },
-  header: { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 16px", borderBottom: "1px solid var(--dp-border)", background: "var(--dp-bg-secondary)" },
-  logo: { fontSize: "18px", fontWeight: "bold", fontFamily: "var(--dp-font-mono)", color: "var(--dp-accent)" },
-  actions: { display: "flex", gap: "6px", flex: 1, justifyContent: "center" },
+  loading: { display: "flex", alignItems: "center", justifyContent: "center", height: "100vh", background: "var(--dp-bg)", color: "var(--dp-text-secondary)", fontFamily: "var(--dp-font)", fontSize: "14px" },
+  header: { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 16px", borderBottom: "1px solid var(--dp-border)", background: "var(--dp-bg-secondary)", minHeight: "44px" },
+  logo: { fontSize: "18px", fontWeight: "bold", fontFamily: "var(--dp-font-mono)", color: "var(--dp-accent)", letterSpacing: "-0.5px" },
+  actions: { display: "flex", gap: "6px", flex: 1, justifyContent: "center", flexWrap: "wrap" },
   userInfo: { display: "flex", alignItems: "center", gap: "8px" },
-  userName: { fontSize: "12px", color: "var(--dp-text)" },
-  userRole: { fontSize: "10px", color: "var(--dp-text-secondary)", background: "var(--dp-btn-bg)", padding: "2px 6px", borderRadius: "10px" },
+  userName: { fontSize: "12px", color: "var(--dp-text)", fontWeight: 500 },
+  userRole: { fontSize: "10px", color: "var(--dp-text-secondary)", background: "var(--dp-btn-bg)", padding: "2px 8px", borderRadius: "10px", fontWeight: 500, textTransform: "capitalize" },
   logoutBtn: { padding: "3px 8px", background: "none", border: "1px solid var(--dp-border-light)", borderRadius: "var(--dp-radius)", color: "var(--dp-text-secondary)", cursor: "pointer", fontSize: "11px" },
   main: { display: "flex", flex: 1, overflow: "hidden" },
   sidebar: { width: "240px", borderRight: "1px solid var(--dp-border)", overflow: "auto", background: "var(--dp-bg-tertiary)", padding: "8px 0" },
   content: { flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" },
-  tabs: { display: "flex", alignItems: "center", borderBottom: "1px solid var(--dp-border)", padding: "0 8px", background: "var(--dp-bg-secondary)", overflowX: "auto" },
-  tab: { padding: "8px 14px", background: "none", border: "none", color: "var(--dp-text-secondary)", cursor: "pointer", fontSize: "13px", whiteSpace: "nowrap" },
-  tabActive: { padding: "8px 14px", background: "none", border: "none", borderBottom: "2px solid var(--dp-accent)", color: "var(--dp-text)", cursor: "pointer", fontSize: "13px", whiteSpace: "nowrap" },
-  fileActions: { marginLeft: "auto", display: "flex", alignItems: "center", gap: "8px" },
+  tabs: { display: "flex", alignItems: "center", borderBottom: "1px solid var(--dp-border)", padding: "0 8px", background: "var(--dp-bg-secondary)", overflowX: "auto", minHeight: "36px" },
+  tab: { padding: "8px 14px", background: "none", border: "none", borderBottom: "2px solid transparent", color: "var(--dp-text-secondary)", cursor: "pointer", fontSize: "13px", whiteSpace: "nowrap", fontWeight: 500 },
+  tabActive: { padding: "8px 14px", background: "none", border: "none", borderBottom: "2px solid var(--dp-accent)", color: "var(--dp-text)", cursor: "pointer", fontSize: "13px", whiteSpace: "nowrap", fontWeight: 600 },
+  fileActions: { marginLeft: "auto", display: "flex", alignItems: "center", gap: "8px", paddingLeft: "16px" },
   fileName: { fontSize: "12px", color: "var(--dp-text-secondary)", fontFamily: "var(--dp-font-mono)" },
+  modifiedDot: { color: "var(--dp-accent)", fontWeight: 700 },
   panel: { flex: 1, overflow: "hidden" },
-  btn: { padding: "4px 12px", background: "var(--dp-btn-bg)", border: "1px solid var(--dp-btn-border)", borderRadius: "var(--dp-radius-lg)", color: "var(--dp-text)", cursor: "pointer", fontSize: "12px" },
-  btnPrimary: { padding: "4px 12px", background: "var(--dp-green)", border: "1px solid var(--dp-green-border)", borderRadius: "var(--dp-radius-lg)", color: "#fff", cursor: "pointer", fontSize: "12px" },
+  btn: { padding: "5px 12px", background: "var(--dp-btn-bg)", border: "1px solid var(--dp-btn-border)", borderRadius: "var(--dp-radius-lg)", color: "var(--dp-text)", cursor: "pointer", fontSize: "12px", fontWeight: 500 },
+  btnPrimary: { padding: "5px 12px", background: "var(--dp-green)", border: "1px solid var(--dp-green-border)", borderRadius: "var(--dp-radius-lg)", color: "#fff", cursor: "pointer", fontSize: "12px", fontWeight: 500 },
 };

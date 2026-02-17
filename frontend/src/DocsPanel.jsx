@@ -236,7 +236,7 @@ export default function DocsPanel() {
 const styles = {
   container: { display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" },
   header: { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 12px", borderBottom: "1px solid var(--dp-border)", fontWeight: 600, fontSize: "13px" },
-  refreshBtn: { background: "var(--dp-btn-bg)", border: "1px solid var(--dp-btn-border)", borderRadius: "var(--dp-radius-lg)", color: "var(--dp-text)", padding: "4px 12px", cursor: "pointer", fontSize: "12px" },
+  refreshBtn: { background: "var(--dp-btn-bg)", border: "1px solid var(--dp-btn-border)", borderRadius: "var(--dp-radius-lg)", color: "var(--dp-text)", padding: "4px 12px", cursor: "pointer", fontSize: "12px", fontWeight: 500 },
   content: { flex: 1, overflow: "auto", padding: "16px 24px", maxWidth: "900px" },
   loading: { color: "var(--dp-text-secondary)", textAlign: "center", padding: "24px" },
   empty: { color: "var(--dp-text-dim)", textAlign: "center", padding: "24px" },

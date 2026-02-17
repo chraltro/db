@@ -9,16 +9,14 @@ const SCHEMA_COLORS = {
   source: "#484f58",
 };
 
-const TYPE_SHAPES = {
-  source: "diamond",
-  view: "rect",
-  table: "rect-bold",
-};
-
 const NODE_W = 160;
 const NODE_H = 40;
 const LAYER_GAP_X = 220;
 const NODE_GAP_Y = 60;
+
+function getCV(prop) {
+  return getComputedStyle(document.documentElement).getPropertyValue(prop).trim();
+}
 
 function layoutDAG(nodes, edges) {
   // Assign layers via longest path from sources
@@ -39,13 +37,11 @@ function layoutDAG(nodes, edges) {
   for (const id of queue) layer[id] = 0;
 
   const visited = new Set();
-  const order = [];
   const stack = [...queue];
   while (stack.length > 0) {
     const id = stack.shift();
     if (visited.has(id)) continue;
     visited.add(id);
-    order.push(id);
     for (const next of adj[id] || []) {
       layer[next] = Math.max(layer[next] || 0, (layer[id] || 0) + 1);
       inDeg[next]--;
@@ -61,13 +57,16 @@ function layoutDAG(nodes, edges) {
     layers[l].push(n);
   }
 
-  // Position nodes
+  // Position nodes - center each layer vertically
   const positions = {};
   const maxLayer = Math.max(...Object.keys(layers).map(Number), 0);
+  const maxNodes = Math.max(...Object.values(layers).map((g) => g.length), 1);
+  const canvasH = 80 + maxNodes * (NODE_H + NODE_GAP_Y);
+
   for (let l = 0; l <= maxLayer; l++) {
     const group = layers[l] || [];
     const totalH = group.length * (NODE_H + NODE_GAP_Y) - NODE_GAP_Y;
-    const startY = 60;
+    const startY = Math.max(40, (canvasH - totalH) / 2);
     group.forEach((n, i) => {
       positions[n.id] = {
         x: 60 + l * LAYER_GAP_X,
@@ -77,10 +76,8 @@ function layoutDAG(nodes, edges) {
   }
 
   const width = 120 + (maxLayer + 1) * LAYER_GAP_X;
-  const maxNodes = Math.max(...Object.values(layers).map((g) => g.length), 1);
-  const height = 120 + maxNodes * (NODE_H + NODE_GAP_Y);
 
-  return { positions, width, height };
+  return { positions, width, height: canvasH };
 }
 
 export default function DAGPanel({ onOpenFile }) {
@@ -100,20 +97,28 @@ export default function DAGPanel({ onOpenFile }) {
     if (nodes.length === 0) return;
 
     const { positions, width, height } = layoutDAG(nodes, edges);
-    canvas.width = width;
-    canvas.height = height;
+
+    // High DPI support
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = width * dpr;
+    canvas.height = height * dpr;
+    canvas.style.width = width + "px";
+    canvas.style.height = height + "px";
+    ctx.scale(dpr, dpr);
 
     ctx.clearRect(0, 0, width, height);
 
-    // Draw edges
-    ctx.lineWidth = 1.5;
+    // Draw edges with smooth bezier curves
     for (const e of edges) {
       const from = positions[e.source];
       const to = positions[e.target];
       if (!from || !to) continue;
 
-      const cv = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
-      ctx.strokeStyle = cv("--dp-border-light");
+      const isHighlighted = hovered === e.source || hovered === e.target;
+      ctx.strokeStyle = isHighlighted ? getCV("--dp-accent") : getCV("--dp-border-light");
+      ctx.lineWidth = isHighlighted ? 2 : 1.5;
+      ctx.globalAlpha = isHighlighted ? 1 : (hovered ? 0.3 : 0.8);
+
       ctx.beginPath();
       const x1 = from.x + NODE_W;
       const y1 = from.y + NODE_H / 2;
@@ -124,9 +129,8 @@ export default function DAGPanel({ onOpenFile }) {
       ctx.bezierCurveTo(cpx, y1, cpx, y2, x2, y2);
       ctx.stroke();
 
-      // Arrow
-      const angle = Math.atan2(y2 - y1, x2 - (cpx));
-      ctx.fillStyle = cv("--dp-border-light");
+      // Arrowhead
+      ctx.fillStyle = ctx.strokeStyle;
       ctx.beginPath();
       ctx.moveTo(x2, y2);
       ctx.lineTo(x2 - 8, y2 - 4);
@@ -135,20 +139,34 @@ export default function DAGPanel({ onOpenFile }) {
       ctx.fill();
     }
 
+    ctx.globalAlpha = 1;
+
     // Draw nodes
+    const fontFamily = getCV("--dp-font") || "-apple-system, sans-serif";
+    const monoFamily = getCV("--dp-font-mono") || "monospace";
+
     for (const n of nodes) {
       const pos = positions[n.id];
       if (!pos) continue;
 
-      const cv2 = (n2) => getComputedStyle(document.documentElement).getPropertyValue(n2).trim();
-      const color = SCHEMA_COLORS[n.schema] || cv2("--dp-accent");
+      const color = SCHEMA_COLORS[n.schema] || getCV("--dp-accent");
       const isHovered = hovered === n.id;
       const isTable = n.type === "table";
 
-      // Background
-      ctx.fillStyle = isHovered ? cv2("--dp-bg-secondary") : cv2("--dp-bg-secondary");
+      // Dim non-connected nodes when hovering
+      if (hovered && !isHovered) {
+        const connected = dag.edges.some(
+          (e) => (e.source === hovered && e.target === n.id) || (e.target === hovered && e.source === n.id)
+        );
+        ctx.globalAlpha = connected ? 1 : 0.35;
+      } else {
+        ctx.globalAlpha = 1;
+      }
+
+      // Node background
+      ctx.fillStyle = isHovered ? getCV("--dp-bg") : getCV("--dp-bg-secondary");
       ctx.strokeStyle = color;
-      ctx.lineWidth = isTable ? 2.5 : 1.5;
+      ctx.lineWidth = isHovered ? 2.5 : (isTable ? 2 : 1.5);
 
       if (n.type === "source") {
         // Diamond shape
@@ -163,30 +181,40 @@ export default function DAGPanel({ onOpenFile }) {
         ctx.fill();
         ctx.stroke();
       } else {
-        // Rounded rect
+        // Rounded rect with subtle shadow on hover
         const r = 6;
+        if (isHovered) {
+          ctx.shadowColor = color;
+          ctx.shadowBlur = 12;
+          ctx.shadowOffsetX = 0;
+          ctx.shadowOffsetY = 2;
+        }
         ctx.beginPath();
         ctx.roundRect(pos.x, pos.y, NODE_W, NODE_H, r);
         ctx.fill();
         ctx.stroke();
+        ctx.shadowColor = "transparent";
+        ctx.shadowBlur = 0;
       }
 
       // Label
-      ctx.fillStyle = cv2("--dp-text");
-      ctx.font = "12px -apple-system, sans-serif";
+      ctx.fillStyle = isHovered ? getCV("--dp-accent") : getCV("--dp-text");
+      ctx.font = `500 12px ${fontFamily}`;
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
-      ctx.fillText(n.label, pos.x + NODE_W / 2, pos.y + NODE_H / 2, NODE_W - 16);
+      ctx.fillText(n.label, pos.x + NODE_W / 2, pos.y + NODE_H / 2, NODE_W - 20);
 
       // Type badge
       if (n.type !== "source") {
         const badge = n.type === "table" ? "T" : "V";
         ctx.fillStyle = color;
-        ctx.font = "bold 9px monospace";
+        ctx.font = `bold 9px ${monoFamily}`;
         ctx.textAlign = "right";
         ctx.fillText(badge, pos.x + NODE_W - 6, pos.y + 12);
       }
     }
+
+    ctx.globalAlpha = 1;
   }, [dag, hovered]);
 
   useEffect(() => {
@@ -196,8 +224,8 @@ export default function DAGPanel({ onOpenFile }) {
   function handleMouseMove(e) {
     if (!dag || !canvasRef.current) return;
     const rect = canvasRef.current.getBoundingClientRect();
-    const mx = e.clientX - rect.left;
-    const my = e.clientY - rect.top;
+    const mx = (e.clientX - rect.left) * (canvasRef.current.width / rect.width / (window.devicePixelRatio || 1));
+    const my = (e.clientY - rect.top) * (canvasRef.current.height / rect.height / (window.devicePixelRatio || 1));
 
     const { positions } = layoutDAG(dag.nodes, dag.edges);
     let found = null;
@@ -215,8 +243,8 @@ export default function DAGPanel({ onOpenFile }) {
   function handleClick(e) {
     if (!dag || !canvasRef.current || !onOpenFile) return;
     const rect = canvasRef.current.getBoundingClientRect();
-    const mx = e.clientX - rect.left;
-    const my = e.clientY - rect.top;
+    const mx = (e.clientX - rect.left) * (canvasRef.current.width / rect.width / (window.devicePixelRatio || 1));
+    const my = (e.clientY - rect.top) * (canvasRef.current.height / rect.height / (window.devicePixelRatio || 1));
 
     const { positions } = layoutDAG(dag.nodes, dag.edges);
     for (const n of dag.nodes) {
@@ -243,7 +271,7 @@ export default function DAGPanel({ onOpenFile }) {
   return (
     <div style={styles.container}>
       <div style={styles.header}>
-        <span>Model Lineage</span>
+        <span style={styles.headerTitle}>Model Lineage</span>
         <div style={styles.legend}>
           <span style={styles.legendItem}>
             <span style={{ ...styles.legendDot, background: SCHEMA_COLORS.landing }} />
@@ -261,6 +289,7 @@ export default function DAGPanel({ onOpenFile }) {
             <span style={{ ...styles.legendDot, background: SCHEMA_COLORS.gold }} />
             gold
           </span>
+          <span style={styles.legendSep}>|</span>
           <span style={styles.legendItem}>V = view</span>
           <span style={styles.legendItem}>T = table</span>
         </div>
@@ -269,6 +298,7 @@ export default function DAGPanel({ onOpenFile }) {
         <canvas
           ref={canvasRef}
           onMouseMove={handleMouseMove}
+          onMouseLeave={() => setHovered(null)}
           onClick={handleClick}
           style={styles.canvas}
         />
@@ -279,10 +309,12 @@ export default function DAGPanel({ onOpenFile }) {
 
 const styles = {
   container: { display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" },
-  header: { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 12px", borderBottom: "1px solid var(--dp-border)", fontSize: "13px", fontWeight: 600 },
-  legend: { display: "flex", gap: "12px", fontSize: "11px", color: "var(--dp-text-secondary)" },
+  header: { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 12px", borderBottom: "1px solid var(--dp-border)", fontSize: "13px" },
+  headerTitle: { fontWeight: 600 },
+  legend: { display: "flex", gap: "12px", fontSize: "11px", color: "var(--dp-text-secondary)", alignItems: "center" },
   legendItem: { display: "flex", alignItems: "center", gap: "4px" },
   legendDot: { width: "8px", height: "8px", borderRadius: "50%", display: "inline-block" },
+  legendSep: { color: "var(--dp-border-light)" },
   canvasWrap: { flex: 1, overflow: "auto", background: "var(--dp-bg-tertiary)" },
   canvas: { display: "block" },
   loading: { padding: "24px", color: "var(--dp-text-secondary)", textAlign: "center" },

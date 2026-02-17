@@ -8,10 +8,13 @@ function FileNode({ node, depth, onSelect, activeFile }) {
     return (
       <div>
         <div
+          data-dp-file=""
           style={{ ...styles.item, paddingLeft: 8 + depth * 16 }}
           onClick={() => setExpanded(!expanded)}
         >
-          <span style={styles.icon}>{expanded ? "\u25BE" : "\u25B8"}</span>
+          <span style={{ ...styles.icon, transform: expanded ? "rotate(0deg)" : "rotate(-90deg)" }}>
+            {"\u25BE"}
+          </span>
           <span style={styles.dirName}>{node.name}</span>
         </div>
         {expanded &&
@@ -33,10 +36,12 @@ function FileNode({ node, depth, onSelect, activeFile }) {
 
   return (
     <div
+      data-dp-file=""
       style={{
         ...styles.item,
         paddingLeft: 8 + depth * 16,
         background: isActive ? "var(--dp-bg-secondary)" : "transparent",
+        borderLeft: isActive ? "2px solid var(--dp-accent)" : "2px solid transparent",
       }}
       onClick={() => onSelect(node.path)}
     >
@@ -50,6 +55,9 @@ export default function FileTree({ files, onSelect, activeFile }) {
   return (
     <div>
       <div style={styles.header}>FILES</div>
+      {files.length === 0 && (
+        <div style={styles.empty}>No files found</div>
+      )}
       {files.map((f) => (
         <FileNode key={f.path} node={f} depth={0} onSelect={onSelect} activeFile={activeFile} />
       ))}
@@ -58,11 +66,12 @@ export default function FileTree({ files, onSelect, activeFile }) {
 }
 
 const styles = {
-  header: { padding: "4px 12px 8px", fontSize: "11px", fontWeight: "600", color: "var(--dp-text-secondary)", letterSpacing: "0.5px" },
-  item: { display: "flex", alignItems: "center", gap: "6px", padding: "3px 8px", cursor: "pointer", fontSize: "13px", whiteSpace: "nowrap" },
-  icon: { fontSize: "10px", color: "var(--dp-text-secondary)", width: "10px" },
-  dirName: { color: "var(--dp-text)" },
+  header: { padding: "6px 12px 8px", fontSize: "10px", fontWeight: "600", color: "var(--dp-text-dim)", letterSpacing: "1px", textTransform: "uppercase" },
+  item: { display: "flex", alignItems: "center", gap: "6px", padding: "4px 8px", cursor: "pointer", fontSize: "13px", whiteSpace: "nowrap", margin: "0 4px", borderRadius: "3px" },
+  icon: { fontSize: "10px", color: "var(--dp-text-secondary)", width: "10px", display: "inline-block", transition: "transform 0.12s ease" },
+  dirName: { color: "var(--dp-text)", fontWeight: 500 },
   fileName: { color: "var(--dp-text)" },
-  activeFileName: { color: "var(--dp-accent)" },
+  activeFileName: { color: "var(--dp-accent)", fontWeight: 500 },
   dot: { width: "6px", height: "6px", borderRadius: "50%", flexShrink: 0 },
+  empty: { padding: "12px", color: "var(--dp-text-dim)", fontSize: "12px", textAlign: "center" },
 };
