@@ -215,3 +215,77 @@ def run(db: duckdb.DuckDBPyConnection) -> None:
     # """)
     pass
 '''
+
+CLAUDE_MD_TEMPLATE = """\
+# CLAUDE.md — Agent Instructions for {name}
+
+This is a dp data platform project. dp uses DuckDB for analytics, plain SQL for transforms, and Python for ingest/export.
+
+## Commands
+
+```bash
+dp transform              # build SQL models in dependency order
+dp transform --force      # force rebuild all
+dp run ingest/script.py   # run a single script
+dp stream full-refresh    # run full pipeline (ingest -> transform -> export)
+dp query "SELECT 1"       # ad-hoc SQL query
+dp tables                 # list warehouse objects
+dp lint                   # lint SQL (SQLFluff, DuckDB dialect)
+dp lint --fix             # auto-fix lint violations
+dp serve                  # start web UI on :3000
+dp history                # show run log
+```
+
+## Project Layout
+
+```
+ingest/           Python scripts that load data into DuckDB (landing schema)
+transform/
+  bronze/         Light cleanup SQL (views/tables)
+  silver/         Business logic, joins
+  gold/           Consumption-ready models
+export/           Python scripts that export data out
+notebooks/        Interactive .dpnb notebooks
+project.yml       Streams, connections, schedules
+.env              Secrets (never committed)
+warehouse.duckdb  The database (single file)
+```
+
+## SQL Model Convention
+
+```sql
+-- config: materialized=table, schema=silver
+-- depends_on: bronze.customers, bronze.orders
+
+SELECT c.customer_id, c.name, COUNT(o.order_id) AS order_count
+FROM bronze.customers c
+LEFT JOIN bronze.orders o ON c.customer_id = o.customer_id
+GROUP BY 1, 2
+```
+
+- `-- config:` sets materialization (view/table) and schema
+- `-- depends_on:` declares upstream dependencies for DAG ordering
+- Folder name = default schema (e.g., transform/bronze/ -> schema=bronze)
+- No Jinja, no templating — plain SQL only
+
+## Python Script Convention
+
+```python
+import duckdb
+
+def run(db: duckdb.DuckDBPyConnection) -> None:
+    db.execute("CREATE SCHEMA IF NOT EXISTS landing")
+    db.execute("CREATE OR REPLACE TABLE landing.data AS SELECT * FROM ...")
+```
+
+- Every script must have a `run(db)` function
+- Scripts prefixed with `_` are skipped
+
+## Schemas
+
+- `landing` — raw data from ingest scripts
+- `bronze` — cleaned, deduplicated
+- `silver` — business logic, joins
+- `gold` — consumption-ready
+- `_dp_internal` — metadata (do not modify directly)
+"""

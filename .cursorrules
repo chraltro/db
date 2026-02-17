@@ -1,0 +1,44 @@
+You are working on dp, a self-hosted data platform built on DuckDB + SQL transforms + Python ingest/export.
+
+# Stack
+- Backend: Python 3.10+, FastAPI, DuckDB, Typer CLI, Rich
+- Frontend: React 19, Vite, Monaco Editor (no TypeScript)
+- Tests: pytest (run with `pytest tests/`)
+- Lint: SQLFluff with DuckDB dialect (`dp lint`)
+- Build: `pip install -e .` (backend), `cd frontend && npm run build` (frontend)
+
+# Key files
+- src/dp/cli.py — all CLI commands
+- src/dp/engine/transform.py — SQL DAG engine (core logic)
+- src/dp/engine/runner.py — Python script executor
+- src/dp/server/app.py — FastAPI REST API (40+ endpoints)
+- src/dp/config.py — project.yml parsing
+
+# SQL model convention
+Files in transform/ use comment-based config:
+```sql
+-- config: materialized=table, schema=silver
+-- depends_on: bronze.customers
+SELECT ... FROM bronze.customers
+```
+Folder name = default schema. No Jinja/templating.
+
+# Python script convention
+Ingest/export scripts export a `run(db)` function:
+```python
+def run(db: duckdb.DuckDBPyConnection) -> None:
+    db.execute("CREATE OR REPLACE TABLE landing.x AS ...")
+```
+
+# Code patterns
+- Use `from __future__ import annotations` in all Python files
+- Lazy imports in CLI commands (for fast startup)
+- DuckDB connections: always use try/finally with conn.close()
+- Auth: `_require_permission(request, "read"|"write"|"execute")`
+- Tests use real DuckDB (tmp_path fixture), no mocks
+
+# Don't
+- Don't add Jinja or templating to SQL
+- Don't add TypeScript to the frontend
+- Don't mock DuckDB in tests — use real temp databases
+- Don't modify _dp_internal schema from user-facing code

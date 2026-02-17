@@ -36,6 +36,7 @@ def init(
 ) -> None:
     """Scaffold a new data platform project."""
     from dp.config import (
+        CLAUDE_MD_TEMPLATE,
         PROJECT_YML_TEMPLATE,
         SAMPLE_BRONZE_SQL,
         SAMPLE_EXPORT_SCRIPT,
@@ -64,6 +65,8 @@ def init(
     (target / ".gitignore").write_text(
         "warehouse.duckdb\nwarehouse.duckdb.wal\n__pycache__/\n*.pyc\n.venv/\n.env\n"
     )
+    # Agent instructions for LLM tools (Claude Code, Cursor, etc.)
+    (target / "CLAUDE.md").write_text(CLAUDE_MD_TEMPLATE.format(name=name))
 
     console.print(f"[green]Project '{name}' created at {target}[/green]")
     console.print()
