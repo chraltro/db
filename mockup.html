@@ -6,27 +6,10 @@
 <title>dp - Data Platform UI Mockup</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  :root {
-    --bg-primary: #0f1117;
-    --bg-secondary: #161b22;
-    --bg-tertiary: #0d1117;
-    --border: #21262d;
-    --border-light: #30363d;
-    --text-primary: #e1e4e8;
-    --text-secondary: #8b949e;
-    --text-dim: #484f58;
-    --accent: #58a6ff;
-    --green: #238636;
-    --green-border: #2ea043;
-    --green-text: #3fb950;
-    --red: #f85149;
-    --yellow: #d29922;
-    --purple: #bc8cff;
-  }
   body {
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
-    background: var(--bg-primary);
-    color: var(--text-primary);
+    font-family: var(--dp-font);
+    background: var(--dp-bg);
+    color: var(--dp-text);
     font-size: 13px;
     height: 100vh;
     display: flex;
@@ -40,15 +23,15 @@
     align-items: center;
     justify-content: space-between;
     padding: 8px 16px;
-    border-bottom: 1px solid var(--border);
-    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--dp-border);
+    background: var(--dp-bg-secondary);
     flex-shrink: 0;
   }
   .logo {
     font-size: 18px;
     font-weight: bold;
-    font-family: monospace;
-    color: var(--accent);
+    font-family: var(--dp-font-mono);
+    color: var(--dp-accent);
   }
   .header-actions {
     display: flex;
@@ -58,24 +41,31 @@
   }
   .btn {
     padding: 4px 12px;
-    background: #21262d;
-    border: 1px solid var(--border-light);
-    border-radius: 6px;
-    color: var(--text-primary);
+    background: var(--dp-btn-bg);
+    border: 1px solid var(--dp-btn-border);
+    border-radius: var(--dp-radius-lg);
+    color: var(--dp-text);
     cursor: pointer;
     font-size: 12px;
+    font-family: var(--dp-font);
   }
-  .btn:hover { background: #30363d; }
+  .btn:hover { background: var(--dp-border-light); }
   .btn-primary {
     padding: 4px 12px;
-    background: var(--green);
-    border: 1px solid var(--green-border);
-    border-radius: 6px;
+    background: var(--dp-green);
+    border: 1px solid var(--dp-green-border);
+    border-radius: var(--dp-radius-lg);
     color: #fff;
     cursor: pointer;
     font-size: 12px;
+    font-family: var(--dp-font);
   }
-  .btn-primary:hover { background: #2ea043; }
+  .btn-primary:hover { background: var(--dp-green-border); }
+  .header-right {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
   .user-info {
     display: flex;
     align-items: center;
@@ -84,10 +74,63 @@
   .user-name { font-size: 12px; }
   .user-role {
     font-size: 10px;
-    color: var(--text-secondary);
-    background: #21262d;
+    color: var(--dp-text-secondary);
+    background: var(--dp-btn-bg);
     padding: 2px 6px;
     border-radius: 10px;
+  }
+
+  /* Theme switcher */
+  .theme-switcher {
+    position: relative;
+  }
+  .theme-switcher-btn {
+    padding: 4px 10px;
+    background: var(--dp-btn-bg);
+    border: 1px solid var(--dp-btn-border);
+    border-radius: var(--dp-radius);
+    color: var(--dp-text-secondary);
+    cursor: pointer;
+    font-size: 11px;
+    font-family: var(--dp-font);
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .theme-switcher-btn:hover { color: var(--dp-text); background: var(--dp-border-light); }
+  .theme-dropdown {
+    display: none;
+    position: absolute;
+    top: calc(100% + 4px);
+    right: 0;
+    background: var(--dp-bg-secondary);
+    border: 1px solid var(--dp-border-light);
+    border-radius: var(--dp-radius-lg);
+    padding: 4px;
+    z-index: 200;
+    min-width: 200px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+  }
+  .theme-dropdown.open { display: block; }
+  .theme-option {
+    display: block;
+    width: 100%;
+    padding: 6px 10px;
+    background: none;
+    border: none;
+    border-radius: var(--dp-radius);
+    color: var(--dp-text);
+    cursor: pointer;
+    font-size: 12px;
+    text-align: left;
+    font-family: var(--dp-font);
+  }
+  .theme-option:hover { background: var(--dp-btn-bg); }
+  .theme-option.active { color: var(--dp-accent); font-weight: 600; }
+  .theme-option-desc {
+    font-size: 10px;
+    color: var(--dp-text-dim);
+    margin-top: 1px;
   }
 
   /* Main layout */
@@ -100,9 +143,9 @@
   /* Sidebar */
   .sidebar {
     width: 240px;
-    border-right: 1px solid var(--border);
+    border-right: 1px solid var(--dp-border);
     overflow: auto;
-    background: var(--bg-tertiary);
+    background: var(--dp-bg-tertiary);
     padding: 8px 0;
     flex-shrink: 0;
   }
@@ -110,7 +153,7 @@
     padding: 6px 12px;
     font-size: 11px;
     text-transform: uppercase;
-    color: var(--text-dim);
+    color: var(--dp-text-dim);
     letter-spacing: 0.5px;
   }
   .file-item {
@@ -121,9 +164,9 @@
     align-items: center;
     gap: 6px;
   }
-  .file-item:hover { background: #1c2128; }
-  .file-item.active { background: #1c2128; color: var(--accent); }
-  .file-icon { color: var(--text-dim); font-size: 12px; width: 14px; }
+  .file-item:hover { background: var(--dp-bg-secondary); }
+  .file-item.active { background: var(--dp-bg-secondary); color: var(--dp-accent); }
+  .file-icon { color: var(--dp-text-dim); font-size: 12px; width: 14px; }
   .folder-item {
     padding: 4px 12px;
     cursor: pointer;
@@ -146,9 +189,9 @@
   .tabs {
     display: flex;
     align-items: center;
-    border-bottom: 1px solid var(--border);
+    border-bottom: 1px solid var(--dp-border);
     padding: 0 8px;
-    background: var(--bg-secondary);
+    background: var(--dp-bg-secondary);
     overflow-x: auto;
     flex-shrink: 0;
   }
@@ -156,15 +199,16 @@
     padding: 8px 14px;
     background: none;
     border: none;
-    color: var(--text-secondary);
+    color: var(--dp-text-secondary);
     cursor: pointer;
     font-size: 13px;
     white-space: nowrap;
+    font-family: var(--dp-font);
   }
-  .tab:hover { color: var(--text-primary); }
+  .tab:hover { color: var(--dp-text); }
   .tab.active {
-    color: var(--text-primary);
-    border-bottom: 2px solid var(--accent);
+    color: var(--dp-text);
+    border-bottom: 2px solid var(--dp-accent);
   }
   .file-actions {
     margin-left: auto;
@@ -174,8 +218,8 @@
   }
   .file-name {
     font-size: 12px;
-    color: var(--text-secondary);
-    font-family: monospace;
+    color: var(--dp-text-secondary);
+    font-family: var(--dp-font-mono);
   }
 
   /* Panel */
@@ -189,34 +233,34 @@
   .editor-mock {
     height: 100%;
     padding: 12px;
-    font-family: monospace;
+    font-family: var(--dp-font-mono);
     font-size: 13px;
     line-height: 1.6;
-    color: var(--text-primary);
-    background: var(--bg-primary);
+    color: var(--dp-text);
+    background: var(--dp-bg);
   }
-  .editor-mock .line-num { color: var(--text-dim); display: inline-block; width: 30px; text-align: right; margin-right: 16px; user-select: none; }
+  .editor-mock .line-num { color: var(--dp-text-dim); display: inline-block; width: 30px; text-align: right; margin-right: 16px; user-select: none; }
   .editor-mock .keyword { color: #ff7b72; }
   .editor-mock .string { color: #a5d6ff; }
-  .editor-mock .comment { color: #8b949e; }
-  .editor-mock .function { color: #d2a8ff; }
+  .editor-mock .comment { color: var(--dp-text-secondary); }
+  .editor-mock .function { color: var(--dp-purple); }
 
   /* Query panel mock */
   .query-area {
     display: flex;
     gap: 8px;
     padding: 8px;
-    border-bottom: 1px solid var(--border);
+    border-bottom: 1px solid var(--dp-border);
   }
   .query-input {
     flex: 1;
     min-height: 60px;
-    background: var(--bg-tertiary);
-    color: var(--text-primary);
-    border: 1px solid var(--border-light);
-    border-radius: 6px;
+    background: var(--dp-bg-tertiary);
+    color: var(--dp-text);
+    border: 1px solid var(--dp-border-light);
+    border-radius: var(--dp-radius-lg);
     padding: 8px;
-    font-family: monospace;
+    font-family: var(--dp-font-mono);
     font-size: 13px;
     resize: vertical;
   }
@@ -226,24 +270,24 @@
     width: 100%;
     border-collapse: collapse;
     font-size: 12px;
-    font-family: monospace;
+    font-family: var(--dp-font-mono);
   }
   .data-table th {
     text-align: left;
     padding: 6px 12px;
-    border-bottom: 1px solid var(--border-light);
-    color: var(--text-secondary);
+    border-bottom: 1px solid var(--dp-border-light);
+    color: var(--dp-text-secondary);
     font-weight: 600;
     position: sticky;
     top: 0;
-    background: var(--bg-primary);
+    background: var(--dp-bg);
   }
   .data-table td {
     padding: 4px 12px;
-    border-bottom: 1px solid var(--border);
-    color: #c9d1d9;
+    border-bottom: 1px solid var(--dp-border);
+    color: var(--dp-text);
   }
-  .data-table tr:hover td { background: #1c2128; }
+  .data-table tr:hover td { background: var(--dp-bg-secondary); }
 
   /* Chart mock */
   .chart-area {
@@ -256,8 +300,8 @@
     display: flex;
     gap: 12px;
     padding: 8px 12px;
-    border-bottom: 1px solid var(--border);
-    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--dp-border);
+    background: var(--dp-bg-secondary);
   }
   .chart-mock {
     height: 300px;
@@ -268,7 +312,7 @@
   }
   .chart-bar {
     flex: 1;
-    border-radius: 4px 4px 0 0;
+    border-radius: var(--dp-radius) var(--dp-radius) 0 0;
     position: relative;
     display: flex;
     flex-direction: column;
@@ -276,24 +320,24 @@
   }
   .chart-bar .bar {
     width: 100%;
-    border-radius: 4px 4px 0 0;
+    border-radius: var(--dp-radius) var(--dp-radius) 0 0;
   }
   .chart-bar .label {
     font-size: 11px;
-    color: var(--text-secondary);
+    color: var(--dp-text-secondary);
     margin-top: 8px;
     white-space: nowrap;
   }
   .chart-bar .value {
     font-size: 10px;
-    color: var(--text-dim);
+    color: var(--dp-text-dim);
     margin-bottom: 4px;
   }
 
   /* Notebook mock */
   .notebook-cell {
-    border: 1px solid var(--border);
-    border-radius: 6px;
+    border: 1px solid var(--dp-border);
+    border-radius: var(--dp-radius-lg);
     margin-bottom: 8px;
     overflow: hidden;
   }
@@ -302,34 +346,34 @@
     align-items: center;
     gap: 8px;
     padding: 4px 8px;
-    border-bottom: 1px solid var(--border);
-    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--dp-border);
+    background: var(--dp-bg-secondary);
   }
   .cell-run {
     width: 28px;
     height: 24px;
-    background: var(--green);
+    background: var(--dp-green);
     border: none;
-    border-radius: 4px;
+    border-radius: var(--dp-radius);
     color: #fff;
     cursor: pointer;
     font-size: 11px;
   }
-  .cell-duration { color: var(--text-secondary); font-size: 11px; }
+  .cell-duration { color: var(--dp-text-secondary); font-size: 11px; }
   .cell-code {
     padding: 8px 12px;
-    font-family: monospace;
+    font-family: var(--dp-font-mono);
     font-size: 13px;
-    background: var(--bg-tertiary);
-    color: var(--text-primary);
+    background: var(--dp-bg-tertiary);
+    color: var(--dp-text);
     line-height: 1.5;
   }
   .cell-output {
-    border-top: 1px solid var(--border);
+    border-top: 1px solid var(--dp-border);
     padding: 8px 12px;
-    font-family: monospace;
+    font-family: var(--dp-font-mono);
     font-size: 12px;
-    background: var(--bg-tertiary);
+    background: var(--dp-bg-tertiary);
     max-height: 200px;
     overflow: auto;
   }
@@ -337,10 +381,10 @@
   /* Output panel */
   .output-panel {
     height: 180px;
-    border-top: 1px solid var(--border);
+    border-top: 1px solid var(--dp-border);
     display: flex;
     flex-direction: column;
-    background: var(--bg-tertiary);
+    background: var(--dp-bg-tertiary);
     flex-shrink: 0;
   }
   .output-header {
@@ -350,66 +394,66 @@
     padding: 4px 12px;
     font-size: 12px;
     font-weight: 600;
-    color: var(--text-secondary);
-    border-bottom: 1px solid var(--border);
+    color: var(--dp-text-secondary);
+    border-bottom: 1px solid var(--dp-border);
   }
   .output-log {
     flex: 1;
     overflow: auto;
     padding: 4px 12px;
-    font-family: monospace;
+    font-family: var(--dp-font-mono);
     font-size: 12px;
     line-height: 1.6;
   }
   .log-entry { display: flex; gap: 8px; }
-  .log-ts { color: var(--text-dim); flex-shrink: 0; }
-  .log-info { color: #c9d1d9; }
-  .log-success { color: var(--green-text); }
-  .log-error { color: var(--red); }
-  .log-warn { color: var(--yellow); }
+  .log-ts { color: var(--dp-text-dim); flex-shrink: 0; }
+  .log-info { color: var(--dp-text); }
+  .log-success { color: var(--dp-green); }
+  .log-error { color: var(--dp-red); }
+  .log-warn { color: var(--dp-yellow); }
 
   /* Settings */
   .settings-content { padding: 16px 24px; max-width: 800px; overflow: auto; }
   .settings-section { margin-bottom: 32px; }
   .settings-heading { font-size: 16px; font-weight: 600; margin-bottom: 4px; }
-  .settings-desc { font-size: 12px; color: var(--text-secondary); margin-bottom: 12px; line-height: 1.5; }
+  .settings-desc { font-size: 12px; color: var(--dp-text-secondary); margin-bottom: 12px; line-height: 1.5; }
   .form-row { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
   .form-input {
-    flex: 1; padding: 6px 10px; background: var(--bg-tertiary); border: 1px solid var(--border-light);
-    border-radius: 6px; color: var(--text-primary); font-size: 13px;
+    flex: 1; padding: 6px 10px; background: var(--dp-bg-tertiary); border: 1px solid var(--dp-border-light);
+    border-radius: var(--dp-radius-lg); color: var(--dp-text); font-size: 13px; font-family: var(--dp-font);
   }
   .form-select {
-    padding: 4px 8px; background: var(--bg-tertiary); border: 1px solid var(--border-light);
-    border-radius: 4px; color: var(--text-primary); font-size: 12px;
+    padding: 4px 8px; background: var(--dp-bg-tertiary); border: 1px solid var(--dp-border-light);
+    border-radius: var(--dp-radius); color: var(--dp-text); font-size: 12px; font-family: var(--dp-font);
   }
-  .masked { color: var(--text-secondary); font-family: monospace; }
+  .masked { color: var(--dp-text-secondary); font-family: var(--dp-font-mono); }
 
   /* Import panel */
   .import-mode-toggle {
-    display: flex; gap: 2px; background: var(--bg-tertiary); border-radius: 6px; padding: 2px;
+    display: flex; gap: 2px; background: var(--dp-bg-tertiary); border-radius: var(--dp-radius-lg); padding: 2px;
   }
   .import-mode {
-    padding: 4px 12px; background: none; border: none; border-radius: 4px;
-    color: var(--text-secondary); cursor: pointer; font-size: 12px;
+    padding: 4px 12px; background: none; border: none; border-radius: var(--dp-radius);
+    color: var(--dp-text-secondary); cursor: pointer; font-size: 12px; font-family: var(--dp-font);
   }
-  .import-mode.active { background: #21262d; color: var(--text-primary); }
+  .import-mode.active { background: var(--dp-btn-bg); color: var(--dp-text); }
   .form-group { margin-bottom: 12px; }
-  .form-label { display: block; font-size: 12px; color: var(--text-secondary); margin-bottom: 4px; }
+  .form-label { display: block; font-size: 12px; color: var(--dp-text-secondary); margin-bottom: 4px; }
 
   /* Login page */
   .login-backdrop {
     display: none; /* Toggle to show */
     align-items: center; justify-content: center;
-    height: 100vh; background: var(--bg-primary);
+    height: 100vh; background: var(--dp-bg);
     position: fixed; inset: 0; z-index: 100;
   }
   .login-card {
-    width: 340px; padding: 32px; background: var(--bg-secondary);
-    border: 1px solid var(--border); border-radius: 12px;
+    width: 340px; padding: 32px; background: var(--dp-bg-secondary);
+    border: 1px solid var(--dp-border); border-radius: 12px;
     display: flex; flex-direction: column; gap: 12px;
   }
-  .login-logo { font-size: 32px; font-weight: bold; font-family: monospace; color: var(--accent); text-align: center; }
-  .login-subtitle { font-size: 13px; color: var(--text-secondary); text-align: center; margin-bottom: 8px; }
+  .login-logo { font-size: 32px; font-weight: bold; font-family: var(--dp-font-mono); color: var(--dp-accent); text-align: center; }
+  .login-subtitle { font-size: 13px; color: var(--dp-text-secondary); text-align: center; margin-bottom: 8px; }
 
   /* Tab content hidden by default */
   .tab-content { display: none; height: 100%; overflow: auto; }
@@ -446,9 +490,18 @@
     <button class="btn">Lint</button>
     <button class="btn">Lint (fix)</button>
   </div>
-  <div class="user-info">
-    <span class="user-name">Admin</span>
-    <span class="user-role">admin</span>
+  <div class="header-right">
+    <div class="theme-switcher">
+      <button class="theme-switcher-btn" onclick="toggleThemeDropdown()" id="themeSwitcherBtn">
+        <span id="themeIcon">&#9788;</span>
+        <span id="themeLabel">Theme</span>
+      </button>
+      <div class="theme-dropdown" id="themeDropdown"></div>
+    </div>
+    <div class="user-info">
+      <span class="user-name">Admin</span>
+      <span class="user-role">admin</span>
+    </div>
   </div>
 </header>
 
@@ -544,25 +597,25 @@
       </div>
       <div class="chart-controls">
         <div>
-          <div style="font-size:10px;color:var(--text-secondary);text-transform:uppercase;margin-bottom:2px">Chart</div>
+          <div style="font-size:10px;color:var(--dp-text-secondary);text-transform:uppercase;margin-bottom:2px">Chart</div>
           <select class="form-select"><option>bar</option><option>line</option><option>pie</option><option>scatter</option></select>
         </div>
         <div>
-          <div style="font-size:10px;color:var(--text-secondary);text-transform:uppercase;margin-bottom:2px">Label / X</div>
+          <div style="font-size:10px;color:var(--dp-text-secondary);text-transform:uppercase;margin-bottom:2px">Label / X</div>
           <select class="form-select"><option>signup_month</option><option>signups</option></select>
         </div>
         <div>
-          <div style="font-size:10px;color:var(--text-secondary);text-transform:uppercase;margin-bottom:2px">Value / Y</div>
+          <div style="font-size:10px;color:var(--dp-text-secondary);text-transform:uppercase;margin-bottom:2px">Value / Y</div>
           <select class="form-select"><option>signups</option><option>signup_month</option></select>
         </div>
       </div>
       <div class="chart-mock">
-        <div class="chart-bar"><div class="value">120</div><div class="bar" style="height:120px;background:#58a6ff"></div><div class="label">Jan</div></div>
-        <div class="chart-bar"><div class="value">185</div><div class="bar" style="height:185px;background:#58a6ff"></div><div class="label">Feb</div></div>
-        <div class="chart-bar"><div class="value">230</div><div class="bar" style="height:230px;background:#58a6ff"></div><div class="label">Mar</div></div>
-        <div class="chart-bar"><div class="value">195</div><div class="bar" style="height:195px;background:#58a6ff"></div><div class="label">Apr</div></div>
-        <div class="chart-bar"><div class="value">260</div><div class="bar" style="height:260px;background:#58a6ff"></div><div class="label">May</div></div>
-        <div class="chart-bar"><div class="value">210</div><div class="bar" style="height:210px;background:#58a6ff"></div><div class="label">Jun</div></div>
+        <div class="chart-bar"><div class="value">120</div><div class="bar" style="height:120px;background:var(--dp-accent)"></div><div class="label">Jan</div></div>
+        <div class="chart-bar"><div class="value">185</div><div class="bar" style="height:185px;background:var(--dp-accent)"></div><div class="label">Feb</div></div>
+        <div class="chart-bar"><div class="value">230</div><div class="bar" style="height:230px;background:var(--dp-accent)"></div><div class="label">Mar</div></div>
+        <div class="chart-bar"><div class="value">195</div><div class="bar" style="height:195px;background:var(--dp-accent)"></div><div class="label">Apr</div></div>
+        <div class="chart-bar"><div class="value">260</div><div class="bar" style="height:260px;background:var(--dp-accent)"></div><div class="label">May</div></div>
+        <div class="chart-bar"><div class="value">210</div><div class="bar" style="height:210px;background:var(--dp-accent)"></div><div class="label">Jun</div></div>
       </div>
     </div>
 
@@ -572,13 +625,13 @@
         <table class="data-table">
           <thead><tr><th>Schema</th><th>Table</th><th>Type</th><th>Rows</th></tr></thead>
           <tbody>
-            <tr><td style="color:var(--accent)">landing</td><td><strong>customers</strong></td><td>TABLE</td><td>1,234</td></tr>
-            <tr><td style="color:var(--accent)">landing</td><td><strong>products</strong></td><td>TABLE</td><td>567</td></tr>
-            <tr><td style="color:var(--accent)">landing</td><td><strong>orders</strong></td><td>TABLE</td><td>8,901</td></tr>
-            <tr><td style="color:var(--yellow)">bronze</td><td><strong>customers</strong></td><td style="color:var(--text-dim)">VIEW</td><td>1,234</td></tr>
-            <tr><td style="color:var(--yellow)">bronze</td><td><strong>products</strong></td><td style="color:var(--text-dim)">VIEW</td><td>567</td></tr>
-            <tr><td style="color:var(--green-text)">silver</td><td><strong>dim_customers</strong></td><td>TABLE</td><td>1,180</td></tr>
-            <tr><td style="color:var(--purple)">gold</td><td><strong>report_sales</strong></td><td>TABLE</td><td>365</td></tr>
+            <tr><td style="color:var(--dp-accent)">landing</td><td><strong>customers</strong></td><td>TABLE</td><td>1,234</td></tr>
+            <tr><td style="color:var(--dp-accent)">landing</td><td><strong>products</strong></td><td>TABLE</td><td>567</td></tr>
+            <tr><td style="color:var(--dp-accent)">landing</td><td><strong>orders</strong></td><td>TABLE</td><td>8,901</td></tr>
+            <tr><td style="color:var(--dp-yellow)">bronze</td><td><strong>customers</strong></td><td style="color:var(--dp-text-dim)">VIEW</td><td>1,234</td></tr>
+            <tr><td style="color:var(--dp-yellow)">bronze</td><td><strong>products</strong></td><td style="color:var(--dp-text-dim)">VIEW</td><td>567</td></tr>
+            <tr><td style="color:var(--dp-green)">silver</td><td><strong>dim_customers</strong></td><td>TABLE</td><td>1,180</td></tr>
+            <tr><td style="color:var(--dp-purple)">gold</td><td><strong>report_sales</strong></td><td>TABLE</td><td>365</td></tr>
           </tbody>
         </table>
       </div>
@@ -586,7 +639,7 @@
 
     <!-- Notebooks -->
     <div class="tab-content" id="tab-notebooks">
-      <div style="padding:12px 16px; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:center;">
+      <div style="padding:12px 16px; border-bottom:1px solid var(--dp-border); display:flex; justify-content:space-between; align-items:center;">
         <span style="font-weight:600">explore</span>
         <div style="display:flex;gap:6px;">
           <button class="btn">+ Code</button>
@@ -597,7 +650,7 @@
       </div>
       <div style="flex:1; overflow:auto; padding:12px 16px;">
         <div class="notebook-cell">
-          <div style="padding:8px 12px; color:#c9d1d9; font-size:14px;"><strong>Data Exploration</strong><br>Explore customer signups by month.</div>
+          <div style="padding:8px 12px; color:var(--dp-text); font-size:14px;"><strong>Data Exploration</strong><br>Explore customer signups by month.</div>
         </div>
         <div class="notebook-cell">
           <div class="cell-header">
@@ -629,14 +682,14 @@
             total = <span style="color:#ff7b72">sum</span>(r[<span style="color:#79c0ff">1</span>] <span style="color:#ff7b72">for</span> r <span style="color:#ff7b72">in</span> result)<br>
             <span style="color:#ff7b72">print</span>(<span style="color:#a5d6ff">f"Total customers: </span>{total}<span style="color:#a5d6ff">"</span>)
           </div>
-          <div class="cell-output" style="color:var(--green-text)">Total customers: 535</div>
+          <div class="cell-output" style="color:var(--dp-green)">Total customers: 535</div>
         </div>
       </div>
     </div>
 
     <!-- Import -->
     <div class="tab-content" id="tab-import">
-      <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;border-bottom:1px solid var(--border)">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;border-bottom:1px solid var(--dp-border)">
         <span style="font-weight:600;font-size:14px">Import Data</span>
         <div class="import-mode-toggle">
           <button class="import-mode active">File Upload</button>
@@ -646,7 +699,7 @@
       <div style="flex:1;overflow:auto;padding:16px;max-width:600px">
         <div class="form-group">
           <label class="form-label">Upload a CSV, Parquet, or JSON file</label>
-          <input type="file" style="font-size:12px;color:var(--text-secondary)">
+          <input type="file" style="font-size:12px;color:var(--dp-text-secondary)">
         </div>
         <div class="form-group">
           <label class="form-label">Or enter file path</label>
@@ -672,26 +725,26 @@
     <!-- DAG -->
     <div class="tab-content" id="tab-dag">
       <div style="flex:1;display:flex;align-items:center;justify-content:center;position:relative;">
-        <svg width="700" height="300" style="overflow:visible">
+        <svg width="700" height="300" style="overflow:visible" id="dagSvg">
           <!-- Nodes -->
-          <rect x="20" y="120" width="140" height="36" rx="6" fill="#21262d" stroke="#30363d" />
-          <text x="90" y="142" text-anchor="middle" fill="#8b949e" font-size="12" font-family="monospace">landing.customers</text>
-          <rect x="220" y="60" width="140" height="36" rx="6" fill="#1c3a5e" stroke="#58a6ff" />
-          <text x="290" y="82" text-anchor="middle" fill="#58a6ff" font-size="12" font-family="monospace">bronze.customers</text>
-          <rect x="220" y="180" width="140" height="36" rx="6" fill="#21262d" stroke="#30363d" />
-          <text x="290" y="202" text-anchor="middle" fill="#8b949e" font-size="12" font-family="monospace">landing.orders</text>
-          <rect x="420" y="120" width="140" height="36" rx="6" fill="#1f3627" stroke="#3fb950" />
-          <text x="490" y="142" text-anchor="middle" fill="#3fb950" font-size="12" font-family="monospace">silver.dim_cust</text>
-          <rect x="620" y="120" width="140" height="36" rx="6" fill="#2a1f3e" stroke="#bc8cff" />
-          <text x="690" y="142" text-anchor="middle" fill="#bc8cff" font-size="12" font-family="monospace">gold.report_sales</text>
+          <rect x="20" y="120" width="140" height="36" rx="6" class="dag-node-default" />
+          <text x="90" y="142" text-anchor="middle" class="dag-text-secondary" font-size="12">landing.customers</text>
+          <rect x="220" y="60" width="140" height="36" rx="6" class="dag-node-accent" />
+          <text x="290" y="82" text-anchor="middle" class="dag-text-accent" font-size="12">bronze.customers</text>
+          <rect x="220" y="180" width="140" height="36" rx="6" class="dag-node-default" />
+          <text x="290" y="202" text-anchor="middle" class="dag-text-secondary" font-size="12">landing.orders</text>
+          <rect x="420" y="120" width="140" height="36" rx="6" class="dag-node-green" />
+          <text x="490" y="142" text-anchor="middle" class="dag-text-green" font-size="12">silver.dim_cust</text>
+          <rect x="620" y="120" width="140" height="36" rx="6" class="dag-node-purple" />
+          <text x="690" y="142" text-anchor="middle" class="dag-text-purple" font-size="12">gold.report_sales</text>
           <!-- Edges -->
-          <line x1="160" y1="138" x2="220" y2="78" stroke="#30363d" stroke-width="1.5" marker-end="url(#arrow)" />
-          <line x1="360" y1="78" x2="420" y2="138" stroke="#30363d" stroke-width="1.5" marker-end="url(#arrow)" />
-          <line x1="360" y1="198" x2="420" y2="138" stroke="#30363d" stroke-width="1.5" marker-end="url(#arrow)" />
-          <line x1="560" y1="138" x2="620" y2="138" stroke="#30363d" stroke-width="1.5" marker-end="url(#arrow)" />
+          <line x1="160" y1="138" x2="220" y2="78" class="dag-edge" stroke-width="1.5" marker-end="url(#arrow)" />
+          <line x1="360" y1="78" x2="420" y2="138" class="dag-edge" stroke-width="1.5" marker-end="url(#arrow)" />
+          <line x1="360" y1="198" x2="420" y2="138" class="dag-edge" stroke-width="1.5" marker-end="url(#arrow)" />
+          <line x1="560" y1="138" x2="620" y2="138" class="dag-edge" stroke-width="1.5" marker-end="url(#arrow)" />
           <defs>
             <marker id="arrow" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
-              <path d="M0,0 L8,3 L0,6 Z" fill="#30363d" />
+              <path d="M0,0 L8,3 L0,6 Z" class="dag-arrow" />
             </marker>
           </defs>
         </svg>
@@ -701,7 +754,7 @@
     <!-- Docs -->
     <div class="tab-content" id="tab-docs">
       <div style="flex:1;overflow:auto;padding:16px 24px;max-width:900px;">
-        <h1 style="font-size:24px;border-bottom:1px solid var(--border);padding-bottom:8px;margin-bottom:12px">Warehouse Documentation</h1>
+        <h1 style="font-size:24px;border-bottom:1px solid var(--dp-border);padding-bottom:8px;margin-bottom:12px">Warehouse Documentation</h1>
         <h2 style="font-size:18px;margin:16px 0 8px">landing.customers</h2>
         <table class="data-table" style="margin-bottom:16px">
           <thead><tr><th>Column</th><th>Type</th><th>Nullable</th></tr></thead>
@@ -712,7 +765,7 @@
             <tr><td><code>created_at</code></td><td>TIMESTAMP</td><td>NO</td></tr>
           </tbody>
         </table>
-        <p style="font-size:12px;color:var(--text-secondary)">1,234 rows</p>
+        <p style="font-size:12px;color:var(--dp-text-secondary)">1,234 rows</p>
       </div>
     </div>
 
@@ -723,20 +776,20 @@
           <thead><tr><th>Type</th><th>Target</th><th>Status</th><th>Time</th><th>Duration</th><th>Rows</th></tr></thead>
           <tbody>
             <tr>
-              <td style="color:var(--accent)">transform</td><td><strong>bronze.customers</strong></td>
-              <td style="color:var(--green-text)">success</td><td>2026-02-17 14:32</td><td>45ms</td><td>1,234</td>
+              <td style="color:var(--dp-accent)">transform</td><td><strong>bronze.customers</strong></td>
+              <td style="color:var(--dp-green)">success</td><td>2026-02-17 14:32</td><td>45ms</td><td>1,234</td>
             </tr>
             <tr>
-              <td style="color:var(--accent)">import</td><td><strong>landing.customers</strong></td>
-              <td style="color:var(--green-text)">success</td><td>2026-02-17 14:31</td><td>120ms</td><td>1,234</td>
+              <td style="color:var(--dp-accent)">import</td><td><strong>landing.customers</strong></td>
+              <td style="color:var(--dp-green)">success</td><td>2026-02-17 14:31</td><td>120ms</td><td>1,234</td>
             </tr>
             <tr>
-              <td style="color:var(--accent)">ingest</td><td><strong>customers.py</strong></td>
-              <td style="color:var(--green-text)">success</td><td>2026-02-17 14:30</td><td>230ms</td><td></td>
+              <td style="color:var(--dp-accent)">ingest</td><td><strong>customers.py</strong></td>
+              <td style="color:var(--dp-green)">success</td><td>2026-02-17 14:30</td><td>230ms</td><td></td>
             </tr>
             <tr>
-              <td style="color:var(--accent)">transform</td><td><strong>silver.dim_customers</strong></td>
-              <td style="color:var(--red)">error</td><td>2026-02-17 14:28</td><td>12ms</td><td></td>
+              <td style="color:var(--dp-accent)">transform</td><td><strong>silver.dim_customers</strong></td>
+              <td style="color:var(--dp-red)">error</td><td>2026-02-17 14:28</td><td>12ms</td><td></td>
             </tr>
           </tbody>
         </table>
@@ -752,9 +805,9 @@
           <table class="data-table" style="margin-bottom:12px">
             <thead><tr><th>Key</th><th>Value</th><th></th></tr></thead>
             <tbody>
-              <tr><td><code>POSTGRES_USER</code></td><td class="masked">my****er</td><td><button class="btn" style="font-size:11px;padding:2px 8px;color:var(--red)">Delete</button></td></tr>
-              <tr><td><code>POSTGRES_PASSWORD</code></td><td class="masked">se****et</td><td><button class="btn" style="font-size:11px;padding:2px 8px;color:var(--red)">Delete</button></td></tr>
-              <tr><td><code>API_KEY</code></td><td class="masked">sk****23</td><td><button class="btn" style="font-size:11px;padding:2px 8px;color:var(--red)">Delete</button></td></tr>
+              <tr><td><code>POSTGRES_USER</code></td><td class="masked">my****er</td><td><button class="btn" style="font-size:11px;padding:2px 8px;color:var(--dp-red)">Delete</button></td></tr>
+              <tr><td><code>POSTGRES_PASSWORD</code></td><td class="masked">se****et</td><td><button class="btn" style="font-size:11px;padding:2px 8px;color:var(--dp-red)">Delete</button></td></tr>
+              <tr><td><code>API_KEY</code></td><td class="masked">sk****23</td><td><button class="btn" style="font-size:11px;padding:2px 8px;color:var(--dp-red)">Delete</button></td></tr>
             </tbody>
           </table>
           <div class="form-row">
@@ -770,8 +823,8 @@
             <thead><tr><th>Username</th><th>Role</th><th>Display Name</th><th>Last Login</th><th></th></tr></thead>
             <tbody>
               <tr><td><strong>admin</strong></td><td><select class="form-select"><option selected>admin</option><option>editor</option><option>viewer</option></select></td><td>Admin User</td><td>2026-02-17 14:20</td><td></td></tr>
-              <tr><td><strong>alice</strong></td><td><select class="form-select"><option>admin</option><option selected>editor</option><option>viewer</option></select></td><td>Alice Smith</td><td>2026-02-16 09:15</td><td><button class="btn" style="font-size:11px;padding:2px 8px;color:var(--red)">Delete</button></td></tr>
-              <tr><td><strong>bob</strong></td><td><select class="form-select"><option>admin</option><option>editor</option><option selected>viewer</option></select></td><td>Bob Jones</td><td>never</td><td><button class="btn" style="font-size:11px;padding:2px 8px;color:var(--red)">Delete</button></td></tr>
+              <tr><td><strong>alice</strong></td><td><select class="form-select"><option>admin</option><option selected>editor</option><option>viewer</option></select></td><td>Alice Smith</td><td>2026-02-16 09:15</td><td><button class="btn" style="font-size:11px;padding:2px 8px;color:var(--dp-red)">Delete</button></td></tr>
+              <tr><td><strong>bob</strong></td><td><select class="form-select"><option>admin</option><option>editor</option><option selected>viewer</option></select></td><td>Bob Jones</td><td>never</td><td><button class="btn" style="font-size:11px;padding:2px 8px;color:var(--dp-red)">Delete</button></td></tr>
             </tbody>
           </table>
           <div class="form-row">
@@ -788,7 +841,7 @@
     <div class="output-panel">
       <div class="output-header">
         <span>Output</span>
-        <button class="btn" style="font-size:11px;padding:2px 6px;background:none;border:none;color:var(--text-secondary)">Clear</button>
+        <button class="btn" style="font-size:11px;padding:2px 6px;background:none;border:none;color:var(--dp-text-secondary)">Clear</button>
       </div>
       <div class="output-log">
         <div class="log-entry"><span class="log-ts">14:32:01</span><span class="log-info">Running stream: full-refresh...</span></div>
@@ -805,15 +858,296 @@
 </div>
 
 <script>
+// ── Theme definitions (from themes.js) ──────────────────────────────────────
+var THEMES = {
+  "midnight-terminal": {
+    name: "Midnight Terminal",
+    description: "Green-on-black terminal aesthetic",
+    dark: true,
+    vars: {
+      "--dp-bg": "#0c0e14",
+      "--dp-bg-secondary": "#11131a",
+      "--dp-bg-tertiary": "#0a0c11",
+      "--dp-border": "#1a1e2e",
+      "--dp-border-light": "#252a3a",
+      "--dp-text": "#c8cdd8",
+      "--dp-text-secondary": "#636b80",
+      "--dp-text-dim": "#3a4058",
+      "--dp-accent": "#6ee7b7",
+      "--dp-green": "#34d399",
+      "--dp-green-border": "#4ade80",
+      "--dp-red": "#fb7185",
+      "--dp-yellow": "#fbbf24",
+      "--dp-purple": "#a78bfa",
+      "--dp-font": "'IBM Plex Sans', -apple-system, BlinkMacSystemFont, sans-serif",
+      "--dp-font-mono": "'IBM Plex Mono', 'Fira Code', monospace",
+      "--dp-radius": "4px",
+      "--dp-radius-lg": "6px",
+      "--dp-btn-bg": "#1a1e2e",
+      "--dp-btn-border": "#252a3a"
+    }
+  },
+  "paper-light": {
+    name: "Paper Light",
+    description: "Warm editorial light theme",
+    dark: false,
+    vars: {
+      "--dp-bg": "#faf8f5",
+      "--dp-bg-secondary": "#f0ece6",
+      "--dp-bg-tertiary": "#fff",
+      "--dp-border": "#ddd7cc",
+      "--dp-border-light": "#ccc5b8",
+      "--dp-text": "#2c2418",
+      "--dp-text-secondary": "#8a7e6e",
+      "--dp-text-dim": "#b8ad9c",
+      "--dp-accent": "#c45d3e",
+      "--dp-green": "#558b44",
+      "--dp-green-border": "#6aa858",
+      "--dp-red": "#c44040",
+      "--dp-yellow": "#b08825",
+      "--dp-purple": "#7c5ab8",
+      "--dp-font": "'Crimson Pro', 'Source Serif 4', Georgia, serif",
+      "--dp-font-mono": "'JetBrains Mono', 'Fira Code', monospace",
+      "--dp-radius": "2px",
+      "--dp-radius-lg": "4px",
+      "--dp-btn-bg": "#ebe5dc",
+      "--dp-btn-border": "#ddd7cc"
+    }
+  },
+  "electric": {
+    name: "Electric",
+    description: "Modern indigo-accented dark theme",
+    dark: true,
+    vars: {
+      "--dp-bg": "#09090b",
+      "--dp-bg-secondary": "#121216",
+      "--dp-bg-tertiary": "#0d0d10",
+      "--dp-border": "#1f1f2e",
+      "--dp-border-light": "#2a2a3e",
+      "--dp-text": "#e4e4f0",
+      "--dp-text-secondary": "#6b6b8a",
+      "--dp-text-dim": "#3d3d55",
+      "--dp-accent": "#818cf8",
+      "--dp-green": "#4ade80",
+      "--dp-green-border": "#5eead4",
+      "--dp-red": "#f87171",
+      "--dp-yellow": "#facc15",
+      "--dp-purple": "#c084fc",
+      "--dp-font": "'Sora', -apple-system, BlinkMacSystemFont, sans-serif",
+      "--dp-font-mono": "'Fira Code', monospace",
+      "--dp-radius": "8px",
+      "--dp-radius-lg": "12px",
+      "--dp-btn-bg": "#1f1f2e",
+      "--dp-btn-border": "#2a2a3e"
+    }
+  },
+  "nordic-frost": {
+    name: "Nordic Frost",
+    description: "Cool professional slate-blue light theme",
+    dark: false,
+    vars: {
+      "--dp-bg": "#e8ecf1",
+      "--dp-bg-secondary": "#dce2e9",
+      "--dp-bg-tertiary": "#f2f4f7",
+      "--dp-border": "#c4cdd8",
+      "--dp-border-light": "#b4bfcc",
+      "--dp-text": "#1e2a3a",
+      "--dp-text-secondary": "#5a6a7e",
+      "--dp-text-dim": "#94a3b8",
+      "--dp-accent": "#2563eb",
+      "--dp-green": "#16a34a",
+      "--dp-green-border": "#22c55e",
+      "--dp-red": "#dc2626",
+      "--dp-yellow": "#ca8a04",
+      "--dp-purple": "#7c3aed",
+      "--dp-font": "'Manrope', 'Outfit', -apple-system, BlinkMacSystemFont, sans-serif",
+      "--dp-font-mono": "'JetBrains Mono', monospace",
+      "--dp-radius": "6px",
+      "--dp-radius-lg": "10px",
+      "--dp-btn-bg": "#dce2e9",
+      "--dp-btn-border": "#c4cdd8"
+    }
+  },
+  "ember": {
+    name: "Ember",
+    description: "Warm dark theme with amber highlights",
+    dark: true,
+    vars: {
+      "--dp-bg": "#140e0a",
+      "--dp-bg-secondary": "#1c1410",
+      "--dp-bg-tertiary": "#110c08",
+      "--dp-border": "#2e2218",
+      "--dp-border-light": "#3d2e20",
+      "--dp-text": "#e8ddd0",
+      "--dp-text-secondary": "#8a7560",
+      "--dp-text-dim": "#4e3d2e",
+      "--dp-accent": "#f59e0b",
+      "--dp-green": "#84cc16",
+      "--dp-green-border": "#a3e635",
+      "--dp-red": "#ef4444",
+      "--dp-yellow": "#eab308",
+      "--dp-purple": "#d97706",
+      "--dp-font": "'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif",
+      "--dp-font-mono": "'Space Mono', monospace",
+      "--dp-radius": "3px",
+      "--dp-radius-lg": "5px",
+      "--dp-btn-bg": "#2e2218",
+      "--dp-btn-border": "#3d2e20"
+    }
+  },
+  "corporate": {
+    name: "Corporate",
+    description: "Deliberately vanilla, muted blue, zero personality",
+    dark: false,
+    vars: {
+      "--dp-bg": "#f5f5f5",
+      "--dp-bg-secondary": "#eaeaea",
+      "--dp-bg-tertiary": "#fff",
+      "--dp-border": "#d4d4d4",
+      "--dp-border-light": "#c0c0c0",
+      "--dp-text": "#333",
+      "--dp-text-secondary": "#777",
+      "--dp-text-dim": "#aaa",
+      "--dp-accent": "#4a7cbc",
+      "--dp-green": "#5a9a5a",
+      "--dp-green-border": "#6ab06a",
+      "--dp-red": "#c05050",
+      "--dp-yellow": "#b09030",
+      "--dp-purple": "#7868a8",
+      "--dp-font": "'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif",
+      "--dp-font-mono": "Consolas, 'Courier New', monospace",
+      "--dp-radius": "4px",
+      "--dp-radius-lg": "6px",
+      "--dp-btn-bg": "#e0e0e0",
+      "--dp-btn-border": "#d4d4d4"
+    }
+  }
+};
+
+var DEFAULT_THEME = "midnight-terminal";
+
+// ── Theme application ───────────────────────────────────────────────────────
+
+function applyTheme(themeId) {
+  var theme = THEMES[themeId] || THEMES[DEFAULT_THEME];
+  var root = document.documentElement;
+  var vars = theme.vars;
+  for (var prop in vars) {
+    if (vars.hasOwnProperty(prop)) {
+      root.style.setProperty(prop, vars[prop]);
+    }
+  }
+  // Update SVG elements that need dynamic color (SVG doesn't inherit CSS custom
+  // properties for fill/stroke attributes on all browsers, so we set them directly)
+  updateDagColors(theme);
+  // Update dropdown active state
+  updateDropdownActive(themeId);
+  // Update icon
+  var icon = document.getElementById('themeIcon');
+  if (icon) icon.textContent = theme.dark ? '\u263E' : '\u2600';
+  var label = document.getElementById('themeLabel');
+  if (label) label.textContent = theme.name;
+  // Save to localStorage
+  try { localStorage.setItem('dp-theme', themeId); } catch(e) {}
+}
+
+function updateDagColors(theme) {
+  var vars = theme.vars;
+  // Default nodes
+  document.querySelectorAll('.dag-node-default').forEach(function(el) {
+    el.setAttribute('fill', vars['--dp-btn-bg']);
+    el.setAttribute('stroke', vars['--dp-border-light']);
+  });
+  // Accent node
+  document.querySelectorAll('.dag-node-accent').forEach(function(el) {
+    // Create a semi-transparent accent background
+    el.setAttribute('fill', vars['--dp-bg-secondary']);
+    el.setAttribute('stroke', vars['--dp-accent']);
+  });
+  // Green node
+  document.querySelectorAll('.dag-node-green').forEach(function(el) {
+    el.setAttribute('fill', vars['--dp-bg-secondary']);
+    el.setAttribute('stroke', vars['--dp-green']);
+  });
+  // Purple node
+  document.querySelectorAll('.dag-node-purple').forEach(function(el) {
+    el.setAttribute('fill', vars['--dp-bg-secondary']);
+    el.setAttribute('stroke', vars['--dp-purple']);
+  });
+  // Text
+  document.querySelectorAll('.dag-text-secondary').forEach(function(el) {
+    el.setAttribute('fill', vars['--dp-text-secondary']);
+    el.setAttribute('font-family', vars['--dp-font-mono']);
+  });
+  document.querySelectorAll('.dag-text-accent').forEach(function(el) {
+    el.setAttribute('fill', vars['--dp-accent']);
+    el.setAttribute('font-family', vars['--dp-font-mono']);
+  });
+  document.querySelectorAll('.dag-text-green').forEach(function(el) {
+    el.setAttribute('fill', vars['--dp-green']);
+    el.setAttribute('font-family', vars['--dp-font-mono']);
+  });
+  document.querySelectorAll('.dag-text-purple').forEach(function(el) {
+    el.setAttribute('fill', vars['--dp-purple']);
+    el.setAttribute('font-family', vars['--dp-font-mono']);
+  });
+  // Edges and arrow
+  document.querySelectorAll('.dag-edge').forEach(function(el) {
+    el.setAttribute('stroke', vars['--dp-border-light']);
+  });
+  document.querySelectorAll('.dag-arrow').forEach(function(el) {
+    el.setAttribute('fill', vars['--dp-border-light']);
+  });
+}
+
+// ── Theme dropdown ──────────────────────────────────────────────────────────
+
+function buildThemeDropdown() {
+  var container = document.getElementById('themeDropdown');
+  var html = '';
+  for (var id in THEMES) {
+    if (THEMES.hasOwnProperty(id)) {
+      var t = THEMES[id];
+      html += '<button class="theme-option" data-theme="' + id + '" onclick="selectTheme(\'' + id + '\')">';
+      html += '<div>' + t.name + (t.dark ? ' <span style="opacity:0.4">\u263E</span>' : ' <span style="opacity:0.4">\u2600</span>') + '</div>';
+      html += '<div class="theme-option-desc">' + t.description + '</div>';
+      html += '</button>';
+    }
+  }
+  container.innerHTML = html;
+}
+
+function updateDropdownActive(themeId) {
+  document.querySelectorAll('.theme-option').forEach(function(el) {
+    el.classList.toggle('active', el.getAttribute('data-theme') === themeId);
+  });
+}
+
+function toggleThemeDropdown() {
+  var dd = document.getElementById('themeDropdown');
+  dd.classList.toggle('open');
+}
+
+function selectTheme(themeId) {
+  applyTheme(themeId);
+  document.getElementById('themeDropdown').classList.remove('open');
+}
+
+// Close dropdown when clicking outside
+document.addEventListener('click', function(e) {
+  var switcher = document.querySelector('.theme-switcher');
+  if (switcher && !switcher.contains(e.target)) {
+    document.getElementById('themeDropdown').classList.remove('open');
+  }
+});
+
+// ── Tab switching ───────────────────────────────────────────────────────────
+
 function showTab(name) {
-  // Hide all tabs
-  document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
-  document.querySelectorAll('.tab').forEach(el => el.classList.remove('active'));
-  // Show selected
+  document.querySelectorAll('.tab-content').forEach(function(el) { el.classList.remove('active'); });
+  document.querySelectorAll('.tab').forEach(function(el) { el.classList.remove('active'); });
   document.getElementById('tab-' + name).classList.add('active');
-  // Highlight tab button
   event.target.classList.add('active');
-  // Show/hide editor actions
   document.getElementById('editorActions').style.display = name === 'editor' ? 'flex' : 'none';
 }
 
@@ -821,10 +1155,19 @@ function showTab(name) {
 document.addEventListener('keydown', function(e) {
   if (e.ctrlKey && e.key === 'l') {
     e.preventDefault();
-    const login = document.getElementById('loginPage');
+    var login = document.getElementById('loginPage');
     login.style.display = login.style.display === 'flex' ? 'none' : 'flex';
   }
 });
+
+// ── Initialize ──────────────────────────────────────────────────────────────
+
+(function() {
+  buildThemeDropdown();
+  var saved = null;
+  try { saved = localStorage.getItem('dp-theme'); } catch(e) {}
+  applyTheme(saved && THEMES[saved] ? saved : DEFAULT_THEME);
+})();
 </script>
 
 </body>
