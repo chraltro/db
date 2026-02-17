@@ -36,6 +36,7 @@ def init(
 ) -> None:
     """Scaffold a new data platform project."""
     from dp.config import (
+        CLAUDE_MD_TEMPLATE,
         PROJECT_YML_TEMPLATE,
         SAMPLE_BRONZE_SQL,
         SAMPLE_EXPORT_SCRIPT,
@@ -64,6 +65,8 @@ def init(
     (target / ".gitignore").write_text(
         "warehouse.duckdb\nwarehouse.duckdb.wal\n__pycache__/\n*.pyc\n.venv/\n.env\n"
     )
+    # Agent instructions for LLM tools (Claude Code, Cursor, etc.)
+    (target / "CLAUDE.md").write_text(CLAUDE_MD_TEMPLATE.format(name=name))
 
     console.print(f"[green]Project '{name}' created at {target}[/green]")
     console.print()
@@ -75,6 +78,9 @@ def init(
     console.print("  1. Add ingest scripts to ingest/")
     console.print("  2. Write SQL transforms in transform/bronze|silver|gold/")
     console.print("  3. Run [bold]dp transform[/bold] to execute the pipeline")
+    console.print()
+    console.print("[dim]AI assistant ready:[/dim] CLAUDE.md included for Claude Code, Cursor, and others.")
+    console.print("[dim]Run [bold]dp context[/bold] to generate a project summary for any AI chat.[/dim]")
 
 
 # --- run ---
@@ -698,6 +704,127 @@ def users_delete(
             raise typer.Exit(1)
     finally:
         conn.close()
+
+
+# --- context ---
+
+
+@app.command()
+def context(
+    project_dir: Annotated[Optional[Path], typer.Option("--project", "-p")] = None,
+) -> None:
+    """Generate a project summary to paste into any AI assistant (ChatGPT, Claude, etc.)."""
+    from dp.config import load_project
+    from dp.engine.database import connect, ensure_meta_table
+    from dp.engine.transform import discover_models
+
+    project_dir = _resolve_project(project_dir)
+    config = load_project(project_dir)
+
+    lines: list[str] = []
+    lines.append(f"# dp project: {config.name}")
+    lines.append("")
+    lines.append("This is a dp data platform project. dp uses DuckDB for analytics,")
+    lines.append("plain SQL for transforms, and Python for ingest/export scripts.")
+    lines.append("")
+
+    # Project config summary
+    lines.append("## Configuration (project.yml)")
+    lines.append(f"- Database: {config.database.path}")
+    if config.connections:
+        lines.append(f"- Connections: {', '.join(config.connections.keys())}")
+    if config.streams:
+        for name, s in config.streams.items():
+            desc = f" — {s.description}" if s.description else ""
+            sched = f" (schedule: {s.schedule})" if s.schedule else ""
+            lines.append(f"- Stream '{name}'{desc}{sched}")
+    lines.append("")
+
+    # SQL models
+    transform_dir = project_dir / "transform"
+    models = discover_models(transform_dir)
+    if models:
+        lines.append("## SQL Models")
+        for m in models:
+            deps = f" (depends on: {', '.join(m.depends_on)})" if m.depends_on else ""
+            lines.append(f"- {m.full_name} [{m.materialized}]{deps}")
+        lines.append("")
+
+    # Ingest/export scripts
+    for script_type in ("ingest", "export"):
+        script_dir = project_dir / script_type
+        if script_dir.exists():
+            scripts = sorted(f.name for f in script_dir.glob("*.py") if not f.name.startswith("_"))
+            if scripts:
+                lines.append(f"## {script_type.title()} Scripts")
+                for s in scripts:
+                    lines.append(f"- {script_type}/{s}")
+                lines.append("")
+
+    # Warehouse tables
+    db_path = project_dir / config.database.path
+    if db_path.exists():
+        conn = connect(db_path, read_only=True)
+        try:
+            rows = conn.execute(
+                """
+                SELECT table_schema, table_name, table_type
+                FROM information_schema.tables
+                WHERE table_schema NOT IN ('information_schema', '_dp_internal')
+                ORDER BY table_schema, table_name
+                """
+            ).fetchall()
+            if rows:
+                lines.append("## Warehouse Tables")
+                for schema, name, ttype in rows:
+                    lines.append(f"- {schema}.{name} ({ttype.lower()})")
+                lines.append("")
+
+            # Recent history
+            ensure_meta_table(conn)
+            history_rows = conn.execute(
+                """
+                SELECT run_type, target, status, started_at, error
+                FROM _dp_internal.run_log
+                ORDER BY started_at DESC
+                LIMIT 10
+                """
+            ).fetchall()
+            if history_rows:
+                lines.append("## Recent Run History")
+                for rtype, target, status, started, error in history_rows:
+                    ts = str(started)[:19] if started else ""
+                    err = f" — {error}" if error else ""
+                    lines.append(f"- [{status}] {rtype}: {target} ({ts}){err}")
+                lines.append("")
+        finally:
+            conn.close()
+
+    lines.append("## Available Commands")
+    lines.append("- dp transform — build SQL models in dependency order")
+    lines.append("- dp transform --force — force rebuild all")
+    lines.append("- dp run <script> — run an ingest or export script")
+    lines.append("- dp stream <name> — run a full pipeline")
+    lines.append("- dp query \"<sql>\" — run ad-hoc SQL queries")
+    lines.append("- dp tables — list warehouse tables")
+    lines.append("- dp lint — lint SQL files")
+    lines.append("- dp history — show run log")
+    lines.append("- dp serve — start the web UI")
+    lines.append("")
+    lines.append("## How to Help Me")
+    lines.append("I'm working on this dp data platform project. You can help me by:")
+    lines.append("- Writing SQL transform files (put them in transform/bronze/, silver/, or gold/)")
+    lines.append("- Writing Python ingest scripts (put them in ingest/, must have a run(db) function)")
+    lines.append("- Debugging failed pipeline runs")
+    lines.append("- Writing queries to analyze data in the warehouse")
+    lines.append("- Adding new data sources or exports")
+
+    output = "\n".join(lines)
+    console.print(output)
+    console.print()
+    console.print("[dim]---[/dim]")
+    console.print("[dim]Copy the text above and paste it into any AI assistant.[/dim]")
+    console.print("[dim]Then ask your question about this project.[/dim]")
 
 
 if __name__ == "__main__":

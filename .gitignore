@@ -10,3 +10,9 @@ build/
 node_modules/
 frontend/dist/
 .pytest_cache/
+.env
+
+# LLM/agent artifacts
+.aider*
+.continue/
+.copilot/
