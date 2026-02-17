@@ -1,0 +1,47 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "dp"
+version = "0.1.0"
+description = "Self-hosted data platform. DuckDB + SQL transforms + Python ingest/export."
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.10"
+dependencies = [
+    "duckdb>=1.2.0",
+    "typer>=0.15.0",
+    "pyyaml>=6.0",
+    "rich>=13.0",
+    "sqlfluff>=3.0",
+    "watchdog>=4.0",
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.34.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "httpx>=0.28.0",
+]
+
+[project.scripts]
+dp = "dp.cli:app"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/dp"]
+
+[tool.sqlfluff.core]
+dialect = "duckdb"
+templater = "raw"
+max_line_length = 120
+
+[tool.sqlfluff.rules.capitalisation.keywords]
+capitalisation_policy = "upper"
+
+[tool.sqlfluff.rules.capitalisation.identifiers]
+capitalisation_policy = "lower"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
