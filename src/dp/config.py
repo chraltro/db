@@ -288,4 +288,32 @@ def run(db: duckdb.DuckDBPyConnection) -> None:
 - `silver` — business logic, joins
 - `gold` — consumption-ready
 - `_dp_internal` — metadata (do not modify directly)
+
+## Things You Can Ask Your AI Assistant
+
+Here are example prompts that work well with this project:
+
+**Adding data:**
+- "Load CSV files from data/customers.csv into the warehouse"
+- "Create an ingest script that pulls data from our Postgres database"
+- "Add a new data source for our Stripe payments API"
+
+**Transforming data:**
+- "Create a silver model that joins customers with their orders"
+- "Add a gold table that shows monthly revenue by product category"
+- "Fix the SQL error in transform/silver/dim_customer.sql"
+
+**Querying & exploring:**
+- "Show me the top 10 customers by order count"
+- "What tables are in the warehouse and what columns do they have?"
+- "Write a query to find duplicate records in landing.customers"
+
+**Operations:**
+- "Run the full pipeline and show me what happened"
+- "Why did the last transform fail?"
+- "Set up a daily schedule for the full-refresh stream"
+- "Add a new export that writes the gold.revenue table to CSV"
+
+**Tip:** Run `dp context` to generate a summary of your project that you can
+paste into any AI chat (ChatGPT, Claude, etc.) for instant context.
 """
