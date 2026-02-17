@@ -4,19 +4,122 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>dp — Data Platform</title>
+    <!-- Google Fonts for all themes -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Crimson+Pro:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Sora:wght@400;500;600;700&family=Fira+Code:wght@400;500;600&family=Manrope:wght@400;500;600;700&family=Outfit:wght@400;500;600;700&family=DM+Sans:wght@400;500;600;700&family=Space+Mono:wght@400;700&family=Source+Serif+4:wght@400;500;600;700&display=swap" rel="stylesheet" />
     <style>
       * { margin: 0; padding: 0; box-sizing: border-box; }
       body {
         font-family: var(--dp-font, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif);
         background: var(--dp-bg, #0c0e14);
         color: var(--dp-text, #c8cdd8);
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
       }
+
+      /* Smooth theme transitions */
+      body, body * {
+        transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+      }
+      /* Exclude canvas and Monaco from transitions */
+      canvas, .monaco-editor, .monaco-editor * {
+        transition: none !important;
+      }
+
       /* Scrollbar theming */
-      ::-webkit-scrollbar { width: 8px; height: 8px; }
+      ::-webkit-scrollbar { width: 7px; height: 7px; }
       ::-webkit-scrollbar-track { background: var(--dp-bg, #0c0e14); }
       ::-webkit-scrollbar-thumb { background: var(--dp-border-light, #252a3a); border-radius: 4px; }
       ::-webkit-scrollbar-thumb:hover { background: var(--dp-text-dim, #3a4058); }
       ::selection { background: var(--dp-accent, #6ee7b7); color: var(--dp-bg, #0c0e14); }
+
+      /* ── Button interactive states ── */
+      button {
+        transition: background-color 0.12s ease, border-color 0.12s ease,
+                    color 0.12s ease, opacity 0.12s ease, box-shadow 0.12s ease,
+                    filter 0.12s ease, transform 0.08s ease;
+      }
+      button:hover:not(:disabled) {
+        filter: brightness(1.15);
+      }
+      button:active:not(:disabled) {
+        filter: brightness(0.92);
+        transform: translateY(0.5px);
+      }
+      button:disabled {
+        opacity: 0.4;
+        cursor: not-allowed !important;
+        filter: saturate(0.3);
+      }
+
+      /* ── Input / textarea / select focus ── */
+      input, textarea, select {
+        transition: border-color 0.12s ease, box-shadow 0.12s ease, background-color 0.12s ease;
+      }
+      input:focus, textarea:focus, select:focus {
+        outline: none;
+        border-color: var(--dp-accent, #6ee7b7) !important;
+        box-shadow: 0 0 0 2px color-mix(in srgb, var(--dp-accent, #6ee7b7) 18%, transparent);
+      }
+
+      /* ── Table row hover ── */
+      table tbody tr {
+        transition: background-color 0.08s ease;
+      }
+      table tbody tr:hover {
+        background-color: color-mix(in srgb, var(--dp-accent, #6ee7b7) 5%, transparent);
+      }
+
+      /* ── Tab hover (data-dp-tab) ── */
+      [data-dp-tab] {
+        transition: color 0.1s ease, border-color 0.1s ease, background-color 0.1s ease !important;
+      }
+      [data-dp-tab]:hover:not([data-dp-active="true"]) {
+        color: var(--dp-text, #c8cdd8) !important;
+        background-color: color-mix(in srgb, var(--dp-text, #c8cdd8) 6%, transparent);
+      }
+
+      /* ── File tree item hover ── */
+      [data-dp-file] {
+        transition: background-color 0.08s ease;
+        border-radius: 3px;
+      }
+      [data-dp-file]:hover {
+        background-color: color-mix(in srgb, var(--dp-accent, #6ee7b7) 8%, transparent) !important;
+      }
+
+      /* ── Notebook item hover ── */
+      [data-dp-notebook] {
+        transition: background-color 0.1s ease, border-color 0.1s ease;
+      }
+      [data-dp-notebook]:hover {
+        background-color: var(--dp-bg-secondary, #11131a) !important;
+        border-color: var(--dp-accent, #6ee7b7) !important;
+      }
+
+      /* ── Theme card hover ── */
+      [data-dp-theme-card] {
+        transition: transform 0.12s ease, box-shadow 0.12s ease, border-color 0.12s ease !important;
+      }
+      [data-dp-theme-card]:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+      }
+
+      /* ── Delete / danger button hover ── */
+      [data-dp-danger]:hover:not(:disabled) {
+        background-color: color-mix(in srgb, var(--dp-red, #fb7185) 15%, transparent) !important;
+        filter: none;
+      }
+
+      /* ── Table item hover in sidebar (TablesPanel) ── */
+      [data-dp-table-item] {
+        transition: background-color 0.08s ease;
+      }
+      [data-dp-table-item]:hover {
+        background-color: color-mix(in srgb, var(--dp-accent, #6ee7b7) 8%, transparent) !important;
+      }
     </style>
   </head>
   <body>

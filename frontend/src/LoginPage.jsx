@@ -38,27 +38,36 @@ export default function LoginPage({ onLogin, needsSetup }) {
         {error && <div style={st.error}>{error}</div>}
 
         {needsSetup && (
+          <div style={st.fieldGroup}>
+            <label style={st.label}>Display Name</label>
+            <input
+              value={displayName}
+              onChange={(e) => setDisplayName(e.target.value)}
+              placeholder="Your name"
+              style={st.input}
+            />
+          </div>
+        )}
+        <div style={st.fieldGroup}>
+          <label style={st.label}>Username</label>
           <input
-            value={displayName}
-            onChange={(e) => setDisplayName(e.target.value)}
-            placeholder="Display Name"
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            placeholder="Enter username"
+            style={st.input}
+            autoFocus
+          />
+        </div>
+        <div style={st.fieldGroup}>
+          <label style={st.label}>Password</label>
+          <input
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="Enter password"
+            type="password"
             style={st.input}
           />
-        )}
-        <input
-          value={username}
-          onChange={(e) => setUsername(e.target.value)}
-          placeholder="Username"
-          style={st.input}
-          autoFocus
-        />
-        <input
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          placeholder="Password"
-          type="password"
-          style={st.input}
-        />
+        </div>
         <button type="submit" disabled={loading || !username || !password} style={st.btn}>
           {loading ? "..." : needsSetup ? "Create Account" : "Sign In"}
         </button>
@@ -69,10 +78,12 @@ export default function LoginPage({ onLogin, needsSetup }) {
 
 const st = {
   backdrop: { display: "flex", alignItems: "center", justifyContent: "center", height: "100vh", background: "var(--dp-bg)", fontFamily: "var(--dp-font)" },
-  card: { width: "340px", padding: "32px", background: "var(--dp-bg-secondary)", border: "1px solid var(--dp-border)", borderRadius: "var(--dp-radius-lg)", display: "flex", flexDirection: "column", gap: "12px" },
-  logo: { fontSize: "32px", fontWeight: "bold", fontFamily: "var(--dp-font-mono)", color: "var(--dp-accent)", textAlign: "center" },
-  subtitle: { fontSize: "13px", color: "var(--dp-text-secondary)", textAlign: "center", marginBottom: "8px" },
-  error: { padding: "8px 12px", background: "color-mix(in srgb, var(--dp-red) 15%, transparent)", border: "1px solid var(--dp-red)", borderRadius: "var(--dp-radius-lg)", color: "var(--dp-red)", fontSize: "12px" },
-  input: { padding: "10px 12px", background: "var(--dp-bg-tertiary)", border: "1px solid var(--dp-border-light)", borderRadius: "var(--dp-radius-lg)", color: "var(--dp-text)", fontSize: "14px", outline: "none" },
-  btn: { padding: "10px", background: "var(--dp-green)", border: "1px solid var(--dp-green-border)", borderRadius: "var(--dp-radius-lg)", color: "#fff", cursor: "pointer", fontSize: "14px", fontWeight: 600, marginTop: "4px" },
+  card: { width: "360px", padding: "36px", background: "var(--dp-bg-secondary)", border: "1px solid var(--dp-border)", borderRadius: "var(--dp-radius-lg)", display: "flex", flexDirection: "column", gap: "16px", boxShadow: "0 4px 24px rgba(0,0,0,0.15)" },
+  logo: { fontSize: "36px", fontWeight: "bold", fontFamily: "var(--dp-font-mono)", color: "var(--dp-accent)", textAlign: "center", letterSpacing: "-1px" },
+  subtitle: { fontSize: "13px", color: "var(--dp-text-secondary)", textAlign: "center", marginBottom: "4px" },
+  error: { padding: "8px 12px", background: "color-mix(in srgb, var(--dp-red) 12%, transparent)", border: "1px solid color-mix(in srgb, var(--dp-red) 30%, transparent)", borderRadius: "var(--dp-radius-lg)", color: "var(--dp-red)", fontSize: "12px" },
+  fieldGroup: { display: "flex", flexDirection: "column", gap: "4px" },
+  label: { fontSize: "11px", fontWeight: 600, color: "var(--dp-text-secondary)", textTransform: "uppercase", letterSpacing: "0.5px" },
+  input: { padding: "10px 12px", background: "var(--dp-bg-tertiary)", border: "1px solid var(--dp-border-light)", borderRadius: "var(--dp-radius-lg)", color: "var(--dp-text)", fontSize: "14px" },
+  btn: { padding: "11px", background: "var(--dp-green)", border: "1px solid var(--dp-green-border)", borderRadius: "var(--dp-radius-lg)", color: "#fff", cursor: "pointer", fontSize: "14px", fontWeight: 600, marginTop: "4px" },
 };

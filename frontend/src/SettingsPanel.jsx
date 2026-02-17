@@ -17,6 +17,7 @@ function ThemeSection() {
           return (
             <button
               key={id}
+              data-dp-theme-card=""
               onClick={() => setThemeId(id)}
               style={{
                 ...sec.themeCard,
@@ -24,13 +25,14 @@ function ThemeSection() {
                 background: theme.vars["--dp-bg"],
               }}
             >
-              <div style={{ display: "flex", gap: "4px", marginBottom: "6px" }}>
-                <span style={{ width: "12px", height: "12px", borderRadius: "50%", background: theme.vars["--dp-accent"] }} />
-                <span style={{ width: "12px", height: "12px", borderRadius: "50%", background: theme.vars["--dp-green"] }} />
-                <span style={{ width: "12px", height: "12px", borderRadius: "50%", background: theme.vars["--dp-red"] }} />
+              <div style={{ display: "flex", gap: "4px", marginBottom: "8px" }}>
+                <span style={{ width: "14px", height: "14px", borderRadius: "50%", background: theme.vars["--dp-accent"], border: `1px solid ${theme.vars["--dp-border"]}` }} />
+                <span style={{ width: "14px", height: "14px", borderRadius: "50%", background: theme.vars["--dp-green"], border: `1px solid ${theme.vars["--dp-border"]}` }} />
+                <span style={{ width: "14px", height: "14px", borderRadius: "50%", background: theme.vars["--dp-red"], border: `1px solid ${theme.vars["--dp-border"]}` }} />
               </div>
-              <div style={{ color: theme.vars["--dp-text"], fontSize: "12px", fontWeight: 600 }}>{theme.name}</div>
-              <div style={{ color: theme.vars["--dp-text-secondary"], fontSize: "10px" }}>{theme.description}</div>
+              <div style={{ color: theme.vars["--dp-text"], fontSize: "12px", fontWeight: 600, marginBottom: "2px" }}>{theme.name}</div>
+              <div style={{ color: theme.vars["--dp-text-secondary"], fontSize: "10px", lineHeight: "1.3" }}>{theme.description}</div>
+              {active && <div style={{ marginTop: "6px", fontSize: "9px", color: theme.vars["--dp-accent"], fontWeight: 700, letterSpacing: "0.5px", textTransform: "uppercase" }}>Active</div>}
             </button>
           );
         })}
@@ -81,10 +83,10 @@ function SecretsSection() {
           <tbody>
             {secrets.map((s) => (
               <tr key={s.key}>
-                <td style={sec.td}><code>{s.key}</code></td>
+                <td style={sec.td}><code style={sec.code}>{s.key}</code></td>
                 <td style={sec.td}><span style={sec.masked}>{s.masked_value}</span></td>
-                <td style={sec.td}>
-                  <button onClick={() => removeSecret(s.key)} style={sec.delBtn}>Delete</button>
+                <td style={{ ...sec.td, textAlign: "right" }}>
+                  <button data-dp-danger="" onClick={() => removeSecret(s.key)} style={sec.delBtn}>Delete</button>
                 </td>
               </tr>
             ))}
@@ -136,7 +138,7 @@ function UsersSection() {
       <h3 style={sec.heading}>Users</h3>
       <p style={sec.desc}>
         Roles: <strong>admin</strong> (full access), <strong>editor</strong> (run + query), <strong>viewer</strong> (read-only).
-        Enable auth with <code>dp serve --auth</code>.
+        Enable auth with <code style={sec.code}>dp serve --auth</code>.
       </p>
       {users.length > 0 && (
         <table style={sec.table}>
@@ -161,9 +163,9 @@ function UsersSection() {
                   </select>
                 </td>
                 <td style={sec.td}>{u.display_name}</td>
-                <td style={sec.td}>{u.last_login || "never"}</td>
-                <td style={sec.td}>
-                  <button onClick={() => removeUser(u.username)} style={sec.delBtn}>Delete</button>
+                <td style={{ ...sec.td, color: "var(--dp-text-secondary)" }}>{u.last_login || "never"}</td>
+                <td style={{ ...sec.td, textAlign: "right" }}>
+                  <button data-dp-danger="" onClick={() => removeUser(u.username)} style={sec.delBtn}>Delete</button>
                 </td>
               </tr>
             ))}
@@ -203,15 +205,16 @@ const sec = {
   content: { flex: 1, overflow: "auto", padding: "16px 24px", maxWidth: "800px" },
   section: { marginBottom: "32px" },
   heading: { fontSize: "16px", fontWeight: 600, margin: "0 0 4px" },
-  desc: { fontSize: "12px", color: "var(--dp-text-secondary)", margin: "0 0 12px", lineHeight: 1.5 },
+  desc: { fontSize: "12px", color: "var(--dp-text-secondary)", margin: "0 0 12px", lineHeight: 1.6 },
+  code: { background: "var(--dp-btn-bg)", padding: "1px 5px", borderRadius: "3px", fontSize: "12px", fontFamily: "var(--dp-font-mono)" },
   table: { width: "100%", borderCollapse: "collapse", marginBottom: "12px", fontSize: "12px" },
-  th: { textAlign: "left", padding: "6px 10px", borderBottom: "1px solid var(--dp-border-light)", color: "var(--dp-text-secondary)", fontWeight: 600 },
-  td: { padding: "5px 10px", borderBottom: "1px solid var(--dp-border)" },
+  th: { textAlign: "left", padding: "6px 10px", borderBottom: "2px solid var(--dp-border-light)", color: "var(--dp-text-secondary)", fontWeight: 600 },
+  td: { padding: "6px 10px", borderBottom: "1px solid var(--dp-border)" },
   masked: { color: "var(--dp-text-secondary)", fontFamily: "var(--dp-font-mono)" },
   addRow: { display: "flex", gap: "8px", alignItems: "center" },
   input: { flex: 1, padding: "6px 10px", background: "var(--dp-bg-tertiary)", border: "1px solid var(--dp-border-light)", borderRadius: "var(--dp-radius-lg)", color: "var(--dp-text)", fontSize: "13px" },
   roleSelect: { padding: "4px 8px", background: "var(--dp-bg-tertiary)", border: "1px solid var(--dp-border-light)", borderRadius: "var(--dp-radius)", color: "var(--dp-text)", fontSize: "12px" },
-  addBtn: { padding: "6px 14px", background: "var(--dp-green)", border: "1px solid var(--dp-green-border)", borderRadius: "var(--dp-radius-lg)", color: "#fff", cursor: "pointer", fontSize: "12px", whiteSpace: "nowrap" },
+  addBtn: { padding: "6px 14px", background: "var(--dp-green)", border: "1px solid var(--dp-green-border)", borderRadius: "var(--dp-radius-lg)", color: "#fff", cursor: "pointer", fontSize: "12px", fontWeight: 500, whiteSpace: "nowrap" },
   delBtn: { padding: "3px 8px", background: "var(--dp-btn-bg)", border: "1px solid var(--dp-btn-border)", borderRadius: "var(--dp-radius)", color: "var(--dp-red)", cursor: "pointer", fontSize: "11px" },
   themeGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: "10px" },
   themeCard: { padding: "12px", borderRadius: "var(--dp-radius-lg)", cursor: "pointer", textAlign: "left", display: "block" },

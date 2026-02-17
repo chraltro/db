@@ -21,7 +21,7 @@ export default function HistoryPanel() {
   return (
     <div style={styles.container}>
       <div style={styles.header}>
-        <span>Run History</span>
+        <span style={styles.headerTitle}>Run History</span>
         <button onClick={loadHistory} style={styles.refreshBtn}>
           Refresh
         </button>
@@ -50,20 +50,26 @@ export default function HistoryPanel() {
                   <td style={styles.td}>
                     <span style={styles.typeBadge}>{row.run_type}</span>
                   </td>
-                  <td style={{ ...styles.td, fontFamily: "var(--dp-font-mono)" }}>{row.target}</td>
+                  <td style={{ ...styles.td, fontFamily: "var(--dp-font-mono)", fontWeight: 500 }}>{row.target}</td>
                   <td style={styles.td}>
-                    <span style={{ color: row.status === "success" ? "var(--dp-green)" : "var(--dp-red)" }}>{row.status}</span>
+                    <span style={{
+                      ...styles.statusBadge,
+                      background: row.status === "success"
+                        ? "color-mix(in srgb, var(--dp-green) 12%, transparent)"
+                        : "color-mix(in srgb, var(--dp-red) 12%, transparent)",
+                      color: row.status === "success" ? "var(--dp-green)" : "var(--dp-red)",
+                    }}>{row.status}</span>
                   </td>
                   <td style={{ ...styles.td, color: "var(--dp-text-secondary)" }}>
-                    {row.started_at ? row.started_at.slice(0, 19) : ""}
+                    {row.started_at ? row.started_at.slice(0, 19).replace("T", " ") : ""}
                   </td>
-                  <td style={{ ...styles.td, textAlign: "right" }}>
+                  <td style={{ ...styles.td, textAlign: "right", fontFamily: "var(--dp-font-mono)" }}>
                     {row.duration_ms != null ? `${row.duration_ms}ms` : ""}
                   </td>
-                  <td style={{ ...styles.td, textAlign: "right" }}>
+                  <td style={{ ...styles.td, textAlign: "right", fontFamily: "var(--dp-font-mono)" }}>
                     {row.rows_affected || ""}
                   </td>
-                  <td style={{ ...styles.td, color: "var(--dp-red)", maxWidth: "300px", overflow: "hidden", textOverflow: "ellipsis" }}>
+                  <td style={{ ...styles.td, color: "var(--dp-red)", maxWidth: "300px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                     {row.error || ""}
                   </td>
                 </tr>
@@ -79,12 +85,14 @@ export default function HistoryPanel() {
 const styles = {
   container: { display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" },
   header: { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 12px", borderBottom: "1px solid var(--dp-border)" },
-  refreshBtn: { background: "var(--dp-btn-bg)", border: "1px solid var(--dp-btn-border)", borderRadius: "var(--dp-radius-lg)", color: "var(--dp-text)", padding: "4px 12px", cursor: "pointer", fontSize: "12px" },
+  headerTitle: { fontWeight: 600, fontSize: "13px" },
+  refreshBtn: { background: "var(--dp-btn-bg)", border: "1px solid var(--dp-btn-border)", borderRadius: "var(--dp-radius-lg)", color: "var(--dp-text)", padding: "4px 12px", cursor: "pointer", fontSize: "12px", fontWeight: 500 },
   loading: { padding: "24px", color: "var(--dp-text-secondary)", textAlign: "center" },
   empty: { padding: "24px", color: "var(--dp-text-dim)", textAlign: "center" },
   tableWrap: { flex: 1, overflow: "auto" },
   table: { width: "100%", borderCollapse: "collapse", fontSize: "12px" },
-  th: { textAlign: "left", padding: "6px 12px", borderBottom: "1px solid var(--dp-border-light)", color: "var(--dp-text-secondary)", fontWeight: 600, position: "sticky", top: 0, background: "var(--dp-bg)" },
-  td: { padding: "4px 12px", borderBottom: "1px solid var(--dp-border)", color: "var(--dp-text)", fontSize: "12px" },
-  typeBadge: { background: "var(--dp-btn-bg)", padding: "1px 6px", borderRadius: "var(--dp-radius)", fontSize: "11px" },
+  th: { textAlign: "left", padding: "6px 12px", borderBottom: "2px solid var(--dp-border-light)", color: "var(--dp-text-secondary)", fontWeight: 600, position: "sticky", top: 0, background: "var(--dp-bg)" },
+  td: { padding: "5px 12px", borderBottom: "1px solid var(--dp-border)", color: "var(--dp-text)", fontSize: "12px" },
+  typeBadge: { background: "var(--dp-btn-bg)", padding: "2px 8px", borderRadius: "var(--dp-radius)", fontSize: "11px", fontWeight: 500, textTransform: "capitalize" },
+  statusBadge: { padding: "2px 8px", borderRadius: "var(--dp-radius)", fontSize: "11px", fontWeight: 600 },
 };

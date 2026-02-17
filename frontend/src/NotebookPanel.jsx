@@ -66,6 +66,9 @@ function NotebookCell({ cell, notebookName, onUpdate }) {
   if (cell.type === "markdown") {
     return (
       <div style={cs.mdCell}>
+        <div style={cs.cellHeaderMd}>
+          <span style={cs.cellType}>MD</span>
+        </div>
         <textarea
           value={source}
           onChange={(e) => {
@@ -85,6 +88,7 @@ function NotebookCell({ cell, notebookName, onUpdate }) {
         <button onClick={runCell} disabled={running} style={cs.runBtn}>
           {running ? "..." : "\u25B6"}
         </button>
+        <span style={cs.cellType}>SQL</span>
         {duration != null && <span style={cs.duration}>{duration}ms</span>}
       </div>
       <textarea
@@ -205,7 +209,7 @@ export default function NotebookPanel() {
             <div style={s.empty}>No notebooks yet. Create one above.</div>
           )}
           {notebooks.map((nb) => (
-            <div key={nb.name} onClick={() => openNotebook(nb.name)} style={s.nbItem}>
+            <div key={nb.name} data-dp-notebook="" onClick={() => openNotebook(nb.name)} style={s.nbItem}>
               <span style={s.nbName}>{nb.title || nb.name}</span>
               <span style={s.nbMeta}>{nb.cells} cells</span>
             </div>
@@ -228,6 +232,9 @@ export default function NotebookPanel() {
         </div>
       </div>
       <div style={s.cells}>
+        {notebook.cells.length === 0 && (
+          <div style={s.empty}>No cells yet. Add a code or markdown cell above.</div>
+        )}
         {notebook.cells.map((cell, i) => (
           <div key={cell.id || i} style={cs.cellWrap}>
             <NotebookCell
@@ -235,7 +242,7 @@ export default function NotebookPanel() {
               notebookName={active}
               onUpdate={(updated) => updateCell(i, updated)}
             />
-            <button onClick={() => deleteCell(i)} style={cs.deleteBtn} title="Delete cell">&times;</button>
+            <button data-dp-danger="" onClick={() => deleteCell(i)} style={cs.deleteBtn} title="Delete cell">&times;</button>
           </div>
         ))}
       </div>
@@ -249,7 +256,7 @@ const s = {
   title: { fontSize: "16px", fontWeight: 600 },
   newRow: { display: "flex", gap: "8px", marginTop: "8px" },
   input: { flex: 1, padding: "6px 10px", background: "var(--dp-bg-tertiary)", border: "1px solid var(--dp-border-light)", borderRadius: "var(--dp-radius-lg)", color: "var(--dp-text)", fontSize: "13px" },
-  btn: { padding: "4px 12px", background: "var(--dp-btn-bg)", border: "1px solid var(--dp-btn-border)", borderRadius: "var(--dp-radius-lg)", color: "var(--dp-text)", cursor: "pointer", fontSize: "12px" },
+  btn: { padding: "5px 12px", background: "var(--dp-btn-bg)", border: "1px solid var(--dp-btn-border)", borderRadius: "var(--dp-radius-lg)", color: "var(--dp-text)", cursor: "pointer", fontSize: "12px", fontWeight: 500 },
   list: { flex: 1, overflow: "auto", padding: "8px" },
   empty: { color: "var(--dp-text-dim)", textAlign: "center", padding: "24px" },
   nbItem: { padding: "10px 12px", borderRadius: "var(--dp-radius-lg)", cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "4px", border: "1px solid var(--dp-border)" },
@@ -259,20 +266,22 @@ const s = {
   backBtn: { padding: "4px 8px", background: "none", border: "1px solid var(--dp-border-light)", borderRadius: "var(--dp-radius-lg)", color: "var(--dp-text-secondary)", cursor: "pointer", fontSize: "12px" },
   nbTitle: { fontWeight: 600, fontSize: "14px", flex: 1 },
   nbActions: { display: "flex", gap: "6px" },
-  runAllBtn: { padding: "4px 12px", background: "var(--dp-green)", border: "1px solid var(--dp-green-border)", borderRadius: "var(--dp-radius-lg)", color: "#fff", cursor: "pointer", fontSize: "12px" },
+  runAllBtn: { padding: "5px 12px", background: "var(--dp-green)", border: "1px solid var(--dp-green-border)", borderRadius: "var(--dp-radius-lg)", color: "#fff", cursor: "pointer", fontSize: "12px", fontWeight: 500 },
   cells: { flex: 1, overflow: "auto", padding: "12px 16px" },
 };
 
 const cs = {
-  cellWrap: { position: "relative", marginBottom: "8px" },
+  cellWrap: { position: "relative", marginBottom: "10px" },
   codeCell: { border: "1px solid var(--dp-border)", borderRadius: "var(--dp-radius-lg)", background: "var(--dp-bg-tertiary)", overflow: "hidden" },
   mdCell: { border: "1px solid var(--dp-border)", borderRadius: "var(--dp-radius-lg)", background: "var(--dp-bg-tertiary)", overflow: "hidden" },
   cellHeader: { display: "flex", alignItems: "center", gap: "8px", padding: "4px 8px", borderBottom: "1px solid var(--dp-border)", background: "var(--dp-bg-secondary)" },
-  runBtn: { width: "28px", height: "24px", background: "var(--dp-green)", border: "none", borderRadius: "var(--dp-radius)", color: "#fff", cursor: "pointer", fontSize: "11px" },
-  duration: { color: "var(--dp-text-secondary)", fontSize: "11px" },
-  codeInput: { width: "100%", padding: "8px 12px", background: "transparent", border: "none", color: "var(--dp-text)", fontFamily: "var(--dp-font-mono)", fontSize: "13px", resize: "vertical", outline: "none", boxSizing: "border-box" },
-  mdInput: { width: "100%", padding: "8px 12px", background: "transparent", border: "none", color: "var(--dp-text)", fontSize: "13px", resize: "vertical", outline: "none", boxSizing: "border-box" },
-  outputArea: { borderTop: "1px solid var(--dp-border)", padding: "8px 12px", maxHeight: "300px", overflow: "auto" },
+  cellHeaderMd: { display: "flex", alignItems: "center", gap: "8px", padding: "4px 8px", borderBottom: "1px solid var(--dp-border)", background: "var(--dp-bg-secondary)" },
+  cellType: { fontSize: "9px", fontWeight: 700, color: "var(--dp-text-dim)", letterSpacing: "0.5px", textTransform: "uppercase" },
+  runBtn: { width: "28px", height: "24px", background: "var(--dp-green)", border: "none", borderRadius: "var(--dp-radius)", color: "#fff", cursor: "pointer", fontSize: "11px", fontWeight: 600 },
+  duration: { color: "var(--dp-text-secondary)", fontSize: "11px", marginLeft: "auto" },
+  codeInput: { width: "100%", padding: "8px 12px", background: "transparent", border: "none", color: "var(--dp-text)", fontFamily: "var(--dp-font-mono)", fontSize: "13px", resize: "vertical", outline: "none", boxSizing: "border-box", lineHeight: 1.5 },
+  mdInput: { width: "100%", padding: "8px 12px", background: "transparent", border: "none", color: "var(--dp-text)", fontSize: "13px", resize: "vertical", outline: "none", boxSizing: "border-box", lineHeight: 1.5 },
+  outputArea: { borderTop: "1px solid var(--dp-border)", padding: "8px 12px", maxHeight: "300px", overflow: "auto", background: "color-mix(in srgb, var(--dp-bg) 50%, var(--dp-bg-tertiary))" },
   tableWrap: { overflow: "auto" },
   table: { width: "100%", borderCollapse: "collapse", fontSize: "12px", fontFamily: "var(--dp-font-mono)" },
   th: { textAlign: "left", padding: "4px 8px", borderBottom: "1px solid var(--dp-border-light)", color: "var(--dp-text-secondary)", fontWeight: 600 },
@@ -281,5 +290,5 @@ const cs = {
   truncated: { padding: "4px", color: "var(--dp-yellow)", fontSize: "11px" },
   error: { color: "var(--dp-red)", fontSize: "12px", fontFamily: "var(--dp-font-mono)", margin: 0, whiteSpace: "pre-wrap" },
   text: { color: "var(--dp-text)", fontSize: "12px", fontFamily: "var(--dp-font-mono)", margin: 0, whiteSpace: "pre-wrap" },
-  deleteBtn: { position: "absolute", top: "4px", right: "4px", width: "20px", height: "20px", background: "none", border: "none", color: "var(--dp-text-dim)", cursor: "pointer", fontSize: "14px", lineHeight: "20px", textAlign: "center" },
+  deleteBtn: { position: "absolute", top: "4px", right: "4px", width: "22px", height: "22px", background: "none", border: "none", color: "var(--dp-text-dim)", cursor: "pointer", fontSize: "14px", lineHeight: "22px", textAlign: "center", borderRadius: "var(--dp-radius)" },
 };
