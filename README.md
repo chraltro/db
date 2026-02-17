@@ -8,9 +8,10 @@ A lightweight, self-hosted data platform for companies who find Databricks/Snowf
 
 ```bash
 pip install -e .
+cd frontend && npm install && npm run build && cd ..
 dp init my-project
 cd my-project
-dp transform
+dp stream full-refresh
 dp serve
 ```
 
