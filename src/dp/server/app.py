@@ -15,7 +15,7 @@ from pydantic import BaseModel
 from dp.config import load_project
 from dp.engine.database import connect, ensure_meta_table
 from dp.engine.runner import run_script
-from dp.engine.transform import discover_models, run_transform
+from dp.engine.transform import build_dag, discover_models, run_transform
 
 # Set by CLI before starting uvicorn
 PROJECT_DIR: Path = Path.cwd()
@@ -372,6 +372,87 @@ def lint_endpoint(fix: bool = False) -> dict:
         rules=config.lint.rules or None,
     )
     return {"count": count, "violations": violations}
+
+
+# --- DAG ---
+
+
+@app.get("/api/dag")
+def get_dag() -> dict:
+    """Get the model DAG for visualization."""
+    transform_dir = _get_project_dir() / "transform"
+    models = discover_models(transform_dir)
+    ordered = build_dag(models)
+
+    # Build nodes and edges
+    nodes = []
+    edges = []
+    model_set = {m.full_name for m in models}
+
+    # Collect all external dependencies (landing tables etc.)
+    external_deps: set[str] = set()
+    for m in models:
+        for dep in m.depends_on:
+            if dep not in model_set:
+                external_deps.add(dep)
+
+    # Add external source nodes
+    for dep in sorted(external_deps):
+        schema = dep.split(".")[0] if "." in dep else "source"
+        nodes.append({
+            "id": dep,
+            "label": dep,
+            "schema": schema,
+            "type": "source",
+        })
+
+    # Add model nodes
+    for m in ordered:
+        nodes.append({
+            "id": m.full_name,
+            "label": m.full_name,
+            "schema": m.schema,
+            "type": m.materialized,
+            "path": str(m.path.relative_to(_get_project_dir())),
+        })
+
+    # Add edges
+    for m in models:
+        for dep in m.depends_on:
+            edges.append({"source": dep, "target": m.full_name})
+
+    return {"nodes": nodes, "edges": edges}
+
+
+# --- Docs ---
+
+
+@app.get("/api/docs/markdown")
+def get_docs_markdown() -> dict:
+    """Generate markdown documentation."""
+    from dp.engine.docs import generate_docs
+
+    db_path = _get_db_path()
+    if not db_path.exists():
+        return {"markdown": "*No warehouse database found. Run a pipeline first.*"}
+    conn = connect(db_path, read_only=True)
+    try:
+        md = generate_docs(conn, _get_project_dir() / "transform")
+        return {"markdown": md}
+    finally:
+        conn.close()
+
+
+# --- Scheduler status ---
+
+
+@app.get("/api/scheduler")
+def get_scheduler_status() -> dict:
+    """Get scheduler status and scheduled streams."""
+    from dp.engine.scheduler import get_scheduled_streams
+
+    streams = get_scheduled_streams(_get_project_dir())
+    return {"scheduled_streams": streams}
 
 
 # --- Serve frontend ---

@@ -56,4 +56,13 @@ export const api = {
   // Lint
   runLint: (fix = false) =>
     request(`/lint?fix=${fix}`, { method: "POST" }),
+
+  // DAG
+  getDAG: () => request("/dag"),
+
+  // Docs
+  getDocs: () => request("/docs/markdown"),
+
+  // Scheduler
+  getScheduler: () => request("/scheduler"),
 };

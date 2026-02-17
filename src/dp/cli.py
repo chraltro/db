@@ -398,6 +398,102 @@ def history(
         conn.close()
 
 
+# --- docs ---
+
+
+@app.command()
+def docs(
+    output: Annotated[Optional[Path], typer.Option("--output", "-o", help="Write to file instead of stdout")] = None,
+    project_dir: Annotated[Optional[Path], typer.Option("--project", "-p")] = None,
+) -> None:
+    """Generate markdown documentation from the warehouse schema."""
+    from dp.config import load_project
+    from dp.engine.database import connect
+    from dp.engine.docs import generate_docs
+
+    project_dir = _resolve_project(project_dir)
+    config = load_project(project_dir)
+    db_path = project_dir / config.database.path
+
+    if not db_path.exists():
+        console.print("[yellow]No warehouse database found. Run a pipeline first.[/yellow]")
+        raise typer.Exit(1)
+
+    conn = connect(db_path, read_only=True)
+    try:
+        md = generate_docs(conn, project_dir / "transform")
+        if output:
+            output.write_text(md)
+            console.print(f"[green]Documentation written to {output}[/green]")
+        else:
+            console.print(md)
+    finally:
+        conn.close()
+
+
+# --- watch ---
+
+
+@app.command()
+def watch(
+    project_dir: Annotated[Optional[Path], typer.Option("--project", "-p")] = None,
+) -> None:
+    """Watch for file changes and auto-rebuild transforms."""
+    from dp.engine.scheduler import FileWatcher
+
+    project_dir = _resolve_project(project_dir)
+    console.print("[bold]Watching for changes...[/bold] (Ctrl+C to stop)")
+    console.print(f"  transform/  -> auto-rebuild SQL models")
+
+    watcher = FileWatcher(project_dir)
+    watcher.start()
+
+    try:
+        watcher.join()
+    except KeyboardInterrupt:
+        watcher.stop()
+        console.print("\n[dim]Watcher stopped.[/dim]")
+
+
+# --- schedule ---
+
+
+@app.command()
+def schedule(
+    project_dir: Annotated[Optional[Path], typer.Option("--project", "-p")] = None,
+) -> None:
+    """Show scheduled streams and start the scheduler."""
+    from dp.engine.scheduler import SchedulerThread, get_scheduled_streams
+
+    project_dir = _resolve_project(project_dir)
+    scheduled = get_scheduled_streams(project_dir)
+
+    if not scheduled:
+        console.print("[yellow]No scheduled streams found in project.yml[/yellow]")
+        console.print("Add a schedule to a stream:")
+        console.print('  schedule: "0 6 * * *"  # 6am daily')
+        return
+
+    table = Table(title="Scheduled Streams")
+    table.add_column("Stream", style="bold")
+    table.add_column("Schedule")
+    table.add_column("Description")
+    for s in scheduled:
+        table.add_row(s["name"], s["schedule"], s["description"])
+    console.print(table)
+    console.print()
+
+    console.print("[bold]Starting scheduler...[/bold] (Ctrl+C to stop)")
+    scheduler = SchedulerThread(project_dir)
+    scheduler.start()
+
+    try:
+        scheduler.join()
+    except KeyboardInterrupt:
+        scheduler.stop()
+        console.print("\n[dim]Scheduler stopped.[/dim]")
+
+
 # --- serve ---
 
 
@@ -405,16 +501,35 @@ def history(
 def serve(
     host: Annotated[str, typer.Option(help="Host to bind to")] = "127.0.0.1",
     port: Annotated[int, typer.Option(help="Port to bind to")] = 3000,
+    watch_files: Annotated[bool, typer.Option("--watch", "-w", help="Watch files for changes")] = False,
+    scheduler_on: Annotated[bool, typer.Option("--schedule", "-s", help="Enable cron scheduler")] = False,
     project_dir: Annotated[Optional[Path], typer.Option("--project", "-p")] = None,
 ) -> None:
     """Start the web UI server."""
     import uvicorn
+
+    from dp.engine.scheduler import FileWatcher, SchedulerThread
 
     project_dir = _resolve_project(project_dir)
 
     import dp.server.app as server_app
 
     server_app.PROJECT_DIR = project_dir
+
+    # Start optional background services
+    threads = []
+    if watch_files:
+        watcher = FileWatcher(project_dir)
+        watcher.start()
+        threads.append(watcher)
+        console.print("[bold]File watcher enabled[/bold]")
+
+    if scheduler_on:
+        scheduler = SchedulerThread(project_dir)
+        scheduler.start()
+        threads.append(scheduler)
+        console.print("[bold]Scheduler enabled[/bold]")
+
     console.print(f"[bold]Starting dp server at http://{host}:{port}[/bold]")
     uvicorn.run(server_app.app, host=host, port=port)
 

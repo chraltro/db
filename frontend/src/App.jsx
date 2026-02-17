@@ -6,8 +6,10 @@ import OutputPanel from "./OutputPanel";
 import QueryPanel from "./QueryPanel";
 import TablesPanel from "./TablesPanel";
 import HistoryPanel from "./HistoryPanel";
+import DAGPanel from "./DAGPanel";
+import DocsPanel from "./DocsPanel";
 
-const TABS = ["Editor", "Query", "Tables", "History"];
+const TABS = ["Editor", "Query", "Tables", "DAG", "Docs", "History"];
 
 export default function App() {
   const [files, setFiles] = useState([]);
@@ -242,6 +244,8 @@ export default function App() {
             )}
             {activeTab === "Query" && <QueryPanel addOutput={addOutput} />}
             {activeTab === "Tables" && <TablesPanel />}
+            {activeTab === "DAG" && <DAGPanel onOpenFile={openFile} />}
+            {activeTab === "Docs" && <DocsPanel />}
             {activeTab === "History" && <HistoryPanel />}
           </div>
 

@@ -18,6 +18,7 @@ dependencies = [
     "watchdog>=4.0",
     "fastapi>=0.115.0",
     "uvicorn[standard]>=0.34.0",
+    "huey>=2.5",
 ]
 
 [project.optional-dependencies]
