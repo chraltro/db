@@ -68,33 +68,11 @@ export default function LoginPage({ onLogin, needsSetup }) {
 }
 
 const st = {
-  backdrop: {
-    display: "flex", alignItems: "center", justifyContent: "center",
-    height: "100vh", background: "#0f1117",
-  },
-  card: {
-    width: "340px", padding: "32px", background: "#161b22",
-    border: "1px solid #21262d", borderRadius: "12px",
-    display: "flex", flexDirection: "column", gap: "12px",
-  },
-  logo: {
-    fontSize: "32px", fontWeight: "bold", fontFamily: "monospace",
-    color: "#58a6ff", textAlign: "center",
-  },
-  subtitle: {
-    fontSize: "13px", color: "#8b949e", textAlign: "center", marginBottom: "8px",
-  },
-  error: {
-    padding: "8px 12px", background: "#f8514922", border: "1px solid #f85149",
-    borderRadius: "6px", color: "#f85149", fontSize: "12px",
-  },
-  input: {
-    padding: "10px 12px", background: "#0d1117", border: "1px solid #30363d",
-    borderRadius: "6px", color: "#e1e4e8", fontSize: "14px", outline: "none",
-  },
-  btn: {
-    padding: "10px", background: "#238636", border: "1px solid #2ea043",
-    borderRadius: "6px", color: "#fff", cursor: "pointer", fontSize: "14px",
-    fontWeight: 600, marginTop: "4px",
-  },
+  backdrop: { display: "flex", alignItems: "center", justifyContent: "center", height: "100vh", background: "var(--dp-bg)", fontFamily: "var(--dp-font)" },
+  card: { width: "340px", padding: "32px", background: "var(--dp-bg-secondary)", border: "1px solid var(--dp-border)", borderRadius: "var(--dp-radius-lg)", display: "flex", flexDirection: "column", gap: "12px" },
+  logo: { fontSize: "32px", fontWeight: "bold", fontFamily: "var(--dp-font-mono)", color: "var(--dp-accent)", textAlign: "center" },
+  subtitle: { fontSize: "13px", color: "var(--dp-text-secondary)", textAlign: "center", marginBottom: "8px" },
+  error: { padding: "8px 12px", background: "color-mix(in srgb, var(--dp-red) 15%, transparent)", border: "1px solid var(--dp-red)", borderRadius: "var(--dp-radius-lg)", color: "var(--dp-red)", fontSize: "12px" },
+  input: { padding: "10px 12px", background: "var(--dp-bg-tertiary)", border: "1px solid var(--dp-border-light)", borderRadius: "var(--dp-radius-lg)", color: "var(--dp-text)", fontSize: "14px", outline: "none" },
+  btn: { padding: "10px", background: "var(--dp-green)", border: "1px solid var(--dp-green-border)", borderRadius: "var(--dp-radius-lg)", color: "#fff", cursor: "pointer", fontSize: "14px", fontWeight: 600, marginTop: "4px" },
 };

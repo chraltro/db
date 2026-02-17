@@ -50,17 +50,11 @@ export default function HistoryPanel() {
                   <td style={styles.td}>
                     <span style={styles.typeBadge}>{row.run_type}</span>
                   </td>
-                  <td style={{ ...styles.td, fontFamily: "monospace" }}>{row.target}</td>
+                  <td style={{ ...styles.td, fontFamily: "var(--dp-font-mono)" }}>{row.target}</td>
                   <td style={styles.td}>
-                    <span
-                      style={{
-                        color: row.status === "success" ? "#3fb950" : "#f85149",
-                      }}
-                    >
-                      {row.status}
-                    </span>
+                    <span style={{ color: row.status === "success" ? "var(--dp-green)" : "var(--dp-red)" }}>{row.status}</span>
                   </td>
-                  <td style={{ ...styles.td, color: "#8b949e" }}>
+                  <td style={{ ...styles.td, color: "var(--dp-text-secondary)" }}>
                     {row.started_at ? row.started_at.slice(0, 19) : ""}
                   </td>
                   <td style={{ ...styles.td, textAlign: "right" }}>
@@ -69,7 +63,7 @@ export default function HistoryPanel() {
                   <td style={{ ...styles.td, textAlign: "right" }}>
                     {row.rows_affected || ""}
                   </td>
-                  <td style={{ ...styles.td, color: "#f85149", maxWidth: "300px", overflow: "hidden", textOverflow: "ellipsis" }}>
+                  <td style={{ ...styles.td, color: "var(--dp-red)", maxWidth: "300px", overflow: "hidden", textOverflow: "ellipsis" }}>
                     {row.error || ""}
                   </td>
                 </tr>
@@ -84,41 +78,13 @@ export default function HistoryPanel() {
 
 const styles = {
   container: { display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" },
-  header: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    padding: "8px 12px",
-    borderBottom: "1px solid #21262d",
-  },
-  refreshBtn: {
-    background: "#21262d",
-    border: "1px solid #30363d",
-    borderRadius: "6px",
-    color: "#e1e4e8",
-    padding: "4px 12px",
-    cursor: "pointer",
-    fontSize: "12px",
-  },
-  loading: { padding: "24px", color: "#8b949e", textAlign: "center" },
-  empty: { padding: "24px", color: "#484f58", textAlign: "center" },
+  header: { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 12px", borderBottom: "1px solid var(--dp-border)" },
+  refreshBtn: { background: "var(--dp-btn-bg)", border: "1px solid var(--dp-btn-border)", borderRadius: "var(--dp-radius-lg)", color: "var(--dp-text)", padding: "4px 12px", cursor: "pointer", fontSize: "12px" },
+  loading: { padding: "24px", color: "var(--dp-text-secondary)", textAlign: "center" },
+  empty: { padding: "24px", color: "var(--dp-text-dim)", textAlign: "center" },
   tableWrap: { flex: 1, overflow: "auto" },
   table: { width: "100%", borderCollapse: "collapse", fontSize: "12px" },
-  th: {
-    textAlign: "left",
-    padding: "6px 12px",
-    borderBottom: "1px solid #30363d",
-    color: "#8b949e",
-    fontWeight: 600,
-    position: "sticky",
-    top: 0,
-    background: "#0f1117",
-  },
-  td: { padding: "4px 12px", borderBottom: "1px solid #21262d", color: "#c9d1d9", fontSize: "12px" },
-  typeBadge: {
-    background: "#21262d",
-    padding: "1px 6px",
-    borderRadius: "4px",
-    fontSize: "11px",
-  },
+  th: { textAlign: "left", padding: "6px 12px", borderBottom: "1px solid var(--dp-border-light)", color: "var(--dp-text-secondary)", fontWeight: 600, position: "sticky", top: 0, background: "var(--dp-bg)" },
+  td: { padding: "4px 12px", borderBottom: "1px solid var(--dp-border)", color: "var(--dp-text)", fontSize: "12px" },
+  typeBadge: { background: "var(--dp-btn-bg)", padding: "1px 6px", borderRadius: "var(--dp-radius)", fontSize: "11px" },
 };

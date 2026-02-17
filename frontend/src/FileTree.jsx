@@ -29,14 +29,14 @@ function FileNode({ node, depth, onSelect, activeFile }) {
   }
 
   const ext = node.name.split(".").pop();
-  const iconColor = ext === "sql" ? "#58a6ff" : ext === "py" ? "#3fb950" : "#8b949e";
+  const iconColor = ext === "sql" ? "var(--dp-accent)" : ext === "py" ? "var(--dp-green)" : "var(--dp-text-secondary)";
 
   return (
     <div
       style={{
         ...styles.item,
         paddingLeft: 8 + depth * 16,
-        background: isActive ? "#1f2937" : "transparent",
+        background: isActive ? "var(--dp-bg-secondary)" : "transparent",
       }}
       onClick={() => onSelect(node.path)}
     >
@@ -58,25 +58,11 @@ export default function FileTree({ files, onSelect, activeFile }) {
 }
 
 const styles = {
-  header: {
-    padding: "4px 12px 8px",
-    fontSize: "11px",
-    fontWeight: "600",
-    color: "#8b949e",
-    letterSpacing: "0.5px",
-  },
-  item: {
-    display: "flex",
-    alignItems: "center",
-    gap: "6px",
-    padding: "3px 8px",
-    cursor: "pointer",
-    fontSize: "13px",
-    whiteSpace: "nowrap",
-  },
-  icon: { fontSize: "10px", color: "#8b949e", width: "10px" },
-  dirName: { color: "#e1e4e8" },
-  fileName: { color: "#c9d1d9" },
-  activeFileName: { color: "#58a6ff" },
+  header: { padding: "4px 12px 8px", fontSize: "11px", fontWeight: "600", color: "var(--dp-text-secondary)", letterSpacing: "0.5px" },
+  item: { display: "flex", alignItems: "center", gap: "6px", padding: "3px 8px", cursor: "pointer", fontSize: "13px", whiteSpace: "nowrap" },
+  icon: { fontSize: "10px", color: "var(--dp-text-secondary)", width: "10px" },
+  dirName: { color: "var(--dp-text)" },
+  fileName: { color: "var(--dp-text)" },
+  activeFileName: { color: "var(--dp-accent)" },
   dot: { width: "6px", height: "6px", borderRadius: "50%", flexShrink: 0 },
 };

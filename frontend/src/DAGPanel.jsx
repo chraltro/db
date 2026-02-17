@@ -112,7 +112,8 @@ export default function DAGPanel({ onOpenFile }) {
       const to = positions[e.target];
       if (!from || !to) continue;
 
-      ctx.strokeStyle = "#30363d";
+      const cv = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+      ctx.strokeStyle = cv("--dp-border-light");
       ctx.beginPath();
       const x1 = from.x + NODE_W;
       const y1 = from.y + NODE_H / 2;
@@ -125,7 +126,7 @@ export default function DAGPanel({ onOpenFile }) {
 
       // Arrow
       const angle = Math.atan2(y2 - y1, x2 - (cpx));
-      ctx.fillStyle = "#30363d";
+      ctx.fillStyle = cv("--dp-border-light");
       ctx.beginPath();
       ctx.moveTo(x2, y2);
       ctx.lineTo(x2 - 8, y2 - 4);
@@ -139,12 +140,13 @@ export default function DAGPanel({ onOpenFile }) {
       const pos = positions[n.id];
       if (!pos) continue;
 
-      const color = SCHEMA_COLORS[n.schema] || "#58a6ff";
+      const cv2 = (n2) => getComputedStyle(document.documentElement).getPropertyValue(n2).trim();
+      const color = SCHEMA_COLORS[n.schema] || cv2("--dp-accent");
       const isHovered = hovered === n.id;
       const isTable = n.type === "table";
 
       // Background
-      ctx.fillStyle = isHovered ? "#1f2937" : "#161b22";
+      ctx.fillStyle = isHovered ? cv2("--dp-bg-secondary") : cv2("--dp-bg-secondary");
       ctx.strokeStyle = color;
       ctx.lineWidth = isTable ? 2.5 : 1.5;
 
@@ -170,7 +172,7 @@ export default function DAGPanel({ onOpenFile }) {
       }
 
       // Label
-      ctx.fillStyle = "#e1e4e8";
+      ctx.fillStyle = cv2("--dp-text");
       ctx.font = "12px -apple-system, sans-serif";
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
@@ -277,20 +279,12 @@ export default function DAGPanel({ onOpenFile }) {
 
 const styles = {
   container: { display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" },
-  header: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    padding: "8px 12px",
-    borderBottom: "1px solid #21262d",
-    fontSize: "13px",
-    fontWeight: 600,
-  },
-  legend: { display: "flex", gap: "12px", fontSize: "11px", color: "#8b949e" },
+  header: { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 12px", borderBottom: "1px solid var(--dp-border)", fontSize: "13px", fontWeight: 600 },
+  legend: { display: "flex", gap: "12px", fontSize: "11px", color: "var(--dp-text-secondary)" },
   legendItem: { display: "flex", alignItems: "center", gap: "4px" },
   legendDot: { width: "8px", height: "8px", borderRadius: "50%", display: "inline-block" },
-  canvasWrap: { flex: 1, overflow: "auto", background: "#0d1117" },
+  canvasWrap: { flex: 1, overflow: "auto", background: "var(--dp-bg-tertiary)" },
   canvas: { display: "block" },
-  loading: { padding: "24px", color: "#8b949e", textAlign: "center" },
-  empty: { padding: "24px", color: "#484f58", textAlign: "center" },
+  loading: { padding: "24px", color: "var(--dp-text-secondary)", textAlign: "center" },
+  empty: { padding: "24px", color: "var(--dp-text-dim)", textAlign: "center" },
 };

@@ -7,10 +7,16 @@
     <style>
       * { margin: 0; padding: 0; box-sizing: border-box; }
       body {
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-        background: #0f1117;
-        color: #e1e4e8;
+        font-family: var(--dp-font, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif);
+        background: var(--dp-bg, #0c0e14);
+        color: var(--dp-text, #c8cdd8);
       }
+      /* Scrollbar theming */
+      ::-webkit-scrollbar { width: 8px; height: 8px; }
+      ::-webkit-scrollbar-track { background: var(--dp-bg, #0c0e14); }
+      ::-webkit-scrollbar-thumb { background: var(--dp-border-light, #252a3a); border-radius: 4px; }
+      ::-webkit-scrollbar-thumb:hover { background: var(--dp-text-dim, #3a4058); }
+      ::selection { background: var(--dp-accent, #6ee7b7); color: var(--dp-bg, #0c0e14); }
     </style>
   </head>
   <body>

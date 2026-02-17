@@ -38,14 +38,7 @@ export default function Editor({ content, language, onChange, activeFile }) {
 }
 
 const styles = {
-  empty: {
-    display: "flex",
-    flexDirection: "column",
-    alignItems: "center",
-    justifyContent: "center",
-    height: "100%",
-    color: "#8b949e",
-  },
+  empty: { display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100%", color: "var(--dp-text-secondary)" },
   emptyText: { fontSize: "16px", marginBottom: "8px" },
   emptyHint: { fontSize: "13px", textAlign: "center", lineHeight: "1.6" },
 };

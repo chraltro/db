@@ -32,46 +32,18 @@ export default function OutputPanel({ output, onClear }) {
 }
 
 const typeStyles = {
-  info: { color: "#c9d1d9" },
-  error: { color: "#f85149" },
-  warn: { color: "#d29922" },
-  log: { color: "#8b949e" },
+  info: { color: "var(--dp-text)" },
+  error: { color: "var(--dp-red)" },
+  warn: { color: "var(--dp-yellow)" },
+  log: { color: "var(--dp-text-secondary)" },
 };
 
 const styles = {
-  container: {
-    height: "180px",
-    borderTop: "1px solid #21262d",
-    display: "flex",
-    flexDirection: "column",
-    background: "#0d1117",
-  },
-  header: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    padding: "4px 12px",
-    fontSize: "12px",
-    fontWeight: "600",
-    color: "#8b949e",
-    borderBottom: "1px solid #21262d",
-  },
-  clearBtn: {
-    background: "none",
-    border: "none",
-    color: "#8b949e",
-    cursor: "pointer",
-    fontSize: "11px",
-  },
-  log: {
-    flex: 1,
-    overflow: "auto",
-    padding: "4px 12px",
-    fontFamily: "monospace",
-    fontSize: "12px",
-    lineHeight: "1.6",
-  },
-  placeholder: { color: "#484f58", fontStyle: "italic", padding: "8px 0" },
+  container: { height: "180px", borderTop: "1px solid var(--dp-border)", display: "flex", flexDirection: "column", background: "var(--dp-bg-tertiary)" },
+  header: { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "4px 12px", fontSize: "12px", fontWeight: "600", color: "var(--dp-text-secondary)", borderBottom: "1px solid var(--dp-border)" },
+  clearBtn: { background: "none", border: "none", color: "var(--dp-text-secondary)", cursor: "pointer", fontSize: "11px" },
+  log: { flex: 1, overflow: "auto", padding: "4px 12px", fontFamily: "var(--dp-font-mono)", fontSize: "12px", lineHeight: "1.6" },
+  placeholder: { color: "var(--dp-text-dim)", fontStyle: "italic", padding: "8px 0" },
   entry: { display: "flex", gap: "8px" },
-  ts: { color: "#484f58", flexShrink: 0 },
+  ts: { color: "var(--dp-text-dim)", flexShrink: 0 },
 };

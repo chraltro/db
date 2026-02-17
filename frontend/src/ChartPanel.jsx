@@ -13,9 +13,10 @@ function drawBar(ctx, data, labels, w, h, seriesColors) {
   const barGroupWidth = plotW / labels.length;
   const barWidth = Math.min(barGroupWidth * 0.7 / data.length, 60);
 
+  const _cv = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
   // Y axis
-  ctx.strokeStyle = "#30363d";
-  ctx.fillStyle = "#8b949e";
+  ctx.strokeStyle = _cv("--dp-border-light");
+  ctx.fillStyle = _cv("--dp-text-secondary");
   ctx.font = "11px monospace";
   ctx.textAlign = "right";
   for (let i = 0; i <= 5; i++) {
@@ -39,7 +40,7 @@ function drawBar(ctx, data, labels, w, h, seriesColors) {
   });
 
   // X labels
-  ctx.fillStyle = "#8b949e";
+  ctx.fillStyle = _cv("--dp-text-secondary");
   ctx.font = "11px monospace";
   ctx.textAlign = "center";
   labels.forEach((label, i) => {
@@ -58,9 +59,10 @@ function drawLine(ctx, data, labels, w, h, seriesColors) {
   const minVal = Math.min(...allValues, 0);
   const range = maxVal - minVal || 1;
 
+  const _cv = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
   // Grid
-  ctx.strokeStyle = "#30363d";
-  ctx.fillStyle = "#8b949e";
+  ctx.strokeStyle = _cv("--dp-border-light");
+  ctx.fillStyle = _cv("--dp-text-secondary");
   ctx.font = "11px monospace";
   ctx.textAlign = "right";
   for (let i = 0; i <= 5; i++) {
@@ -98,7 +100,7 @@ function drawLine(ctx, data, labels, w, h, seriesColors) {
   });
 
   // X labels
-  ctx.fillStyle = "#8b949e";
+  ctx.fillStyle = _cv("--dp-text-secondary");
   ctx.font = "11px monospace";
   ctx.textAlign = "center";
   const step = Math.max(1, Math.floor(labels.length / 10));
@@ -131,7 +133,7 @@ function drawPie(ctx, values, labels, w, h, seriesColors) {
       const midAngle = startAngle + sliceAngle / 2;
       const lx = cx + (r * 0.65) * Math.cos(midAngle);
       const ly = cy + (r * 0.65) * Math.sin(midAngle);
-      ctx.fillStyle = "#0d1117";
+      ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue("--dp-bg-tertiary").trim();
       ctx.font = "bold 11px monospace";
       ctx.textAlign = "center";
       const pct = ((val / total) * 100).toFixed(1) + "%";
@@ -148,7 +150,7 @@ function drawPie(ctx, values, labels, w, h, seriesColors) {
   labels.forEach((label, i) => {
     ctx.fillStyle = seriesColors[i % seriesColors.length];
     ctx.fillRect(legendX, legendY - 8, 10, 10);
-    ctx.fillStyle = "#8b949e";
+    ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue("--dp-text-secondary").trim();
     const text = String(label).slice(0, 12);
     ctx.fillText(text, legendX + 14, legendY);
     legendX += ctx.measureText(text).width + 24;
@@ -163,7 +165,7 @@ function drawScatter(ctx, xData, yData, w, h, color) {
   const yMin = Math.min(...yData); const yMax = Math.max(...yData);
   const xRange = xMax - xMin || 1; const yRange = yMax - yMin || 1;
 
-  ctx.strokeStyle = "#30363d";
+  ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue("--dp-border-light").trim();
   for (let i = 0; i <= 5; i++) {
     const y = padding.top + plotH - (plotH * i / 5);
     ctx.beginPath(); ctx.moveTo(padding.left, y); ctx.lineTo(w - padding.right, y); ctx.stroke();
@@ -281,27 +283,14 @@ export default function ChartPanel() {
 
 const st = {
   container: { display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" },
-  queryArea: { display: "flex", gap: "8px", padding: "8px", borderBottom: "1px solid #21262d" },
-  textarea: {
-    flex: 1, minHeight: "40px", maxHeight: "120px", background: "#0d1117", color: "#e1e4e8",
-    border: "1px solid #30363d", borderRadius: "6px", padding: "8px", fontFamily: "monospace",
-    fontSize: "13px", resize: "vertical",
-  },
-  runBtn: {
-    padding: "8px 16px", background: "#238636", border: "1px solid #2ea043",
-    borderRadius: "6px", color: "#fff", cursor: "pointer", fontSize: "12px", alignSelf: "flex-end",
-  },
-  error: { padding: "8px 12px", color: "#f85149", fontSize: "13px" },
-  controls: {
-    display: "flex", gap: "16px", padding: "8px 12px", borderBottom: "1px solid #21262d",
-    background: "#161b22", alignItems: "flex-end",
-  },
+  queryArea: { display: "flex", gap: "8px", padding: "8px", borderBottom: "1px solid var(--dp-border)" },
+  textarea: { flex: 1, minHeight: "40px", maxHeight: "120px", background: "var(--dp-bg-tertiary)", color: "var(--dp-text)", border: "1px solid var(--dp-border-light)", borderRadius: "var(--dp-radius-lg)", padding: "8px", fontFamily: "var(--dp-font-mono)", fontSize: "13px", resize: "vertical" },
+  runBtn: { padding: "8px 16px", background: "var(--dp-green)", border: "1px solid var(--dp-green-border)", borderRadius: "var(--dp-radius-lg)", color: "#fff", cursor: "pointer", fontSize: "12px", alignSelf: "flex-end" },
+  error: { padding: "8px 12px", color: "var(--dp-red)", fontSize: "13px" },
+  controls: { display: "flex", gap: "16px", padding: "8px 12px", borderBottom: "1px solid var(--dp-border)", background: "var(--dp-bg-secondary)", alignItems: "flex-end" },
   controlGroup: {},
-  label: { display: "block", fontSize: "10px", color: "#8b949e", marginBottom: "2px", textTransform: "uppercase" },
-  select: {
-    padding: "4px 8px", background: "#0d1117", border: "1px solid #30363d",
-    borderRadius: "4px", color: "#e1e4e8", fontSize: "12px",
-  },
+  label: { display: "block", fontSize: "10px", color: "var(--dp-text-secondary)", marginBottom: "2px", textTransform: "uppercase" },
+  select: { padding: "4px 8px", background: "var(--dp-bg-tertiary)", border: "1px solid var(--dp-border-light)", borderRadius: "var(--dp-radius)", color: "var(--dp-text)", fontSize: "12px" },
   chartArea: { flex: 1, overflow: "auto", padding: "16px" },
   canvas: { width: "100%", display: "block" },
 };

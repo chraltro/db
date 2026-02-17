@@ -1,5 +1,43 @@
 import React, { useState, useEffect } from "react";
 import { api } from "./api";
+import { useTheme } from "./ThemeProvider";
+import { THEMES, getThemeIds, getTheme } from "./themes";
+
+function ThemeSection() {
+  const { themeId, setThemeId } = useTheme();
+
+  return (
+    <div style={sec.section}>
+      <h3 style={sec.heading}>Theme</h3>
+      <p style={sec.desc}>Choose a visual theme. Your preference is saved locally.</p>
+      <div style={sec.themeGrid}>
+        {getThemeIds().map((id) => {
+          const theme = getTheme(id);
+          const active = themeId === id;
+          return (
+            <button
+              key={id}
+              onClick={() => setThemeId(id)}
+              style={{
+                ...sec.themeCard,
+                border: active ? "2px solid var(--dp-accent)" : "1px solid var(--dp-border)",
+                background: theme.vars["--dp-bg"],
+              }}
+            >
+              <div style={{ display: "flex", gap: "4px", marginBottom: "6px" }}>
+                <span style={{ width: "12px", height: "12px", borderRadius: "50%", background: theme.vars["--dp-accent"] }} />
+                <span style={{ width: "12px", height: "12px", borderRadius: "50%", background: theme.vars["--dp-green"] }} />
+                <span style={{ width: "12px", height: "12px", borderRadius: "50%", background: theme.vars["--dp-red"] }} />
+              </div>
+              <div style={{ color: theme.vars["--dp-text"], fontSize: "12px", fontWeight: 600 }}>{theme.name}</div>
+              <div style={{ color: theme.vars["--dp-text-secondary"], fontSize: "10px" }}>{theme.description}</div>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
 
 function SecretsSection() {
   const [secrets, setSecrets] = useState([]);
@@ -116,11 +154,7 @@ function UsersSection() {
               <tr key={u.username}>
                 <td style={sec.td}><strong>{u.username}</strong></td>
                 <td style={sec.td}>
-                  <select
-                    value={u.role}
-                    onChange={(e) => changeRole(u.username, e.target.value)}
-                    style={sec.roleSelect}
-                  >
+                  <select value={u.role} onChange={(e) => changeRole(u.username, e.target.value)} style={sec.roleSelect}>
                     <option value="admin">admin</option>
                     <option value="editor">editor</option>
                     <option value="viewer">viewer</option>
@@ -155,6 +189,7 @@ export default function SettingsPanel() {
     <div style={sec.container}>
       <div style={sec.header}>Settings</div>
       <div style={sec.content}>
+        <ThemeSection />
         <SecretsSection />
         <UsersSection />
       </div>
@@ -164,30 +199,20 @@ export default function SettingsPanel() {
 
 const sec = {
   container: { display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" },
-  header: { padding: "8px 12px", borderBottom: "1px solid #21262d", fontWeight: 600, fontSize: "14px" },
+  header: { padding: "8px 12px", borderBottom: "1px solid var(--dp-border)", fontWeight: 600, fontSize: "14px" },
   content: { flex: 1, overflow: "auto", padding: "16px 24px", maxWidth: "800px" },
   section: { marginBottom: "32px" },
   heading: { fontSize: "16px", fontWeight: 600, margin: "0 0 4px" },
-  desc: { fontSize: "12px", color: "#8b949e", margin: "0 0 12px", lineHeight: 1.5 },
+  desc: { fontSize: "12px", color: "var(--dp-text-secondary)", margin: "0 0 12px", lineHeight: 1.5 },
   table: { width: "100%", borderCollapse: "collapse", marginBottom: "12px", fontSize: "12px" },
-  th: { textAlign: "left", padding: "6px 10px", borderBottom: "1px solid #30363d", color: "#8b949e", fontWeight: 600 },
-  td: { padding: "5px 10px", borderBottom: "1px solid #21262d" },
-  masked: { color: "#8b949e", fontFamily: "monospace" },
+  th: { textAlign: "left", padding: "6px 10px", borderBottom: "1px solid var(--dp-border-light)", color: "var(--dp-text-secondary)", fontWeight: 600 },
+  td: { padding: "5px 10px", borderBottom: "1px solid var(--dp-border)" },
+  masked: { color: "var(--dp-text-secondary)", fontFamily: "var(--dp-font-mono)" },
   addRow: { display: "flex", gap: "8px", alignItems: "center" },
-  input: {
-    flex: 1, padding: "6px 10px", background: "#0d1117", border: "1px solid #30363d",
-    borderRadius: "6px", color: "#e1e4e8", fontSize: "13px",
-  },
-  roleSelect: {
-    padding: "4px 8px", background: "#0d1117", border: "1px solid #30363d",
-    borderRadius: "4px", color: "#e1e4e8", fontSize: "12px",
-  },
-  addBtn: {
-    padding: "6px 14px", background: "#238636", border: "1px solid #2ea043",
-    borderRadius: "6px", color: "#fff", cursor: "pointer", fontSize: "12px", whiteSpace: "nowrap",
-  },
-  delBtn: {
-    padding: "3px 8px", background: "#21262d", border: "1px solid #30363d",
-    borderRadius: "4px", color: "#f85149", cursor: "pointer", fontSize: "11px",
-  },
+  input: { flex: 1, padding: "6px 10px", background: "var(--dp-bg-tertiary)", border: "1px solid var(--dp-border-light)", borderRadius: "var(--dp-radius-lg)", color: "var(--dp-text)", fontSize: "13px" },
+  roleSelect: { padding: "4px 8px", background: "var(--dp-bg-tertiary)", border: "1px solid var(--dp-border-light)", borderRadius: "var(--dp-radius)", color: "var(--dp-text)", fontSize: "12px" },
+  addBtn: { padding: "6px 14px", background: "var(--dp-green)", border: "1px solid var(--dp-green-border)", borderRadius: "var(--dp-radius-lg)", color: "#fff", cursor: "pointer", fontSize: "12px", whiteSpace: "nowrap" },
+  delBtn: { padding: "3px 8px", background: "var(--dp-btn-bg)", border: "1px solid var(--dp-btn-border)", borderRadius: "var(--dp-radius)", color: "var(--dp-red)", cursor: "pointer", fontSize: "11px" },
+  themeGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: "10px" },
+  themeCard: { padding: "12px", borderRadius: "var(--dp-radius-lg)", cursor: "pointer", textAlign: "left", display: "block" },
 };
