@@ -81,8 +81,13 @@ def _parse_stream_steps(raw_steps: list[dict]) -> list[StreamStep]:
 
 def load_project(project_dir: Path | None = None) -> ProjectConfig:
     """Load project.yml from the given directory (or cwd)."""
+    from dp.engine.secrets import load_env
+
     project_dir = Path(project_dir) if project_dir else Path.cwd()
     config_path = project_dir / "project.yml"
+
+    # Load .env secrets into environment before expanding vars
+    load_env(project_dir)
 
     if not config_path.exists():
         return ProjectConfig(project_dir=project_dir)

@@ -41,6 +41,7 @@ def init(
         SAMPLE_EXPORT_SCRIPT,
         SAMPLE_INGEST_SCRIPT,
     )
+    from dp.engine.secrets import ENV_TEMPLATE
 
     target = directory or Path.cwd() / name
     target.mkdir(parents=True, exist_ok=True)
@@ -55,8 +56,14 @@ def init(
     (target / "ingest" / "example.py").write_text(SAMPLE_INGEST_SCRIPT)
     (target / "transform" / "bronze" / "example.sql").write_text(SAMPLE_BRONZE_SQL)
     (target / "export" / "example.py").write_text(SAMPLE_EXPORT_SCRIPT)
+    # .env secrets file
+    (target / ".env").write_text(ENV_TEMPLATE)
+    # Notebooks directory
+    (target / "notebooks").mkdir(parents=True, exist_ok=True)
     # .gitignore
-    (target / ".gitignore").write_text("warehouse.duckdb\nwarehouse.duckdb.wal\n__pycache__/\n*.pyc\n.venv/\n")
+    (target / ".gitignore").write_text(
+        "warehouse.duckdb\nwarehouse.duckdb.wal\n__pycache__/\n*.pyc\n.venv/\n.env\n"
+    )
 
     console.print(f"[green]Project '{name}' created at {target}[/green]")
     console.print()
@@ -503,6 +510,7 @@ def serve(
     port: Annotated[int, typer.Option(help="Port to bind to")] = 3000,
     watch_files: Annotated[bool, typer.Option("--watch", "-w", help="Watch files for changes")] = False,
     scheduler_on: Annotated[bool, typer.Option("--schedule", "-s", help="Enable cron scheduler")] = False,
+    auth: Annotated[bool, typer.Option("--auth", help="Enable authentication")] = False,
     project_dir: Annotated[Optional[Path], typer.Option("--project", "-p")] = None,
 ) -> None:
     """Start the web UI server."""
@@ -515,6 +523,7 @@ def serve(
     import dp.server.app as server_app
 
     server_app.PROJECT_DIR = project_dir
+    server_app.AUTH_ENABLED = auth
 
     # Start optional background services
     threads = []
@@ -530,8 +539,165 @@ def serve(
         threads.append(scheduler)
         console.print("[bold]Scheduler enabled[/bold]")
 
+    if auth:
+        console.print("[bold]Authentication enabled[/bold]")
+    else:
+        console.print("[dim]Auth disabled (use --auth to enable)[/dim]")
+
     console.print(f"[bold]Starting dp server at http://{host}:{port}[/bold]")
     uvicorn.run(server_app.app, host=host, port=port)
+
+
+# --- secrets ---
+
+secrets_app = typer.Typer(name="secrets", help="Manage .env secrets.")
+app.add_typer(secrets_app)
+
+
+@secrets_app.command("list")
+def secrets_list(
+    project_dir: Annotated[Optional[Path], typer.Option("--project", "-p")] = None,
+) -> None:
+    """List all secrets (keys only, values masked)."""
+    from dp.engine.secrets import list_secrets
+
+    project_dir = _resolve_project(project_dir)
+    secrets = list_secrets(project_dir)
+
+    if not secrets:
+        console.print("[yellow]No secrets found. Add them to .env[/yellow]")
+        return
+
+    table = Table(title="Secrets")
+    table.add_column("Key", style="bold")
+    table.add_column("Value (masked)")
+    table.add_column("Set?")
+    for s in secrets:
+        table.add_row(s["key"], s["masked_value"], "[green]Yes[/green]" if s["is_set"] else "[red]No[/red]")
+    console.print(table)
+
+
+@secrets_app.command("set")
+def secrets_set(
+    key: Annotated[str, typer.Argument(help="Secret key")],
+    value: Annotated[str, typer.Argument(help="Secret value")],
+    project_dir: Annotated[Optional[Path], typer.Option("--project", "-p")] = None,
+) -> None:
+    """Set or update a secret in .env."""
+    from dp.engine.secrets import set_secret
+
+    project_dir = _resolve_project(project_dir)
+    set_secret(project_dir, key, value)
+    console.print(f"[green]Secret '{key}' set.[/green]")
+
+
+@secrets_app.command("delete")
+def secrets_delete(
+    key: Annotated[str, typer.Argument(help="Secret key")],
+    project_dir: Annotated[Optional[Path], typer.Option("--project", "-p")] = None,
+) -> None:
+    """Delete a secret from .env."""
+    from dp.engine.secrets import delete_secret
+
+    project_dir = _resolve_project(project_dir)
+    if delete_secret(project_dir, key):
+        console.print(f"[green]Secret '{key}' deleted.[/green]")
+    else:
+        console.print(f"[red]Secret '{key}' not found.[/red]")
+        raise typer.Exit(1)
+
+
+# --- users ---
+
+users_app = typer.Typer(name="users", help="Manage platform users.")
+app.add_typer(users_app)
+
+
+@users_app.command("list")
+def users_list(
+    project_dir: Annotated[Optional[Path], typer.Option("--project", "-p")] = None,
+) -> None:
+    """List all users."""
+    from dp.config import load_project
+    from dp.engine.auth import list_users
+    from dp.engine.database import connect
+
+    project_dir = _resolve_project(project_dir)
+    config = load_project(project_dir)
+    db_path = project_dir / config.database.path
+    conn = connect(db_path)
+    try:
+        users = list_users(conn)
+        if not users:
+            console.print("[yellow]No users. Create one with: dp users create <username> <password>[/yellow]")
+            return
+
+        table = Table(title="Users")
+        table.add_column("Username", style="bold")
+        table.add_column("Role")
+        table.add_column("Display Name")
+        table.add_column("Last Login")
+        for u in users:
+            role_style = {"admin": "red", "editor": "yellow", "viewer": "green"}.get(u["role"], "")
+            table.add_row(
+                u["username"],
+                f"[{role_style}]{u['role']}[/{role_style}]",
+                u["display_name"] or "",
+                u["last_login"] or "never",
+            )
+        console.print(table)
+    finally:
+        conn.close()
+
+
+@users_app.command("create")
+def users_create(
+    username: Annotated[str, typer.Argument(help="Username")],
+    password: Annotated[str, typer.Argument(help="Password")],
+    role: Annotated[str, typer.Option("--role", "-r", help="Role: admin, editor, viewer")] = "viewer",
+    project_dir: Annotated[Optional[Path], typer.Option("--project", "-p")] = None,
+) -> None:
+    """Create a new user."""
+    from dp.config import load_project
+    from dp.engine.auth import create_user
+    from dp.engine.database import connect
+
+    project_dir = _resolve_project(project_dir)
+    config = load_project(project_dir)
+    db_path = project_dir / config.database.path
+    conn = connect(db_path)
+    try:
+        user = create_user(conn, username, password, role)
+        console.print(f"[green]User '{user['username']}' created with role '{user['role']}'[/green]")
+    except ValueError as e:
+        console.print(f"[red]{e}[/red]")
+        raise typer.Exit(1)
+    finally:
+        conn.close()
+
+
+@users_app.command("delete")
+def users_delete(
+    username: Annotated[str, typer.Argument(help="Username to delete")],
+    project_dir: Annotated[Optional[Path], typer.Option("--project", "-p")] = None,
+) -> None:
+    """Delete a user."""
+    from dp.config import load_project
+    from dp.engine.auth import delete_user
+    from dp.engine.database import connect
+
+    project_dir = _resolve_project(project_dir)
+    config = load_project(project_dir)
+    db_path = project_dir / config.database.path
+    conn = connect(db_path)
+    try:
+        if delete_user(conn, username):
+            console.print(f"[green]User '{username}' deleted.[/green]")
+        else:
+            console.print(f"[red]User '{username}' not found.[/red]")
+            raise typer.Exit(1)
+    finally:
+        conn.close()
 
 
 if __name__ == "__main__":

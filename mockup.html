@@ -1,0 +1,831 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>dp - Data Platform UI Mockup</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  :root {
+    --bg-primary: #0f1117;
+    --bg-secondary: #161b22;
+    --bg-tertiary: #0d1117;
+    --border: #21262d;
+    --border-light: #30363d;
+    --text-primary: #e1e4e8;
+    --text-secondary: #8b949e;
+    --text-dim: #484f58;
+    --accent: #58a6ff;
+    --green: #238636;
+    --green-border: #2ea043;
+    --green-text: #3fb950;
+    --red: #f85149;
+    --yellow: #d29922;
+    --purple: #bc8cff;
+  }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    font-size: 13px;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* Header */
+  .header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 16px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg-secondary);
+    flex-shrink: 0;
+  }
+  .logo {
+    font-size: 18px;
+    font-weight: bold;
+    font-family: monospace;
+    color: var(--accent);
+  }
+  .header-actions {
+    display: flex;
+    gap: 6px;
+    flex: 1;
+    justify-content: center;
+  }
+  .btn {
+    padding: 4px 12px;
+    background: #21262d;
+    border: 1px solid var(--border-light);
+    border-radius: 6px;
+    color: var(--text-primary);
+    cursor: pointer;
+    font-size: 12px;
+  }
+  .btn:hover { background: #30363d; }
+  .btn-primary {
+    padding: 4px 12px;
+    background: var(--green);
+    border: 1px solid var(--green-border);
+    border-radius: 6px;
+    color: #fff;
+    cursor: pointer;
+    font-size: 12px;
+  }
+  .btn-primary:hover { background: #2ea043; }
+  .user-info {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .user-name { font-size: 12px; }
+  .user-role {
+    font-size: 10px;
+    color: var(--text-secondary);
+    background: #21262d;
+    padding: 2px 6px;
+    border-radius: 10px;
+  }
+
+  /* Main layout */
+  .main {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+  }
+
+  /* Sidebar */
+  .sidebar {
+    width: 240px;
+    border-right: 1px solid var(--border);
+    overflow: auto;
+    background: var(--bg-tertiary);
+    padding: 8px 0;
+    flex-shrink: 0;
+  }
+  .sidebar-section {
+    padding: 6px 12px;
+    font-size: 11px;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    letter-spacing: 0.5px;
+  }
+  .file-item {
+    padding: 4px 12px 4px 24px;
+    cursor: pointer;
+    font-size: 13px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .file-item:hover { background: #1c2128; }
+  .file-item.active { background: #1c2128; color: var(--accent); }
+  .file-icon { color: var(--text-dim); font-size: 12px; width: 14px; }
+  .folder-item {
+    padding: 4px 12px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  /* Content area */
+  .content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* Tabs */
+  .tabs {
+    display: flex;
+    align-items: center;
+    border-bottom: 1px solid var(--border);
+    padding: 0 8px;
+    background: var(--bg-secondary);
+    overflow-x: auto;
+    flex-shrink: 0;
+  }
+  .tab {
+    padding: 8px 14px;
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-size: 13px;
+    white-space: nowrap;
+  }
+  .tab:hover { color: var(--text-primary); }
+  .tab.active {
+    color: var(--text-primary);
+    border-bottom: 2px solid var(--accent);
+  }
+  .file-actions {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .file-name {
+    font-size: 12px;
+    color: var(--text-secondary);
+    font-family: monospace;
+  }
+
+  /* Panel */
+  .panel {
+    flex: 1;
+    overflow: auto;
+    position: relative;
+  }
+
+  /* Editor mock */
+  .editor-mock {
+    height: 100%;
+    padding: 12px;
+    font-family: monospace;
+    font-size: 13px;
+    line-height: 1.6;
+    color: var(--text-primary);
+    background: var(--bg-primary);
+  }
+  .editor-mock .line-num { color: var(--text-dim); display: inline-block; width: 30px; text-align: right; margin-right: 16px; user-select: none; }
+  .editor-mock .keyword { color: #ff7b72; }
+  .editor-mock .string { color: #a5d6ff; }
+  .editor-mock .comment { color: #8b949e; }
+  .editor-mock .function { color: #d2a8ff; }
+
+  /* Query panel mock */
+  .query-area {
+    display: flex;
+    gap: 8px;
+    padding: 8px;
+    border-bottom: 1px solid var(--border);
+  }
+  .query-input {
+    flex: 1;
+    min-height: 60px;
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+    border: 1px solid var(--border-light);
+    border-radius: 6px;
+    padding: 8px;
+    font-family: monospace;
+    font-size: 13px;
+    resize: vertical;
+  }
+
+  /* Table */
+  .data-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+    font-family: monospace;
+  }
+  .data-table th {
+    text-align: left;
+    padding: 6px 12px;
+    border-bottom: 1px solid var(--border-light);
+    color: var(--text-secondary);
+    font-weight: 600;
+    position: sticky;
+    top: 0;
+    background: var(--bg-primary);
+  }
+  .data-table td {
+    padding: 4px 12px;
+    border-bottom: 1px solid var(--border);
+    color: #c9d1d9;
+  }
+  .data-table tr:hover td { background: #1c2128; }
+
+  /* Chart mock */
+  .chart-area {
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .chart-controls {
+    display: flex;
+    gap: 12px;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg-secondary);
+  }
+  .chart-mock {
+    height: 300px;
+    display: flex;
+    align-items: flex-end;
+    gap: 20px;
+    padding: 20px 40px;
+  }
+  .chart-bar {
+    flex: 1;
+    border-radius: 4px 4px 0 0;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+  .chart-bar .bar {
+    width: 100%;
+    border-radius: 4px 4px 0 0;
+  }
+  .chart-bar .label {
+    font-size: 11px;
+    color: var(--text-secondary);
+    margin-top: 8px;
+    white-space: nowrap;
+  }
+  .chart-bar .value {
+    font-size: 10px;
+    color: var(--text-dim);
+    margin-bottom: 4px;
+  }
+
+  /* Notebook mock */
+  .notebook-cell {
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    margin-bottom: 8px;
+    overflow: hidden;
+  }
+  .cell-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 8px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg-secondary);
+  }
+  .cell-run {
+    width: 28px;
+    height: 24px;
+    background: var(--green);
+    border: none;
+    border-radius: 4px;
+    color: #fff;
+    cursor: pointer;
+    font-size: 11px;
+  }
+  .cell-duration { color: var(--text-secondary); font-size: 11px; }
+  .cell-code {
+    padding: 8px 12px;
+    font-family: monospace;
+    font-size: 13px;
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+    line-height: 1.5;
+  }
+  .cell-output {
+    border-top: 1px solid var(--border);
+    padding: 8px 12px;
+    font-family: monospace;
+    font-size: 12px;
+    background: var(--bg-tertiary);
+    max-height: 200px;
+    overflow: auto;
+  }
+
+  /* Output panel */
+  .output-panel {
+    height: 180px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    background: var(--bg-tertiary);
+    flex-shrink: 0;
+  }
+  .output-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 4px 12px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    border-bottom: 1px solid var(--border);
+  }
+  .output-log {
+    flex: 1;
+    overflow: auto;
+    padding: 4px 12px;
+    font-family: monospace;
+    font-size: 12px;
+    line-height: 1.6;
+  }
+  .log-entry { display: flex; gap: 8px; }
+  .log-ts { color: var(--text-dim); flex-shrink: 0; }
+  .log-info { color: #c9d1d9; }
+  .log-success { color: var(--green-text); }
+  .log-error { color: var(--red); }
+  .log-warn { color: var(--yellow); }
+
+  /* Settings */
+  .settings-content { padding: 16px 24px; max-width: 800px; overflow: auto; }
+  .settings-section { margin-bottom: 32px; }
+  .settings-heading { font-size: 16px; font-weight: 600; margin-bottom: 4px; }
+  .settings-desc { font-size: 12px; color: var(--text-secondary); margin-bottom: 12px; line-height: 1.5; }
+  .form-row { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
+  .form-input {
+    flex: 1; padding: 6px 10px; background: var(--bg-tertiary); border: 1px solid var(--border-light);
+    border-radius: 6px; color: var(--text-primary); font-size: 13px;
+  }
+  .form-select {
+    padding: 4px 8px; background: var(--bg-tertiary); border: 1px solid var(--border-light);
+    border-radius: 4px; color: var(--text-primary); font-size: 12px;
+  }
+  .masked { color: var(--text-secondary); font-family: monospace; }
+
+  /* Import panel */
+  .import-mode-toggle {
+    display: flex; gap: 2px; background: var(--bg-tertiary); border-radius: 6px; padding: 2px;
+  }
+  .import-mode {
+    padding: 4px 12px; background: none; border: none; border-radius: 4px;
+    color: var(--text-secondary); cursor: pointer; font-size: 12px;
+  }
+  .import-mode.active { background: #21262d; color: var(--text-primary); }
+  .form-group { margin-bottom: 12px; }
+  .form-label { display: block; font-size: 12px; color: var(--text-secondary); margin-bottom: 4px; }
+
+  /* Login page */
+  .login-backdrop {
+    display: none; /* Toggle to show */
+    align-items: center; justify-content: center;
+    height: 100vh; background: var(--bg-primary);
+    position: fixed; inset: 0; z-index: 100;
+  }
+  .login-card {
+    width: 340px; padding: 32px; background: var(--bg-secondary);
+    border: 1px solid var(--border); border-radius: 12px;
+    display: flex; flex-direction: column; gap: 12px;
+  }
+  .login-logo { font-size: 32px; font-weight: bold; font-family: monospace; color: var(--accent); text-align: center; }
+  .login-subtitle { font-size: 13px; color: var(--text-secondary); text-align: center; margin-bottom: 8px; }
+
+  /* Tab content hidden by default */
+  .tab-content { display: none; height: 100%; overflow: auto; }
+  .tab-content.active { display: flex; flex-direction: column; }
+
+  /* Responsive */
+  @media (max-width: 768px) {
+    .sidebar { width: 180px; }
+    .header-actions { gap: 4px; }
+    .btn, .btn-primary { font-size: 11px; padding: 3px 8px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- Login overlay (toggle display:flex to show) -->
+<div class="login-backdrop" id="loginPage">
+  <div class="login-card">
+    <div class="login-logo">dp</div>
+    <div class="login-subtitle">Sign in to your data platform</div>
+    <input class="form-input" placeholder="Username" />
+    <input class="form-input" type="password" placeholder="Password" />
+    <button class="btn-primary" style="padding:10px; font-size:14px; font-weight:600;">Sign In</button>
+  </div>
+</div>
+
+<!-- Header -->
+<header class="header">
+  <span class="logo">dp</span>
+  <div class="header-actions">
+    <button class="btn-primary">Run: full-refresh</button>
+    <button class="btn">Transform</button>
+    <button class="btn">Transform (force)</button>
+    <button class="btn">Lint</button>
+    <button class="btn">Lint (fix)</button>
+  </div>
+  <div class="user-info">
+    <span class="user-name">Admin</span>
+    <span class="user-role">admin</span>
+  </div>
+</header>
+
+<div class="main">
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="folder-item">ingest/</div>
+    <div class="file-item"><span class="file-icon">py</span> customers.py</div>
+    <div class="file-item"><span class="file-icon">py</span> products.py</div>
+    <div class="folder-item">transform/</div>
+    <div class="folder-item" style="padding-left:24px">bronze/</div>
+    <div class="file-item active" style="padding-left:36px"><span class="file-icon">sql</span> customers.sql</div>
+    <div class="file-item" style="padding-left:36px"><span class="file-icon">sql</span> products.sql</div>
+    <div class="folder-item" style="padding-left:24px">silver/</div>
+    <div class="file-item" style="padding-left:36px"><span class="file-icon">sql</span> dim_customers.sql</div>
+    <div class="folder-item" style="padding-left:24px">gold/</div>
+    <div class="file-item" style="padding-left:36px"><span class="file-icon">sql</span> report_sales.sql</div>
+    <div class="folder-item">export/</div>
+    <div class="file-item"><span class="file-icon">py</span> to_csv.py</div>
+    <div class="folder-item">notebooks/</div>
+    <div class="file-item"><span class="file-icon">nb</span> explore.dpnb</div>
+    <div class="sidebar-section" style="margin-top: 8px;">Config</div>
+    <div class="file-item"><span class="file-icon">yml</span> project.yml</div>
+  </aside>
+
+  <!-- Content -->
+  <div class="content">
+    <!-- Tabs -->
+    <div class="tabs">
+      <button class="tab active" onclick="showTab('editor')">Editor</button>
+      <button class="tab" onclick="showTab('query')">Query</button>
+      <button class="tab" onclick="showTab('charts')">Charts</button>
+      <button class="tab" onclick="showTab('tables')">Tables</button>
+      <button class="tab" onclick="showTab('notebooks')">Notebooks</button>
+      <button class="tab" onclick="showTab('import')">Import</button>
+      <button class="tab" onclick="showTab('dag')">DAG</button>
+      <button class="tab" onclick="showTab('docs')">Docs</button>
+      <button class="tab" onclick="showTab('history')">History</button>
+      <button class="tab" onclick="showTab('settings')">Settings</button>
+      <div class="file-actions" id="editorActions">
+        <span class="file-name">transform/bronze/customers.sql</span>
+        <button class="btn">Save</button>
+        <button class="btn-primary">Run</button>
+      </div>
+    </div>
+
+    <!-- Tab Contents -->
+
+    <!-- Editor -->
+    <div class="tab-content active" id="tab-editor">
+      <div class="panel">
+        <div class="editor-mock">
+          <div><span class="line-num">1</span><span class="comment">-- config: materialized=view, schema=bronze</span></div>
+          <div><span class="line-num">2</span><span class="comment">-- depends_on: landing.customers</span></div>
+          <div><span class="line-num">3</span></div>
+          <div><span class="line-num">4</span><span class="keyword">SELECT</span></div>
+          <div><span class="line-num">5</span>    id,</div>
+          <div><span class="line-num">6</span>    <span class="function">UPPER</span>(name) <span class="keyword">AS</span> name,</div>
+          <div><span class="line-num">7</span>    email,</div>
+          <div><span class="line-num">8</span>    <span class="function">COALESCE</span>(phone, <span class="string">'N/A'</span>) <span class="keyword">AS</span> phone,</div>
+          <div><span class="line-num">9</span>    created_at,</div>
+          <div><span class="line-num">10</span>    <span class="function">DATE_TRUNC</span>(<span class="string">'month'</span>, created_at) <span class="keyword">AS</span> signup_month</div>
+          <div><span class="line-num">11</span><span class="keyword">FROM</span> landing.customers</div>
+          <div><span class="line-num">12</span><span class="keyword">WHERE</span> email <span class="keyword">IS NOT NULL</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Query -->
+    <div class="tab-content" id="tab-query">
+      <div class="query-area">
+        <textarea class="query-input" placeholder="Enter SQL query...">SELECT schema_name, count(*) as tables FROM information_schema.tables GROUP BY 1</textarea>
+        <button class="btn-primary" style="align-self:flex-end; padding:8px 16px;">Run (Ctrl+Enter)</button>
+      </div>
+      <div style="flex:1; overflow:auto; padding:0 8px 8px;">
+        <table class="data-table">
+          <thead><tr><th>schema_name</th><th>tables</th></tr></thead>
+          <tbody>
+            <tr><td>landing</td><td>5</td></tr>
+            <tr><td>bronze</td><td>5</td></tr>
+            <tr><td>silver</td><td>3</td></tr>
+            <tr><td>gold</td><td>2</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Charts -->
+    <div class="tab-content" id="tab-charts">
+      <div class="query-area">
+        <textarea class="query-input" style="min-height:40px">SELECT signup_month, COUNT(*) as signups FROM bronze.customers GROUP BY 1 ORDER BY 1</textarea>
+        <button class="btn-primary" style="align-self:flex-end; padding:8px 16px;">Run</button>
+      </div>
+      <div class="chart-controls">
+        <div>
+          <div style="font-size:10px;color:var(--text-secondary);text-transform:uppercase;margin-bottom:2px">Chart</div>
+          <select class="form-select"><option>bar</option><option>line</option><option>pie</option><option>scatter</option></select>
+        </div>
+        <div>
+          <div style="font-size:10px;color:var(--text-secondary);text-transform:uppercase;margin-bottom:2px">Label / X</div>
+          <select class="form-select"><option>signup_month</option><option>signups</option></select>
+        </div>
+        <div>
+          <div style="font-size:10px;color:var(--text-secondary);text-transform:uppercase;margin-bottom:2px">Value / Y</div>
+          <select class="form-select"><option>signups</option><option>signup_month</option></select>
+        </div>
+      </div>
+      <div class="chart-mock">
+        <div class="chart-bar"><div class="value">120</div><div class="bar" style="height:120px;background:#58a6ff"></div><div class="label">Jan</div></div>
+        <div class="chart-bar"><div class="value">185</div><div class="bar" style="height:185px;background:#58a6ff"></div><div class="label">Feb</div></div>
+        <div class="chart-bar"><div class="value">230</div><div class="bar" style="height:230px;background:#58a6ff"></div><div class="label">Mar</div></div>
+        <div class="chart-bar"><div class="value">195</div><div class="bar" style="height:195px;background:#58a6ff"></div><div class="label">Apr</div></div>
+        <div class="chart-bar"><div class="value">260</div><div class="bar" style="height:260px;background:#58a6ff"></div><div class="label">May</div></div>
+        <div class="chart-bar"><div class="value">210</div><div class="bar" style="height:210px;background:#58a6ff"></div><div class="label">Jun</div></div>
+      </div>
+    </div>
+
+    <!-- Tables -->
+    <div class="tab-content" id="tab-tables">
+      <div style="flex:1;overflow:auto;padding:8px;">
+        <table class="data-table">
+          <thead><tr><th>Schema</th><th>Table</th><th>Type</th><th>Rows</th></tr></thead>
+          <tbody>
+            <tr><td style="color:var(--accent)">landing</td><td><strong>customers</strong></td><td>TABLE</td><td>1,234</td></tr>
+            <tr><td style="color:var(--accent)">landing</td><td><strong>products</strong></td><td>TABLE</td><td>567</td></tr>
+            <tr><td style="color:var(--accent)">landing</td><td><strong>orders</strong></td><td>TABLE</td><td>8,901</td></tr>
+            <tr><td style="color:var(--yellow)">bronze</td><td><strong>customers</strong></td><td style="color:var(--text-dim)">VIEW</td><td>1,234</td></tr>
+            <tr><td style="color:var(--yellow)">bronze</td><td><strong>products</strong></td><td style="color:var(--text-dim)">VIEW</td><td>567</td></tr>
+            <tr><td style="color:var(--green-text)">silver</td><td><strong>dim_customers</strong></td><td>TABLE</td><td>1,180</td></tr>
+            <tr><td style="color:var(--purple)">gold</td><td><strong>report_sales</strong></td><td>TABLE</td><td>365</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Notebooks -->
+    <div class="tab-content" id="tab-notebooks">
+      <div style="padding:12px 16px; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:center;">
+        <span style="font-weight:600">explore</span>
+        <div style="display:flex;gap:6px;">
+          <button class="btn">+ Code</button>
+          <button class="btn">+ Markdown</button>
+          <button class="btn">Save</button>
+          <button class="btn-primary">Run All</button>
+        </div>
+      </div>
+      <div style="flex:1; overflow:auto; padding:12px 16px;">
+        <div class="notebook-cell">
+          <div style="padding:8px 12px; color:#c9d1d9; font-size:14px;"><strong>Data Exploration</strong><br>Explore customer signups by month.</div>
+        </div>
+        <div class="notebook-cell">
+          <div class="cell-header">
+            <button class="cell-run">&#9654;</button>
+            <span class="cell-duration">23ms</span>
+          </div>
+          <div class="cell-code">
+            <span style="color:#ff7b72">import</span> duckdb<br>
+            result = db.execute(<span style="color:#a5d6ff">"SELECT DATE_TRUNC('month', created_at) AS month, COUNT(*) AS cnt FROM landing.customers GROUP BY 1 ORDER BY 1"</span>).fetchall()<br>
+            result
+          </div>
+          <div class="cell-output">
+            <table class="data-table" style="font-size:11px">
+              <thead><tr><th>month</th><th>cnt</th></tr></thead>
+              <tbody>
+                <tr><td>2025-01-01</td><td>120</td></tr>
+                <tr><td>2025-02-01</td><td>185</td></tr>
+                <tr><td>2025-03-01</td><td>230</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <div class="notebook-cell">
+          <div class="cell-header">
+            <button class="cell-run">&#9654;</button>
+            <span class="cell-duration">5ms</span>
+          </div>
+          <div class="cell-code">
+            total = <span style="color:#ff7b72">sum</span>(r[<span style="color:#79c0ff">1</span>] <span style="color:#ff7b72">for</span> r <span style="color:#ff7b72">in</span> result)<br>
+            <span style="color:#ff7b72">print</span>(<span style="color:#a5d6ff">f"Total customers: </span>{total}<span style="color:#a5d6ff">"</span>)
+          </div>
+          <div class="cell-output" style="color:var(--green-text)">Total customers: 535</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Import -->
+    <div class="tab-content" id="tab-import">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;border-bottom:1px solid var(--border)">
+        <span style="font-weight:600;font-size:14px">Import Data</span>
+        <div class="import-mode-toggle">
+          <button class="import-mode active">File Upload</button>
+          <button class="import-mode">Database</button>
+        </div>
+      </div>
+      <div style="flex:1;overflow:auto;padding:16px;max-width:600px">
+        <div class="form-group">
+          <label class="form-label">Upload a CSV, Parquet, or JSON file</label>
+          <input type="file" style="font-size:12px;color:var(--text-secondary)">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Or enter file path</label>
+          <input class="form-input" placeholder="/path/to/data.csv" style="width:100%">
+        </div>
+        <div style="display:flex;gap:12px;">
+          <div class="form-group" style="flex:1">
+            <label class="form-label">Target Schema</label>
+            <input class="form-input" value="landing" style="width:100%">
+          </div>
+          <div class="form-group" style="flex:1">
+            <label class="form-label">Table Name</label>
+            <input class="form-input" placeholder="auto" style="width:100%">
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;margin-top:12px">
+          <button class="btn">Preview</button>
+          <button class="btn-primary">Import</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- DAG -->
+    <div class="tab-content" id="tab-dag">
+      <div style="flex:1;display:flex;align-items:center;justify-content:center;position:relative;">
+        <svg width="700" height="300" style="overflow:visible">
+          <!-- Nodes -->
+          <rect x="20" y="120" width="140" height="36" rx="6" fill="#21262d" stroke="#30363d" />
+          <text x="90" y="142" text-anchor="middle" fill="#8b949e" font-size="12" font-family="monospace">landing.customers</text>
+          <rect x="220" y="60" width="140" height="36" rx="6" fill="#1c3a5e" stroke="#58a6ff" />
+          <text x="290" y="82" text-anchor="middle" fill="#58a6ff" font-size="12" font-family="monospace">bronze.customers</text>
+          <rect x="220" y="180" width="140" height="36" rx="6" fill="#21262d" stroke="#30363d" />
+          <text x="290" y="202" text-anchor="middle" fill="#8b949e" font-size="12" font-family="monospace">landing.orders</text>
+          <rect x="420" y="120" width="140" height="36" rx="6" fill="#1f3627" stroke="#3fb950" />
+          <text x="490" y="142" text-anchor="middle" fill="#3fb950" font-size="12" font-family="monospace">silver.dim_cust</text>
+          <rect x="620" y="120" width="140" height="36" rx="6" fill="#2a1f3e" stroke="#bc8cff" />
+          <text x="690" y="142" text-anchor="middle" fill="#bc8cff" font-size="12" font-family="monospace">gold.report_sales</text>
+          <!-- Edges -->
+          <line x1="160" y1="138" x2="220" y2="78" stroke="#30363d" stroke-width="1.5" marker-end="url(#arrow)" />
+          <line x1="360" y1="78" x2="420" y2="138" stroke="#30363d" stroke-width="1.5" marker-end="url(#arrow)" />
+          <line x1="360" y1="198" x2="420" y2="138" stroke="#30363d" stroke-width="1.5" marker-end="url(#arrow)" />
+          <line x1="560" y1="138" x2="620" y2="138" stroke="#30363d" stroke-width="1.5" marker-end="url(#arrow)" />
+          <defs>
+            <marker id="arrow" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+              <path d="M0,0 L8,3 L0,6 Z" fill="#30363d" />
+            </marker>
+          </defs>
+        </svg>
+      </div>
+    </div>
+
+    <!-- Docs -->
+    <div class="tab-content" id="tab-docs">
+      <div style="flex:1;overflow:auto;padding:16px 24px;max-width:900px;">
+        <h1 style="font-size:24px;border-bottom:1px solid var(--border);padding-bottom:8px;margin-bottom:12px">Warehouse Documentation</h1>
+        <h2 style="font-size:18px;margin:16px 0 8px">landing.customers</h2>
+        <table class="data-table" style="margin-bottom:16px">
+          <thead><tr><th>Column</th><th>Type</th><th>Nullable</th></tr></thead>
+          <tbody>
+            <tr><td><code>id</code></td><td>INTEGER</td><td>NO</td></tr>
+            <tr><td><code>name</code></td><td>VARCHAR</td><td>NO</td></tr>
+            <tr><td><code>email</code></td><td>VARCHAR</td><td>YES</td></tr>
+            <tr><td><code>created_at</code></td><td>TIMESTAMP</td><td>NO</td></tr>
+          </tbody>
+        </table>
+        <p style="font-size:12px;color:var(--text-secondary)">1,234 rows</p>
+      </div>
+    </div>
+
+    <!-- History -->
+    <div class="tab-content" id="tab-history">
+      <div style="flex:1;overflow:auto;padding:8px;">
+        <table class="data-table">
+          <thead><tr><th>Type</th><th>Target</th><th>Status</th><th>Time</th><th>Duration</th><th>Rows</th></tr></thead>
+          <tbody>
+            <tr>
+              <td style="color:var(--accent)">transform</td><td><strong>bronze.customers</strong></td>
+              <td style="color:var(--green-text)">success</td><td>2026-02-17 14:32</td><td>45ms</td><td>1,234</td>
+            </tr>
+            <tr>
+              <td style="color:var(--accent)">import</td><td><strong>landing.customers</strong></td>
+              <td style="color:var(--green-text)">success</td><td>2026-02-17 14:31</td><td>120ms</td><td>1,234</td>
+            </tr>
+            <tr>
+              <td style="color:var(--accent)">ingest</td><td><strong>customers.py</strong></td>
+              <td style="color:var(--green-text)">success</td><td>2026-02-17 14:30</td><td>230ms</td><td></td>
+            </tr>
+            <tr>
+              <td style="color:var(--accent)">transform</td><td><strong>silver.dim_customers</strong></td>
+              <td style="color:var(--red)">error</td><td>2026-02-17 14:28</td><td>12ms</td><td></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Settings -->
+    <div class="tab-content" id="tab-settings">
+      <div class="settings-content">
+        <div class="settings-section">
+          <div class="settings-heading">Secrets (.env)</div>
+          <div class="settings-desc">Secrets are stored in .env and referenced as ${VAR} in project.yml. Values are never exposed.</div>
+          <table class="data-table" style="margin-bottom:12px">
+            <thead><tr><th>Key</th><th>Value</th><th></th></tr></thead>
+            <tbody>
+              <tr><td><code>POSTGRES_USER</code></td><td class="masked">my****er</td><td><button class="btn" style="font-size:11px;padding:2px 8px;color:var(--red)">Delete</button></td></tr>
+              <tr><td><code>POSTGRES_PASSWORD</code></td><td class="masked">se****et</td><td><button class="btn" style="font-size:11px;padding:2px 8px;color:var(--red)">Delete</button></td></tr>
+              <tr><td><code>API_KEY</code></td><td class="masked">sk****23</td><td><button class="btn" style="font-size:11px;padding:2px 8px;color:var(--red)">Delete</button></td></tr>
+            </tbody>
+          </table>
+          <div class="form-row">
+            <input class="form-input" placeholder="KEY" style="flex:1">
+            <input class="form-input" type="password" placeholder="value" style="flex:1">
+            <button class="btn-primary">Add</button>
+          </div>
+        </div>
+        <div class="settings-section">
+          <div class="settings-heading">Users</div>
+          <div class="settings-desc">Roles: <strong>admin</strong> (full access), <strong>editor</strong> (run + query), <strong>viewer</strong> (read-only). Enable auth with <code>dp serve --auth</code>.</div>
+          <table class="data-table" style="margin-bottom:12px">
+            <thead><tr><th>Username</th><th>Role</th><th>Display Name</th><th>Last Login</th><th></th></tr></thead>
+            <tbody>
+              <tr><td><strong>admin</strong></td><td><select class="form-select"><option selected>admin</option><option>editor</option><option>viewer</option></select></td><td>Admin User</td><td>2026-02-17 14:20</td><td></td></tr>
+              <tr><td><strong>alice</strong></td><td><select class="form-select"><option>admin</option><option selected>editor</option><option>viewer</option></select></td><td>Alice Smith</td><td>2026-02-16 09:15</td><td><button class="btn" style="font-size:11px;padding:2px 8px;color:var(--red)">Delete</button></td></tr>
+              <tr><td><strong>bob</strong></td><td><select class="form-select"><option>admin</option><option>editor</option><option selected>viewer</option></select></td><td>Bob Jones</td><td>never</td><td><button class="btn" style="font-size:11px;padding:2px 8px;color:var(--red)">Delete</button></td></tr>
+            </tbody>
+          </table>
+          <div class="form-row">
+            <input class="form-input" placeholder="username" style="flex:1">
+            <input class="form-input" type="password" placeholder="password" style="flex:1">
+            <select class="form-select"><option>admin</option><option>editor</option><option selected>viewer</option></select>
+            <button class="btn-primary">Add User</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Output panel -->
+    <div class="output-panel">
+      <div class="output-header">
+        <span>Output</span>
+        <button class="btn" style="font-size:11px;padding:2px 6px;background:none;border:none;color:var(--text-secondary)">Clear</button>
+      </div>
+      <div class="output-log">
+        <div class="log-entry"><span class="log-ts">14:32:01</span><span class="log-info">Running stream: full-refresh...</span></div>
+        <div class="log-entry"><span class="log-ts">14:32:01</span><span class="log-info">--- ingest ---</span></div>
+        <div class="log-entry"><span class="log-ts">14:32:02</span><span class="log-success">customers.py: success (230ms)</span></div>
+        <div class="log-entry"><span class="log-ts">14:32:02</span><span class="log-info">--- transform ---</span></div>
+        <div class="log-entry"><span class="log-ts">14:32:03</span><span class="log-success">bronze.customers: built</span></div>
+        <div class="log-entry"><span class="log-ts">14:32:03</span><span class="log-success">silver.dim_customers: built</span></div>
+        <div class="log-entry"><span class="log-ts">14:32:03</span><span class="log-warn">gold.report_sales: skipped (no changes)</span></div>
+        <div class="log-entry"><span class="log-ts">14:32:04</span><span class="log-info">Stream full-refresh completed.</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+function showTab(name) {
+  // Hide all tabs
+  document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(el => el.classList.remove('active'));
+  // Show selected
+  document.getElementById('tab-' + name).classList.add('active');
+  // Highlight tab button
+  event.target.classList.add('active');
+  // Show/hide editor actions
+  document.getElementById('editorActions').style.display = name === 'editor' ? 'flex' : 'none';
+}
+
+// Toggle login page with Ctrl+L
+document.addEventListener('keydown', function(e) {
+  if (e.ctrlKey && e.key === 'l') {
+    e.preventDefault();
+    const login = document.getElementById('loginPage');
+    login.style.display = login.style.display === 'flex' ? 'none' : 'flex';
+  }
+});
+</script>
+
+</body>
+</html>

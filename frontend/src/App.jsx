@@ -8,8 +8,13 @@ import TablesPanel from "./TablesPanel";
 import HistoryPanel from "./HistoryPanel";
 import DAGPanel from "./DAGPanel";
 import DocsPanel from "./DocsPanel";
+import NotebookPanel from "./NotebookPanel";
+import ImportPanel from "./ImportPanel";
+import ChartPanel from "./ChartPanel";
+import SettingsPanel from "./SettingsPanel";
+import LoginPage from "./LoginPage";
 
-const TABS = ["Editor", "Query", "Tables", "DAG", "Docs", "History"];
+const TABS = ["Editor", "Query", "Charts", "Tables", "Notebooks", "Import", "DAG", "Docs", "History", "Settings"];
 
 export default function App() {
   const [files, setFiles] = useState([]);
@@ -21,6 +26,57 @@ export default function App() {
   const [activeTab, setActiveTab] = useState("Editor");
   const [streams, setStreams] = useState({});
   const [running, setRunning] = useState(false);
+
+  // Auth state
+  const [authChecked, setAuthChecked] = useState(false);
+  const [authRequired, setAuthRequired] = useState(false);
+  const [needsSetup, setNeedsSetup] = useState(false);
+  const [currentUser, setCurrentUser] = useState(null);
+
+  useEffect(() => {
+    checkAuth();
+    window.addEventListener("dp_auth_required", () => setAuthRequired(true));
+  }, []);
+
+  async function checkAuth() {
+    try {
+      const status = await api.getAuthStatus();
+      if (!status.auth_enabled) {
+        setAuthChecked(true);
+        setCurrentUser({ username: "local", role: "admin", display_name: "Local User" });
+        return;
+      }
+      if (status.needs_setup) {
+        setNeedsSetup(true);
+        setAuthRequired(true);
+        setAuthChecked(true);
+        return;
+      }
+      // Try existing token
+      if (api.getToken()) {
+        try {
+          const me = await api.getMe();
+          setCurrentUser(me);
+          setAuthChecked(true);
+          return;
+        } catch {
+          api.setToken(null);
+        }
+      }
+      setAuthRequired(true);
+      setAuthChecked(true);
+    } catch {
+      // Server not requiring auth
+      setAuthChecked(true);
+      setCurrentUser({ username: "local", role: "admin", display_name: "Local User" });
+    }
+  }
+
+  function handleLogin(result) {
+    setAuthRequired(false);
+    setNeedsSetup(false);
+    setCurrentUser({ username: result.username, role: result.role || "admin" });
+  }
 
   const loadFiles = useCallback(async () => {
     try {
@@ -39,9 +95,11 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    loadFiles();
-    loadStreams();
-  }, [loadFiles, loadStreams]);
+    if (!authRequired && authChecked) {
+      loadFiles();
+      loadStreams();
+    }
+  }, [authRequired, authChecked, loadFiles, loadStreams]);
 
   function addOutput(type, message) {
     const ts = new Date().toLocaleTimeString();
@@ -164,6 +222,20 @@ export default function App() {
     }
   }
 
+  function handleLogout() {
+    api.setToken(null);
+    setCurrentUser(null);
+    setAuthRequired(true);
+  }
+
+  if (!authChecked) {
+    return <div style={styles.loading}>Loading...</div>;
+  }
+
+  if (authRequired) {
+    return <LoginPage onLogin={handleLogin} needsSetup={needsSetup} />;
+  }
+
   return (
     <div style={styles.container}>
       {/* Header */}
@@ -193,6 +265,15 @@ export default function App() {
             Lint (fix)
           </button>
         </div>
+        {currentUser && (
+          <div style={styles.userInfo}>
+            <span style={styles.userName}>{currentUser.display_name || currentUser.username}</span>
+            <span style={styles.userRole}>{currentUser.role}</span>
+            {currentUser.username !== "local" && (
+              <button onClick={handleLogout} style={styles.logoutBtn}>Logout</button>
+            )}
+          </div>
+        )}
       </header>
 
       <div style={styles.main}>
@@ -243,10 +324,14 @@ export default function App() {
               />
             )}
             {activeTab === "Query" && <QueryPanel addOutput={addOutput} />}
+            {activeTab === "Charts" && <ChartPanel />}
             {activeTab === "Tables" && <TablesPanel />}
+            {activeTab === "Notebooks" && <NotebookPanel />}
+            {activeTab === "Import" && <ImportPanel addOutput={addOutput} />}
             {activeTab === "DAG" && <DAGPanel onOpenFile={openFile} />}
             {activeTab === "Docs" && <DocsPanel />}
             {activeTab === "History" && <HistoryPanel />}
+            {activeTab === "Settings" && <SettingsPanel />}
           </div>
 
           {/* Output */}
@@ -265,6 +350,10 @@ const styles = {
     background: "#0f1117",
     color: "#e1e4e8",
   },
+  loading: {
+    display: "flex", alignItems: "center", justifyContent: "center",
+    height: "100vh", background: "#0f1117", color: "#8b949e",
+  },
   header: {
     display: "flex",
     alignItems: "center",
@@ -279,7 +368,17 @@ const styles = {
     fontFamily: "monospace",
     color: "#58a6ff",
   },
-  actions: { display: "flex", gap: "6px" },
+  actions: { display: "flex", gap: "6px", flex: 1, justifyContent: "center" },
+  userInfo: { display: "flex", alignItems: "center", gap: "8px" },
+  userName: { fontSize: "12px", color: "#e1e4e8" },
+  userRole: {
+    fontSize: "10px", color: "#8b949e", background: "#21262d",
+    padding: "2px 6px", borderRadius: "10px",
+  },
+  logoutBtn: {
+    padding: "3px 8px", background: "none", border: "1px solid #30363d",
+    borderRadius: "4px", color: "#8b949e", cursor: "pointer", fontSize: "11px",
+  },
   main: { display: "flex", flex: 1, overflow: "hidden" },
   sidebar: {
     width: "240px",
@@ -295,23 +394,26 @@ const styles = {
     borderBottom: "1px solid #21262d",
     padding: "0 8px",
     background: "#161b22",
+    overflowX: "auto",
   },
   tab: {
-    padding: "8px 16px",
+    padding: "8px 14px",
     background: "none",
     border: "none",
     color: "#8b949e",
     cursor: "pointer",
     fontSize: "13px",
+    whiteSpace: "nowrap",
   },
   tabActive: {
-    padding: "8px 16px",
+    padding: "8px 14px",
     background: "none",
     border: "none",
     borderBottom: "2px solid #58a6ff",
     color: "#e1e4e8",
     cursor: "pointer",
     fontSize: "13px",
+    whiteSpace: "nowrap",
   },
   fileActions: { marginLeft: "auto", display: "flex", alignItems: "center", gap: "8px" },
   fileName: { fontSize: "12px", color: "#8b949e", fontFamily: "monospace" },

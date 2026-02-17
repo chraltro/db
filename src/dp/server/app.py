@@ -9,7 +9,6 @@ from typing import Any
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse
-from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from dp.config import load_project
@@ -19,8 +18,9 @@ from dp.engine.transform import build_dag, discover_models, run_transform
 
 # Set by CLI before starting uvicorn
 PROJECT_DIR: Path = Path.cwd()
+AUTH_ENABLED: bool = False  # Set by CLI --auth flag
 
-app = FastAPI(title="dp", version="0.1.0")
+app = FastAPI(title="dp", version="0.2.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -41,6 +41,215 @@ def _get_config():
 def _get_db_path() -> Path:
     config = _get_config()
     return _get_project_dir() / config.database.path
+
+
+def _get_user(request: Request) -> dict | None:
+    """Extract and validate user from auth header. Returns None if auth disabled."""
+    if not AUTH_ENABLED:
+        return {"username": "local", "role": "admin", "display_name": "Local User"}
+
+    auth_header = request.headers.get("authorization", "")
+    if not auth_header.startswith("Bearer "):
+        return None
+
+    token = auth_header[7:]
+    db_path = _get_db_path()
+    conn = connect(db_path)
+    try:
+        from dp.engine.auth import validate_token
+        return validate_token(conn, token)
+    finally:
+        conn.close()
+
+
+def _require_user(request: Request) -> dict:
+    """Require authentication. Raises 401 if not authenticated."""
+    user = _get_user(request)
+    if user is None:
+        raise HTTPException(401, "Authentication required")
+    return user
+
+
+def _require_permission(request: Request, permission: str) -> dict:
+    """Require a specific permission."""
+    user = _require_user(request)
+    from dp.engine.auth import has_permission
+    if not has_permission(user["role"], permission):
+        raise HTTPException(403, f"Permission denied: {permission}")
+    return user
+
+
+# --- Auth endpoints ---
+
+
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+
+class CreateUserRequest(BaseModel):
+    username: str
+    password: str
+    role: str = "viewer"
+    display_name: str | None = None
+
+
+class UpdateUserRequest(BaseModel):
+    role: str | None = None
+    password: str | None = None
+    display_name: str | None = None
+
+
+@app.post("/api/auth/login")
+def login(req: LoginRequest) -> dict:
+    """Authenticate and get a token."""
+    from dp.engine.auth import authenticate
+    db_path = _get_db_path()
+    conn = connect(db_path)
+    try:
+        token = authenticate(conn, req.username, req.password)
+        if not token:
+            raise HTTPException(401, "Invalid credentials")
+        return {"token": token, "username": req.username}
+    finally:
+        conn.close()
+
+
+@app.get("/api/auth/me")
+def get_current_user(request: Request) -> dict:
+    """Get current authenticated user."""
+    return _require_user(request)
+
+
+@app.get("/api/auth/status")
+def get_auth_status() -> dict:
+    """Check if auth is enabled and if initial setup is needed."""
+    if not AUTH_ENABLED:
+        return {"auth_enabled": False, "needs_setup": False}
+    db_path = _get_db_path()
+    conn = connect(db_path)
+    try:
+        from dp.engine.auth import has_any_users
+        return {"auth_enabled": True, "needs_setup": not has_any_users(conn)}
+    finally:
+        conn.close()
+
+
+@app.post("/api/auth/setup")
+def initial_setup(req: CreateUserRequest) -> dict:
+    """Create the first admin user (only works when no users exist)."""
+    from dp.engine.auth import create_user, has_any_users, authenticate
+    db_path = _get_db_path()
+    conn = connect(db_path)
+    try:
+        if has_any_users(conn):
+            raise HTTPException(400, "Setup already completed")
+        create_user(conn, req.username, req.password, "admin", req.display_name)
+        token = authenticate(conn, req.username, req.password)
+        return {"token": token, "username": req.username, "role": "admin"}
+    finally:
+        conn.close()
+
+
+# --- User management ---
+
+
+@app.get("/api/users")
+def list_users(request: Request) -> list[dict]:
+    """List all users (admin only)."""
+    _require_permission(request, "manage_users")
+    from dp.engine.auth import list_users as _list_users
+    db_path = _get_db_path()
+    conn = connect(db_path)
+    try:
+        return _list_users(conn)
+    finally:
+        conn.close()
+
+
+@app.post("/api/users")
+def create_user_endpoint(request: Request, req: CreateUserRequest) -> dict:
+    """Create a new user (admin only)."""
+    _require_permission(request, "manage_users")
+    from dp.engine.auth import create_user
+    db_path = _get_db_path()
+    conn = connect(db_path)
+    try:
+        return create_user(conn, req.username, req.password, req.role, req.display_name)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    finally:
+        conn.close()
+
+
+@app.put("/api/users/{username}")
+def update_user_endpoint(request: Request, username: str, req: UpdateUserRequest) -> dict:
+    """Update a user (admin only)."""
+    _require_permission(request, "manage_users")
+    from dp.engine.auth import update_user
+    db_path = _get_db_path()
+    conn = connect(db_path)
+    try:
+        found = update_user(conn, username, req.role, req.password, req.display_name)
+        if not found:
+            raise HTTPException(404, f"User '{username}' not found")
+        return {"status": "updated"}
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    finally:
+        conn.close()
+
+
+@app.delete("/api/users/{username}")
+def delete_user_endpoint(request: Request, username: str) -> dict:
+    """Delete a user (admin only)."""
+    _require_permission(request, "manage_users")
+    from dp.engine.auth import delete_user
+    db_path = _get_db_path()
+    conn = connect(db_path)
+    try:
+        found = delete_user(conn, username)
+        if not found:
+            raise HTTPException(404, f"User '{username}' not found")
+        return {"status": "deleted"}
+    finally:
+        conn.close()
+
+
+# --- Secrets management ---
+
+
+@app.get("/api/secrets")
+def list_secrets(request: Request) -> list[dict]:
+    """List secrets (keys and masked values only)."""
+    _require_permission(request, "manage_secrets")
+    from dp.engine.secrets import list_secrets as _list_secrets
+    return _list_secrets(_get_project_dir())
+
+
+class SetSecretRequest(BaseModel):
+    key: str
+    value: str
+
+
+@app.post("/api/secrets")
+def set_secret(request: Request, req: SetSecretRequest) -> dict:
+    """Set or update a secret."""
+    _require_permission(request, "manage_secrets")
+    from dp.engine.secrets import set_secret as _set_secret
+    _set_secret(_get_project_dir(), req.key, req.value)
+    return {"status": "set", "key": req.key}
+
+
+@app.delete("/api/secrets/{key}")
+def delete_secret(request: Request, key: str) -> dict:
+    """Delete a secret."""
+    _require_permission(request, "manage_secrets")
+    from dp.engine.secrets import delete_secret as _delete_secret
+    found = _delete_secret(_get_project_dir(), key)
+    if not found:
+        raise HTTPException(404, f"Secret '{key}' not found")
+    return {"status": "deleted", "key": key}
 
 
 # --- File browsing ---
@@ -70,21 +279,23 @@ def _scan_dir(base: Path, rel: Path | None = None) -> list[FileInfo]:
                 type="dir",
                 children=_scan_dir(base, entry.relative_to(base)),
             ))
-        elif entry.suffix in (".sql", ".py", ".yml", ".yaml"):
+        elif entry.suffix in (".sql", ".py", ".yml", ".yaml", ".dpnb"):
             items.append(FileInfo(name=entry.name, path=rel_path, type="file"))
     return items
 
 
 @app.get("/api/files")
-def list_files() -> list[FileInfo]:
+def list_files(request: Request) -> list[FileInfo]:
     """List project files."""
+    _require_permission(request, "read")
     project_dir = _get_project_dir()
     return _scan_dir(project_dir)
 
 
 @app.get("/api/files/{file_path:path}")
-def read_file(file_path: str) -> dict:
+def read_file(request: Request, file_path: str) -> dict:
     """Read a file's content."""
+    _require_permission(request, "read")
     full_path = _get_project_dir() / file_path
     if not full_path.exists():
         raise HTTPException(404, f"File not found: {file_path}")
@@ -98,8 +309,9 @@ class SaveFileRequest(BaseModel):
 
 
 @app.put("/api/files/{file_path:path}")
-def save_file(file_path: str, req: SaveFileRequest) -> dict:
+def save_file(request: Request, file_path: str, req: SaveFileRequest) -> dict:
     """Save a file."""
+    _require_permission(request, "write")
     full_path = _get_project_dir() / file_path
     if not full_path.exists():
         raise HTTPException(404, f"File not found: {file_path}")
@@ -108,15 +320,18 @@ def save_file(file_path: str, req: SaveFileRequest) -> dict:
 
 
 def _detect_language(path: Path) -> str:
-    return {"sql": "sql", "py": "python", "yml": "yaml", "yaml": "yaml"}.get(path.suffix.lstrip("."), "text")
+    return {
+        "sql": "sql", "py": "python", "yml": "yaml", "yaml": "yaml", "dpnb": "json",
+    }.get(path.suffix.lstrip("."), "text")
 
 
 # --- Transform ---
 
 
 @app.get("/api/models")
-def list_models() -> list[dict]:
+def list_models(request: Request) -> list[dict]:
     """List all SQL transformation models."""
+    _require_permission(request, "read")
     transform_dir = _get_project_dir() / "transform"
     models = discover_models(transform_dir)
     return [
@@ -139,8 +354,9 @@ class TransformRequest(BaseModel):
 
 
 @app.post("/api/transform")
-def run_transform_endpoint(req: TransformRequest) -> dict:
+def run_transform_endpoint(request: Request, req: TransformRequest) -> dict:
     """Run the SQL transformation pipeline."""
+    _require_permission(request, "execute")
     db_path = _get_db_path()
     conn = connect(db_path)
     try:
@@ -163,8 +379,9 @@ class RunScriptRequest(BaseModel):
 
 
 @app.post("/api/run")
-def run_script_endpoint(req: RunScriptRequest) -> dict:
+def run_script_endpoint(request: Request, req: RunScriptRequest) -> dict:
     """Run an ingest or export script."""
+    _require_permission(request, "execute")
     script_path = _get_project_dir() / req.script_path
     if not script_path.exists():
         raise HTTPException(404, f"Script not found: {req.script_path}")
@@ -173,6 +390,10 @@ def run_script_endpoint(req: RunScriptRequest) -> dict:
     conn = connect(db_path)
     try:
         result = run_script(conn, script_path, script_type)
+        # Mask secrets in output
+        from dp.engine.secrets import mask_output
+        if result.get("log_output"):
+            result["log_output"] = mask_output(result["log_output"], _get_project_dir())
         return result
     finally:
         conn.close()
@@ -182,8 +403,9 @@ def run_script_endpoint(req: RunScriptRequest) -> dict:
 
 
 @app.post("/api/stream/{stream_name}")
-def run_stream_endpoint(stream_name: str, force: bool = False) -> dict:
+def run_stream_endpoint(request: Request, stream_name: str, force: bool = False) -> dict:
     """Run a full stream."""
+    _require_permission(request, "execute")
     config = _get_config()
     if stream_name not in config.streams:
         raise HTTPException(404, f"Stream '{stream_name}' not found")
@@ -224,8 +446,9 @@ class QueryRequest(BaseModel):
 
 
 @app.post("/api/query")
-def run_query(req: QueryRequest) -> dict:
+def run_query(request: Request, req: QueryRequest) -> dict:
     """Run an ad-hoc SQL query."""
+    _require_permission(request, "read")
     db_path = _get_db_path()
     conn = connect(db_path, read_only=True)
     try:
@@ -256,8 +479,9 @@ def _serialize(value: Any) -> Any:
 
 
 @app.get("/api/tables")
-def list_tables(schema: str | None = None) -> list[dict]:
+def list_tables(request: Request, schema: str | None = None) -> list[dict]:
     """List warehouse tables and views."""
+    _require_permission(request, "read")
     db_path = _get_db_path()
     if not db_path.exists():
         return []
@@ -278,8 +502,9 @@ def list_tables(schema: str | None = None) -> list[dict]:
 
 
 @app.get("/api/tables/{schema}/{table}")
-def describe_table(schema: str, table: str) -> dict:
+def describe_table(request: Request, schema: str, table: str) -> dict:
     """Get column info for a table."""
+    _require_permission(request, "read")
     db_path = _get_db_path()
     conn = connect(db_path, read_only=True)
     try:
@@ -301,12 +526,35 @@ def describe_table(schema: str, table: str) -> dict:
         conn.close()
 
 
+@app.get("/api/tables/{schema}/{table}/sample")
+def sample_table(request: Request, schema: str, table: str, limit: int = 100) -> dict:
+    """Get sample rows from a table."""
+    _require_permission(request, "read")
+    db_path = _get_db_path()
+    conn = connect(db_path, read_only=True)
+    try:
+        result = conn.execute(f"SELECT * FROM {schema}.{table} LIMIT {limit}")
+        columns = [desc[0] for desc in result.description]
+        rows = result.fetchall()
+        return {
+            "schema": schema,
+            "table": table,
+            "columns": columns,
+            "rows": [[_serialize(v) for v in row] for row in rows],
+        }
+    except Exception as e:
+        raise HTTPException(400, str(e))
+    finally:
+        conn.close()
+
+
 # --- Streams config ---
 
 
 @app.get("/api/streams")
-def list_streams() -> dict:
+def list_streams(request: Request) -> dict:
     """List configured streams."""
+    _require_permission(request, "read")
     config = _get_config()
     return {
         name: {
@@ -322,8 +570,9 @@ def list_streams() -> dict:
 
 
 @app.get("/api/history")
-def get_history(limit: int = 50) -> list[dict]:
+def get_history(request: Request, limit: int = 50) -> list[dict]:
     """Get run history."""
+    _require_permission(request, "read")
     db_path = _get_db_path()
     if not db_path.exists():
         return []
@@ -360,8 +609,9 @@ def get_history(limit: int = 50) -> list[dict]:
 
 
 @app.post("/api/lint")
-def lint_endpoint(fix: bool = False) -> dict:
+def lint_endpoint(request: Request, fix: bool = False) -> dict:
     """Run SQLFluff on transform files."""
+    _require_permission(request, "execute")
     from dp.lint.linter import lint
 
     config = _get_config()
@@ -378,25 +628,23 @@ def lint_endpoint(fix: bool = False) -> dict:
 
 
 @app.get("/api/dag")
-def get_dag() -> dict:
+def get_dag(request: Request) -> dict:
     """Get the model DAG for visualization."""
+    _require_permission(request, "read")
     transform_dir = _get_project_dir() / "transform"
     models = discover_models(transform_dir)
     ordered = build_dag(models)
 
-    # Build nodes and edges
     nodes = []
     edges = []
     model_set = {m.full_name for m in models}
 
-    # Collect all external dependencies (landing tables etc.)
     external_deps: set[str] = set()
     for m in models:
         for dep in m.depends_on:
             if dep not in model_set:
                 external_deps.add(dep)
 
-    # Add external source nodes
     for dep in sorted(external_deps):
         schema = dep.split(".")[0] if "." in dep else "source"
         nodes.append({
@@ -406,7 +654,6 @@ def get_dag() -> dict:
             "type": "source",
         })
 
-    # Add model nodes
     for m in ordered:
         nodes.append({
             "id": m.full_name,
@@ -416,7 +663,6 @@ def get_dag() -> dict:
             "path": str(m.path.relative_to(_get_project_dir())),
         })
 
-    # Add edges
     for m in models:
         for dep in m.depends_on:
             edges.append({"source": dep, "target": m.full_name})
@@ -428,8 +674,9 @@ def get_dag() -> dict:
 
 
 @app.get("/api/docs/markdown")
-def get_docs_markdown() -> dict:
+def get_docs_markdown(request: Request) -> dict:
     """Generate markdown documentation."""
+    _require_permission(request, "read")
     from dp.engine.docs import generate_docs
 
     db_path = _get_db_path()
@@ -447,17 +694,214 @@ def get_docs_markdown() -> dict:
 
 
 @app.get("/api/scheduler")
-def get_scheduler_status() -> dict:
+def get_scheduler_status(request: Request) -> dict:
     """Get scheduler status and scheduled streams."""
+    _require_permission(request, "read")
     from dp.engine.scheduler import get_scheduled_streams
 
     streams = get_scheduled_streams(_get_project_dir())
     return {"scheduled_streams": streams}
 
 
+# --- Notebooks ---
+
+
+class NotebookCellRequest(BaseModel):
+    source: str
+    cell_id: str | None = None
+
+
+class SaveNotebookRequest(BaseModel):
+    notebook: dict
+
+
+@app.get("/api/notebooks")
+def list_notebooks(request: Request) -> list[dict]:
+    """List all notebooks in the notebooks/ directory."""
+    _require_permission(request, "read")
+    nb_dir = _get_project_dir() / "notebooks"
+    if not nb_dir.exists():
+        return []
+    notebooks = []
+    for f in sorted(nb_dir.glob("*.dpnb")):
+        try:
+            data = json.loads(f.read_text())
+            notebooks.append({
+                "name": f.stem,
+                "path": f"notebooks/{f.name}",
+                "title": data.get("title", f.stem),
+                "cells": len(data.get("cells", [])),
+            })
+        except Exception:
+            notebooks.append({"name": f.stem, "path": f"notebooks/{f.name}", "title": f.stem, "cells": 0})
+    return notebooks
+
+
+@app.get("/api/notebooks/{name}")
+def get_notebook(request: Request, name: str) -> dict:
+    """Get a notebook's contents."""
+    _require_permission(request, "read")
+    from dp.engine.notebook import load_notebook
+    nb_path = _get_project_dir() / "notebooks" / f"{name}.dpnb"
+    if not nb_path.exists():
+        raise HTTPException(404, f"Notebook '{name}' not found")
+    return load_notebook(nb_path)
+
+
+@app.post("/api/notebooks/{name}")
+def save_notebook_endpoint(request: Request, name: str, req: SaveNotebookRequest) -> dict:
+    """Save a notebook."""
+    _require_permission(request, "write")
+    from dp.engine.notebook import save_notebook
+    nb_path = _get_project_dir() / "notebooks" / f"{name}.dpnb"
+    save_notebook(nb_path, req.notebook)
+    return {"status": "saved", "name": name}
+
+
+@app.post("/api/notebooks/create/{name}")
+def create_notebook_endpoint(request: Request, name: str, title: str = "") -> dict:
+    """Create a new notebook."""
+    _require_permission(request, "write")
+    from dp.engine.notebook import create_notebook, save_notebook
+    nb_path = _get_project_dir() / "notebooks" / f"{name}.dpnb"
+    if nb_path.exists():
+        raise HTTPException(400, f"Notebook '{name}' already exists")
+    nb = create_notebook(title or name)
+    save_notebook(nb_path, nb)
+    return nb
+
+
+@app.post("/api/notebooks/{name}/run")
+def run_notebook_endpoint(request: Request, name: str) -> dict:
+    """Execute all cells in a notebook."""
+    _require_permission(request, "execute")
+    from dp.engine.notebook import load_notebook, run_notebook, save_notebook
+    nb_path = _get_project_dir() / "notebooks" / f"{name}.dpnb"
+    if not nb_path.exists():
+        raise HTTPException(404, f"Notebook '{name}' not found")
+    nb = load_notebook(nb_path)
+    db_path = _get_db_path()
+    conn = connect(db_path)
+    try:
+        result = run_notebook(conn, nb)
+        save_notebook(nb_path, result)
+        return result
+    finally:
+        conn.close()
+
+
+@app.post("/api/notebooks/{name}/run-cell")
+def run_cell_endpoint(request: Request, name: str, req: NotebookCellRequest) -> dict:
+    """Execute a single notebook cell."""
+    _require_permission(request, "execute")
+    from dp.engine.notebook import execute_cell
+    db_path = _get_db_path()
+    conn = connect(db_path)
+    try:
+        result = execute_cell(conn, req.source)
+        # Don't return the namespace
+        return {"outputs": result["outputs"], "duration_ms": result["duration_ms"]}
+    finally:
+        conn.close()
+
+
+# --- Data import ---
+
+
+class ImportFileRequest(BaseModel):
+    file_path: str
+    target_schema: str = "landing"
+    target_table: str | None = None
+
+
+class TestConnectionRequest(BaseModel):
+    connection_type: str
+    params: dict
+
+
+class ImportFromConnectionRequest(BaseModel):
+    connection_type: str
+    params: dict
+    source_table: str
+    target_schema: str = "landing"
+    target_table: str | None = None
+
+
+@app.post("/api/import/preview-file")
+def preview_file_endpoint(request: Request, req: ImportFileRequest) -> dict:
+    """Preview data from a file before importing."""
+    _require_permission(request, "execute")
+    from dp.engine.importer import preview_file
+    try:
+        return preview_file(req.file_path)
+    except Exception as e:
+        raise HTTPException(400, str(e))
+
+
+@app.post("/api/import/file")
+def import_file_endpoint(request: Request, req: ImportFileRequest) -> dict:
+    """Import a file into the warehouse."""
+    _require_permission(request, "execute")
+    from dp.engine.importer import import_file
+    db_path = _get_db_path()
+    conn = connect(db_path)
+    try:
+        return import_file(conn, req.file_path, req.target_schema, req.target_table)
+    finally:
+        conn.close()
+
+
+@app.post("/api/import/test-connection")
+def test_connection_endpoint(request: Request, req: TestConnectionRequest) -> dict:
+    """Test a database connection."""
+    _require_permission(request, "execute")
+    from dp.engine.importer import test_connection
+    return test_connection(req.connection_type, req.params)
+
+
+@app.post("/api/import/from-connection")
+def import_from_connection_endpoint(request: Request, req: ImportFromConnectionRequest) -> dict:
+    """Import from an external database."""
+    _require_permission(request, "execute")
+    from dp.engine.importer import import_from_connection
+    db_path = _get_db_path()
+    conn = connect(db_path)
+    try:
+        return import_from_connection(
+            conn, req.connection_type, req.params,
+            req.source_table, req.target_schema, req.target_table,
+        )
+    finally:
+        conn.close()
+
+
+# --- Upload file for import ---
+
+
+@app.post("/api/upload")
+async def upload_file(request: Request) -> dict:
+    """Upload a file for data import."""
+    _require_permission(request, "execute")
+    from fastapi import UploadFile, File
+
+    # Parse multipart form data
+    form = await request.form()
+    file = form.get("file")
+    if not file:
+        raise HTTPException(400, "No file uploaded")
+
+    # Save to data/ directory
+    data_dir = _get_project_dir() / "data"
+    data_dir.mkdir(exist_ok=True)
+    file_path = data_dir / file.filename
+
+    content = await file.read()
+    file_path.write_bytes(content)
+
+    return {"path": str(file_path), "name": file.filename, "size": len(content)}
+
+
 # --- Serve frontend ---
-# The React build output goes to frontend/dist/ — serve it as static files
-# with a fallback to index.html for client-side routing.
 
 _FRONTEND_DIR = Path(__file__).parent.parent.parent.parent / "frontend" / "dist"
 
@@ -465,8 +909,7 @@ _FRONTEND_DIR = Path(__file__).parent.parent.parent.parent / "frontend" / "dist"
 @app.get("/", response_class=HTMLResponse)
 @app.get("/{path:path}", response_class=HTMLResponse)
 def serve_frontend(path: str = "") -> HTMLResponse:
-    """Serve the frontend SPA. Falls back to index.html for client-side routing."""
-    # Try to serve static file first
+    """Serve the frontend SPA."""
     file_path = _FRONTEND_DIR / path
     if file_path.is_file():
         content_type = {
@@ -479,7 +922,6 @@ def serve_frontend(path: str = "") -> HTMLResponse:
         }.get(file_path.suffix, "application/octet-stream")
         return HTMLResponse(content=file_path.read_bytes(), media_type=content_type)
 
-    # Fallback to index.html
     index = _FRONTEND_DIR / "index.html"
     if index.exists():
         return HTMLResponse(content=index.read_text())
