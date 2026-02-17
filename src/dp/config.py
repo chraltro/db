@@ -176,16 +176,21 @@ import duckdb
 def run(db: duckdb.DuckDBPyConnection) -> None:
     db.execute("CREATE SCHEMA IF NOT EXISTS landing")
 
-    # Example: load a CSV file
+    # Sample data to demonstrate the pipeline
+    db.execute("""
+        CREATE OR REPLACE TABLE landing.example AS
+        SELECT * FROM (VALUES
+            (1, 'Alice', 'alice@example.com'),
+            (2, 'Bob', 'bob@example.com'),
+            (3, 'Charlie', 'charlie@example.com')
+        ) AS t(id, name, email)
+    """)
+
+    # Replace the above with your own data loading, for example:
     # db.execute("""
     #     CREATE OR REPLACE TABLE landing.customers AS
-    #     SELECT * FROM read_csv('data/customers.csv', auto_detect=true)
+    #     SELECT * FROM read_csv(\'data/customers.csv\', auto_detect=true)
     # """)
-
-    # Example: load from a dataframe
-    # import pandas as pd
-    # df = pd.DataFrame({"id": [1, 2], "name": ["Alice", "Bob"]})
-    # db.execute("CREATE OR REPLACE TABLE landing.example AS SELECT * FROM df")
 '''
 
 SAMPLE_BRONZE_SQL = """\
