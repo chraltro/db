@@ -532,8 +532,10 @@ def serve(
     """Start the web UI server."""
     import uvicorn
 
+    from dp import setup_logging
     from dp.engine.scheduler import FileWatcher, SchedulerThread
 
+    setup_logging()
     project_dir = _resolve_project(project_dir)
 
     import dp.server.app as server_app

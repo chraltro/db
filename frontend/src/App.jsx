@@ -15,6 +15,7 @@ import LoginPage from "./LoginPage";
 import ResizeHandle from "./ResizeHandle";
 import useResizable from "./useResizable";
 import GuideTour from "./GuideTour";
+import ErrorBoundary from "./ErrorBoundary";
 
 const GUIDE_STEPS = [
   {
@@ -695,26 +696,28 @@ export default function App() {
           {/* Panel */}
           <div style={styles.panel} data-dp-guide="editor">
             {activeTab === "Editor" && (
-              <Editor
-                content={fileContent}
-                language={fileLang}
-                onChange={(val) => {
-                  setFileContent(val);
-                  setDirty(true);
-                }}
-                activeFile={activeFile}
-                onMount={(editor) => { editorRef.current = editor; }}
-                goToLine={goToLine}
-              />
+              <ErrorBoundary name="Editor">
+                <Editor
+                  content={fileContent}
+                  language={fileLang}
+                  onChange={(val) => {
+                    setFileContent(val);
+                    setDirty(true);
+                  }}
+                  activeFile={activeFile}
+                  onMount={(editor) => { editorRef.current = editor; }}
+                  goToLine={goToLine}
+                />
+              </ErrorBoundary>
             )}
-            {activeTab === "Query" && <QueryPanel addOutput={addOutput} />}
-            {activeTab === "Tables" && <TablesPanel selectedTable={selectedTable} />}
-            {activeTab === "Notebooks" && <NotebookPanel openPath={notebookPath} />}
-            {activeTab === "Import" && <ImportPanel addOutput={addOutput} />}
-            {activeTab === "DAG" && <DAGPanel onOpenFile={openFile} />}
-            {activeTab === "Docs" && <DocsPanel />}
-            {activeTab === "History" && <HistoryPanel />}
-            {activeTab === "Settings" && <SettingsPanel onShowGuide={showGuide} />}
+            {activeTab === "Query" && <ErrorBoundary name="Query"><QueryPanel addOutput={addOutput} /></ErrorBoundary>}
+            {activeTab === "Tables" && <ErrorBoundary name="Tables"><TablesPanel selectedTable={selectedTable} /></ErrorBoundary>}
+            {activeTab === "Notebooks" && <ErrorBoundary name="Notebooks"><NotebookPanel openPath={notebookPath} /></ErrorBoundary>}
+            {activeTab === "Import" && <ErrorBoundary name="Import"><ImportPanel addOutput={addOutput} /></ErrorBoundary>}
+            {activeTab === "DAG" && <ErrorBoundary name="DAG"><DAGPanel onOpenFile={openFile} /></ErrorBoundary>}
+            {activeTab === "Docs" && <ErrorBoundary name="Docs"><DocsPanel /></ErrorBoundary>}
+            {activeTab === "History" && <ErrorBoundary name="History"><HistoryPanel /></ErrorBoundary>}
+            {activeTab === "Settings" && <ErrorBoundary name="Settings"><SettingsPanel onShowGuide={showGuide} /></ErrorBoundary>}
           </div>
 
           {/* Output */}
