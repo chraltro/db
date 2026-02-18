@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { api } from "./api";
 import FileTree from "./FileTree";
 import Editor from "./Editor";
@@ -10,11 +10,227 @@ import DAGPanel from "./DAGPanel";
 import DocsPanel from "./DocsPanel";
 import NotebookPanel from "./NotebookPanel";
 import ImportPanel from "./ImportPanel";
-import ChartPanel from "./ChartPanel";
 import SettingsPanel from "./SettingsPanel";
 import LoginPage from "./LoginPage";
+import ResizeHandle from "./ResizeHandle";
+import useResizable from "./useResizable";
+import GuideTour from "./GuideTour";
 
-const TABS = ["Editor", "Query", "Charts", "Tables", "Notebooks", "Import", "DAG", "Docs", "History", "Settings"];
+const GUIDE_STEPS = [
+  {
+    id: "welcome",
+    title: "Welcome to dp",
+    description: "dp is your self-hosted data platform. Let's take a quick tour of the interface.",
+    position: "center",
+  },
+  {
+    id: "sidebar",
+    title: "File Tree",
+    description: "Browse your project files here. SQL transforms, Python ingest/export scripts, and notebooks are organized by folder.",
+    position: "right",
+  },
+  {
+    id: "editor",
+    title: "Code Editor",
+    description: "Edit SQL transforms and Python scripts with syntax highlighting, auto-complete, and one-click execution.",
+    position: "left",
+  },
+  {
+    id: "tabs",
+    title: "Navigation Tabs",
+    description: "Switch between Editor, Query runner, Tables browser, Notebooks, Import wizard, DAG view, Docs, History, and Settings.",
+    position: "bottom",
+  },
+  {
+    id: "actions",
+    title: "Action Buttons",
+    description: "Run transforms, streams, and lint checks from here. These buttons execute your data pipeline steps.",
+    position: "bottom",
+  },
+  {
+    id: "output",
+    title: "Output Panel",
+    description: "Execution logs, errors, and results appear here. You can resize this panel by dragging its top edge.",
+    position: "top",
+  },
+  {
+    id: "ready",
+    title: "You're Ready!",
+    description: "Start by opening a file from the sidebar, or run a stream to kick off your pipeline. You can replay this guide from Settings.",
+    position: "center",
+  },
+];
+
+const TABS = ["Editor", "Query", "Tables", "Notebooks", "Import", "DAG", "Docs", "History", "Settings"];
+
+function ActionDropdown({ label, onClick, options, disabled, primary }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e) => {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+
+  const btnStyle = primary ? adStyles.btnPrimary : adStyles.btn;
+  const hasOptions = options && options.length > 0;
+
+  return (
+    <div ref={ref} style={adStyles.wrapper}>
+      <button
+        onClick={onClick}
+        disabled={disabled}
+        style={{
+          ...btnStyle,
+          ...(hasOptions ? { borderTopRightRadius: 0, borderBottomRightRadius: 0 } : {}),
+        }}
+      >
+        {label}
+      </button>
+      {hasOptions && (
+        <>
+          <button
+            onClick={() => setOpen(!open)}
+            disabled={disabled}
+            style={{
+              ...btnStyle,
+              padding: "5px 5px",
+              borderTopLeftRadius: 0,
+              borderBottomLeftRadius: 0,
+              borderLeft: `1px solid ${primary ? "rgba(255,255,255,0.2)" : "var(--dp-border-light)"}`,
+              marginLeft: "-1px",
+              fontSize: "10px",
+            }}
+          >
+            {"\u25BE"}
+          </button>
+          {open && (
+            <div style={adStyles.menu}>
+              {options.map((opt) => (
+                <button
+                  key={opt.label}
+                  onClick={() => { opt.action(); setOpen(false); }}
+                  disabled={disabled}
+                  style={adStyles.item}
+                  onMouseEnter={(e) => e.currentTarget.style.background = "var(--dp-btn-bg)"}
+                  onMouseLeave={(e) => e.currentTarget.style.background = "none"}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+const adStyles = {
+  wrapper: { position: "relative", display: "inline-flex" },
+  btn: { padding: "5px 12px", background: "var(--dp-btn-bg)", border: "1px solid var(--dp-btn-border)", borderRadius: "var(--dp-radius-lg)", color: "var(--dp-text)", cursor: "pointer", fontSize: "12px", fontWeight: 500 },
+  btnPrimary: { padding: "5px 12px", background: "var(--dp-green)", border: "1px solid var(--dp-green-border)", borderRadius: "var(--dp-radius-lg)", color: "#fff", cursor: "pointer", fontSize: "12px", fontWeight: 500 },
+  menu: { position: "absolute", top: "100%", left: 0, marginTop: "4px", background: "var(--dp-bg-secondary)", border: "1px solid var(--dp-border)", borderRadius: "var(--dp-radius)", zIndex: 100, minWidth: "120px", boxShadow: "0 4px 12px rgba(0,0,0,0.3)" },
+  item: { display: "block", width: "100%", padding: "7px 12px", background: "none", border: "none", color: "var(--dp-text)", cursor: "pointer", fontSize: "12px", textAlign: "left", whiteSpace: "nowrap" },
+};
+
+function groupBySchema(tables) {
+  const schemas = {};
+  for (const t of tables) {
+    if (!schemas[t.schema]) schemas[t.schema] = [];
+    schemas[t.schema].push(t);
+  }
+  return schemas;
+}
+
+function SchemaTree({ tables, selectedTable, onSelectTable }) {
+  const schemas = groupBySchema(tables);
+  const SCHEMA_ORDER = ["landing", "bronze", "silver", "gold"];
+  const schemaNames = Object.keys(schemas).sort((a, b) => {
+    const ai = SCHEMA_ORDER.indexOf(a);
+    const bi = SCHEMA_ORDER.indexOf(b);
+    if (ai !== -1 && bi !== -1) return ai - bi;
+    if (ai !== -1) return -1;
+    if (bi !== -1) return 1;
+    return a.localeCompare(b);
+  });
+  const [expanded, setExpanded] = useState(() => {
+    const m = {};
+    for (const s of schemaNames) m[s] = true;
+    return m;
+  });
+
+  // Expand new schemas automatically
+  useEffect(() => {
+    setExpanded((prev) => {
+      const next = { ...prev };
+      for (const s of schemaNames) {
+        if (!(s in next)) next[s] = true;
+      }
+      return next;
+    });
+  }, [tables]);
+
+  if (tables.length === 0) {
+    return <div style={stStyles.empty}>No tables yet</div>;
+  }
+
+  return (
+    <div>
+      {schemaNames.map((schema) => (
+        <div key={schema}>
+          <div
+            style={stStyles.schemaRow}
+            onClick={() => setExpanded((prev) => ({ ...prev, [schema]: !prev[schema] }))}
+          >
+            <span style={{ ...stStyles.arrow, transform: expanded[schema] ? "rotate(0deg)" : "rotate(-90deg)" }}>
+              {"\u25BE"}
+            </span>
+            <span style={stStyles.schemaName}>{schema}</span>
+            <span style={stStyles.schemaCount}>{schemas[schema].length}</span>
+          </div>
+          {expanded[schema] && schemas[schema].map((t) => {
+            const key = `${t.schema}.${t.name}`;
+            const isActive = selectedTable === key;
+            return (
+              <div
+                key={key}
+                style={{
+                  ...stStyles.tableRow,
+                  background: isActive ? "var(--dp-bg-secondary)" : "transparent",
+                  borderLeft: isActive ? "2px solid var(--dp-accent)" : "2px solid transparent",
+                }}
+                onClick={() => onSelectTable(t.schema, t.name)}
+              >
+                <span style={{
+                  ...stStyles.typeIcon,
+                  color: t.type === "VIEW" ? "var(--dp-purple)" : "var(--dp-accent)",
+                }}>{t.type === "VIEW" ? "V" : "T"}</span>
+                <span style={isActive ? stStyles.tableNameActive : stStyles.tableName}>{t.name}</span>
+              </div>
+            );
+          })}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+const stStyles = {
+  empty: { padding: "12px", color: "var(--dp-text-dim)", fontSize: "12px", textAlign: "center" },
+  schemaRow: { display: "flex", alignItems: "center", gap: "6px", padding: "4px 8px", cursor: "pointer", margin: "0 4px", borderRadius: "3px" },
+  arrow: { fontSize: "10px", color: "var(--dp-text-secondary)", width: "10px", display: "inline-block", transition: "transform 0.12s ease" },
+  schemaName: { fontSize: "13px", fontWeight: 500, color: "var(--dp-text)" },
+  schemaCount: { fontSize: "10px", color: "var(--dp-text-dim)", marginLeft: "auto" },
+  tableRow: { display: "flex", alignItems: "center", gap: "6px", padding: "3px 8px 3px 30px", cursor: "pointer", fontSize: "12px", fontFamily: "var(--dp-font-mono)", margin: "0 4px", borderRadius: "3px" },
+  typeIcon: { fontSize: "9px", fontWeight: 700, flexShrink: 0 },
+  tableName: { color: "var(--dp-text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
+  tableNameActive: { color: "var(--dp-accent)", fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
+};
 
 export default function App() {
   const [files, setFiles] = useState([]);
@@ -26,12 +242,34 @@ export default function App() {
   const [activeTab, setActiveTab] = useState("Editor");
   const [streams, setStreams] = useState({});
   const [running, setRunning] = useState(false);
+  const [warehouseTables, setWarehouseTables] = useState([]);
+  const [selectedTable, setSelectedTable] = useState(null);
+
+  // Resizable panels
+  const [sidebarWidth, onSidebarResize, onSidebarResizeStart] = useResizable("dp_sidebar_width", 240, 150, 500);
+  const [outputHeight, onOutputResize, onOutputResizeStart] = useResizable("dp_output_height", 180, 80, 500);
 
   // Auth state
   const [authChecked, setAuthChecked] = useState(false);
   const [authRequired, setAuthRequired] = useState(false);
   const [needsSetup, setNeedsSetup] = useState(false);
   const [currentUser, setCurrentUser] = useState(null);
+
+  // Editor navigation
+  const editorRef = useRef(null);
+  const [goToLine, setGoToLine] = useState(null);
+
+  // Guide state
+  const [guideOpen, setGuideOpen] = useState(() => !localStorage.getItem("dp_guide_completed"));
+
+  function handleGuideComplete() {
+    setGuideOpen(false);
+    localStorage.setItem("dp_guide_completed", "true");
+  }
+
+  function showGuide() {
+    setGuideOpen(true);
+  }
 
   useEffect(() => {
     checkAuth();
@@ -94,19 +332,35 @@ export default function App() {
     } catch {}
   }, []);
 
+  const loadTables = useCallback(async () => {
+    try {
+      const data = await api.listTables();
+      setWarehouseTables(data);
+    } catch {}
+  }, []);
+
   useEffect(() => {
     if (!authRequired && authChecked) {
       loadFiles();
       loadStreams();
+      loadTables();
     }
-  }, [authRequired, authChecked, loadFiles, loadStreams]);
+  }, [authRequired, authChecked, loadFiles, loadStreams, loadTables]);
 
   function addOutput(type, message) {
     const ts = new Date().toLocaleTimeString();
     setOutput((prev) => [...prev, { type, message, ts }]);
   }
 
+  const [notebookPath, setNotebookPath] = useState(null);
+
   async function openFile(path) {
+    // Open .dpnb files in Notebooks tab
+    if (path.endsWith(".dpnb")) {
+      setNotebookPath(path);
+      setActiveTab("Notebooks");
+      return;
+    }
     if (dirty && activeFile) {
       if (!confirm("Unsaved changes. Discard?")) return;
     }
@@ -122,6 +376,53 @@ export default function App() {
     }
   }
 
+  function resolveFilePath(ref) {
+    const normalized = ref.replace(/\\/g, "/");
+    const hasExtension = /\.(sql|py|yml|yaml|json|csv|md|txt|dpnb)$/i.test(normalized);
+
+    // If it looks like schema.model (no slashes, no file extension), map to transform SQL
+    if (!hasExtension && !normalized.includes("/") && /^\w+\.\w+$/.test(normalized)) {
+      const [schema, model] = normalized.split(".");
+      return `transform/${schema}/${model}.sql`;
+    }
+
+    // If it's just a bare filename (no slashes), search the file tree
+    if (!normalized.includes("/")) {
+      const allPaths = [];
+      const collect = (nodes) => {
+        for (const n of nodes) {
+          if (n.type === "file") allPaths.push(n.path);
+          if (n.children) collect(n.children);
+        }
+      };
+      collect(files);
+      const match = allPaths.find((f) => f.endsWith("/" + normalized) || f === normalized);
+      if (match) return match;
+    }
+
+    return normalized;
+  }
+
+  async function openFileAtLine(ref, line, col) {
+    const path = resolveFilePath(ref);
+    if (activeFile === path) {
+      setGoToLine({ line, col: col || 1 });
+      setActiveTab("Editor");
+    } else {
+      try {
+        const data = await api.readFile(path);
+        setActiveFile(path);
+        setFileContent(data.content);
+        setFileLang(data.language);
+        setDirty(false);
+        setActiveTab("Editor");
+        setTimeout(() => setGoToLine({ line, col: col || 1 }), 50);
+      } catch (e) {
+        addOutput("error", `Failed to open: ${e.message}`);
+      }
+    }
+  }
+
   async function saveFile() {
     if (!activeFile) return;
     try {
@@ -130,6 +431,41 @@ export default function App() {
       addOutput("info", `Saved ${activeFile}`);
     } catch (e) {
       addOutput("error", `Failed to save: ${e.message}`);
+    }
+  }
+
+  async function createFile(path) {
+    if (!path.trim()) return;
+    const defaultContent = path.endsWith(".py")
+      ? '# A DuckDB connection is available as `db`\n\n'
+      : path.endsWith(".sql")
+      ? '-- config: materialized=table, schema=bronze\n-- depends_on:\n\nSELECT 1\n'
+      : "";
+    try {
+      await api.saveFile(path, defaultContent);
+      addOutput("info", `Created ${path}`);
+      setShowNewFile(false);
+      setNewFilePath("");
+      await loadFiles();
+      openFile(path);
+    } catch (e) {
+      addOutput("error", `Failed to create: ${e.message}`);
+    }
+  }
+
+  async function deleteFile(path) {
+    if (!confirm(`Delete ${path}?`)) return;
+    try {
+      await api.deleteFile(path);
+      addOutput("info", `Deleted ${path}`);
+      if (activeFile === path) {
+        setActiveFile(null);
+        setFileContent("");
+        setDirty(false);
+      }
+      await loadFiles();
+    } catch (e) {
+      addOutput("error", `Failed to delete: ${e.message}`);
     }
   }
 
@@ -148,7 +484,7 @@ export default function App() {
         addOutput("info", `Running ${activeFile}...`);
         const data = await api.runScript(activeFile);
         addOutput(data.status === "error" ? "error" : "info", `${activeFile}: ${data.status} (${data.duration_ms}ms)`);
-        if (data.log_output) addOutput("log", data.log_output);
+        if (data.log_output) data.log_output.split("\n").filter((l) => l.trim()).forEach((l) => addOutput("log", l));
         if (data.error) addOutput("error", data.error);
       }
     } catch (e) {
@@ -166,6 +502,7 @@ export default function App() {
       for (const [model, status] of Object.entries(data.results || {})) {
         addOutput(status === "error" ? "error" : "info", `${model}: ${status}`);
       }
+      loadTables();
     } catch (e) {
       addOutput("error", e.message);
     } finally {
@@ -173,11 +510,11 @@ export default function App() {
     }
   }
 
-  async function runStream(name) {
+  async function runStream(name, force = false) {
     setRunning(true);
-    addOutput("info", `Running stream: ${name}...`);
+    addOutput("info", `Running pipeline${force ? " (full refresh)" : ""}...`);
     try {
-      const data = await api.runStream(name);
+      const data = await api.runStream(name, force);
       for (const step of data.steps || []) {
         addOutput("info", `--- ${step.action} ---`);
         if (step.action === "transform") {
@@ -186,11 +523,17 @@ export default function App() {
           }
         } else {
           for (const r of step.results || []) {
-            addOutput(r.status === "error" ? "error" : "info", `${r.status} (${r.duration_ms}ms)`);
+            const label = r.script || step.action;
+            const msg = r.status === "error" ? `${label}: error — ${r.error}` : `${label}: success (${r.duration_ms}ms)`;
+            addOutput(r.status === "error" ? "error" : "info", msg);
+            if (r.log_output && r.log_output.trim()) {
+              r.log_output.split("\n").filter((l) => l.trim()).forEach((l) => addOutput("log", l.trim()));
+            }
           }
         }
       }
-      addOutput("info", `Stream ${name} completed.`);
+      addOutput("info", `Pipeline completed.`);
+      loadTables();
     } catch (e) {
       addOutput("error", e.message);
     } finally {
@@ -204,12 +547,22 @@ export default function App() {
     try {
       const data = await api.runLint(fix);
       if (data.count === 0) {
-        addOutput("info", "No lint violations found.");
+        addOutput("info", fix ? "All fixable violations resolved." : "No lint violations found.");
       } else {
         for (const v of data.violations || []) {
-          addOutput("warn", `${v.file}:${v.line}:${v.col} [${v.code}] ${v.description}`);
+          const tag = fix && !v.fixable ? " (unfixable)" : "";
+          addOutput("warn", `${v.file}:${v.line}:${v.col} [${v.code}] ${v.description}${tag}`);
         }
-        addOutput("info", `${data.count} violation(s) found.`);
+        if (fix) {
+          const unfixable = (data.violations || []).filter((v) => !v.fixable).length;
+          const fixed = data.count - unfixable;
+          const parts = [];
+          if (fixed > 0) parts.push(`${fixed} fixed`);
+          if (unfixable > 0) parts.push(`${unfixable} unfixable`);
+          addOutput("info", parts.join(", ") + ".");
+        } else {
+          addOutput("info", `${data.count} violation(s) found.`);
+        }
       }
       if (fix && activeFile) {
         const d = await api.readFile(activeFile);
@@ -220,6 +573,11 @@ export default function App() {
     } finally {
       setRunning(false);
     }
+  }
+
+  function handleSelectTable(schema, name) {
+    setSelectedTable(`${schema}.${name}`);
+    setActiveTab("Tables");
   }
 
   function handleLogout() {
@@ -241,29 +599,37 @@ export default function App() {
       {/* Header */}
       <header style={styles.header}>
         <span style={styles.logo}>dp</span>
-        <div style={styles.actions}>
-          {Object.keys(streams).map((name) => (
-            <button
-              key={name}
-              onClick={() => runStream(name)}
-              disabled={running}
-              style={styles.btnPrimary}
-            >
-              Run: {name}
-            </button>
-          ))}
-          <button onClick={() => runTransformAll(false)} disabled={running} style={styles.btn}>
-            Transform
-          </button>
-          <button onClick={() => runTransformAll(true)} disabled={running} style={styles.btn}>
-            Transform (force)
-          </button>
-          <button onClick={() => runLint(false)} disabled={running} style={styles.btn}>
-            Lint
-          </button>
-          <button onClick={() => runLint(true)} disabled={running} style={styles.btn}>
-            Lint (fix)
-          </button>
+        <div style={styles.actions} data-dp-guide="actions">
+          <ActionDropdown
+            label="Run"
+            onClick={() => {
+              const names = Object.keys(streams);
+              if (names.length > 0) runStream(names[0]);
+              else addOutput("warn", "No streams defined in project.yml");
+            }}
+            options={[{
+              label: "Full Refresh",
+              action: () => {
+                const names = Object.keys(streams);
+                if (names.length > 0) runStream(names[0], true);
+                else addOutput("warn", "No streams defined in project.yml");
+              },
+            }]}
+            disabled={running}
+            primary
+          />
+          <ActionDropdown
+            label="Transform"
+            onClick={() => runTransformAll(false)}
+            options={[{ label: "Force", action: () => runTransformAll(true) }]}
+            disabled={running}
+          />
+          <ActionDropdown
+            label="Lint"
+            onClick={() => runLint(false)}
+            options={[{ label: "Fix", action: () => runLint(true) }]}
+            disabled={running}
+          />
         </div>
         {currentUser && (
           <div style={styles.userInfo}>
@@ -278,14 +644,27 @@ export default function App() {
 
       <div style={styles.main}>
         {/* Sidebar */}
-        <aside style={styles.sidebar}>
-          <FileTree files={files} onSelect={openFile} activeFile={activeFile} />
+        <aside style={{ ...styles.sidebar, width: sidebarWidth }} data-dp-guide="sidebar">
+          <FileTree files={files} onSelect={openFile} activeFile={activeFile} onNewFile={createFile} onDeleteFile={deleteFile} onRefresh={() => { loadFiles(); loadTables(); loadStreams(); }} />
+          <div style={styles.sidebarDivider} />
+          <div style={styles.sidebarSectionHeader}>TABLES</div>
+          <SchemaTree
+            tables={warehouseTables}
+            selectedTable={selectedTable}
+            onSelectTable={handleSelectTable}
+          />
         </aside>
+
+        <ResizeHandle
+          direction="horizontal"
+          onResize={onSidebarResize}
+          onResizeStart={onSidebarResizeStart}
+        />
 
         {/* Content */}
         <div style={styles.content}>
           {/* Tabs */}
-          <div style={styles.tabs}>
+          <div style={styles.tabs} data-dp-guide="tabs">
             {TABS.map((tab) => (
               <button
                 key={tab}
@@ -314,7 +693,7 @@ export default function App() {
           </div>
 
           {/* Panel */}
-          <div style={styles.panel}>
+          <div style={styles.panel} data-dp-guide="editor">
             {activeTab === "Editor" && (
               <Editor
                 content={fileContent}
@@ -324,23 +703,33 @@ export default function App() {
                   setDirty(true);
                 }}
                 activeFile={activeFile}
+                onMount={(editor) => { editorRef.current = editor; }}
+                goToLine={goToLine}
               />
             )}
             {activeTab === "Query" && <QueryPanel addOutput={addOutput} />}
-            {activeTab === "Charts" && <ChartPanel />}
-            {activeTab === "Tables" && <TablesPanel />}
-            {activeTab === "Notebooks" && <NotebookPanel />}
+            {activeTab === "Tables" && <TablesPanel selectedTable={selectedTable} />}
+            {activeTab === "Notebooks" && <NotebookPanel openPath={notebookPath} />}
             {activeTab === "Import" && <ImportPanel addOutput={addOutput} />}
             {activeTab === "DAG" && <DAGPanel onOpenFile={openFile} />}
             {activeTab === "Docs" && <DocsPanel />}
             {activeTab === "History" && <HistoryPanel />}
-            {activeTab === "Settings" && <SettingsPanel />}
+            {activeTab === "Settings" && <SettingsPanel onShowGuide={showGuide} />}
           </div>
 
           {/* Output */}
-          <OutputPanel output={output} onClear={() => setOutput([])} />
+          <ResizeHandle
+            direction="vertical"
+            onResize={(delta) => onOutputResize(-delta)}
+            onResizeStart={onOutputResizeStart}
+          />
+          <div data-dp-guide="output">
+            <OutputPanel output={output} onClear={() => setOutput([])} height={outputHeight} onOpenFile={openFileAtLine} />
+          </div>
         </div>
       </div>
+
+      <GuideTour steps={GUIDE_STEPS} onComplete={handleGuideComplete} isOpen={guideOpen} />
     </div>
   );
 }
@@ -356,7 +745,9 @@ const styles = {
   userRole: { fontSize: "10px", color: "var(--dp-text-secondary)", background: "var(--dp-btn-bg)", padding: "2px 8px", borderRadius: "10px", fontWeight: 500, textTransform: "capitalize" },
   logoutBtn: { padding: "3px 8px", background: "none", border: "1px solid var(--dp-border-light)", borderRadius: "var(--dp-radius)", color: "var(--dp-text-secondary)", cursor: "pointer", fontSize: "11px" },
   main: { display: "flex", flex: 1, overflow: "hidden" },
-  sidebar: { width: "240px", borderRight: "1px solid var(--dp-border)", overflow: "auto", background: "var(--dp-bg-tertiary)", padding: "8px 0" },
+  sidebar: { borderRight: "1px solid var(--dp-border)", overflow: "auto", background: "var(--dp-bg-tertiary)", padding: "8px 0", flexShrink: 0 },
+  sidebarDivider: { height: "1px", background: "var(--dp-border)", margin: "8px 12px" },
+  sidebarSectionHeader: { padding: "6px 12px 8px", fontSize: "10px", fontWeight: "600", color: "var(--dp-text-dim)", letterSpacing: "1px", textTransform: "uppercase" },
   content: { flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" },
   tabs: { display: "flex", alignItems: "center", borderBottom: "1px solid var(--dp-border)", padding: "0 8px", background: "var(--dp-bg-secondary)", overflowX: "auto", minHeight: "36px" },
   tab: { padding: "8px 14px", background: "none", border: "none", borderBottom: "2px solid transparent", color: "var(--dp-text-secondary)", cursor: "pointer", fontSize: "13px", whiteSpace: "nowrap", fontWeight: 500 },

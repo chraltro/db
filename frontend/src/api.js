@@ -62,6 +62,8 @@ export const api = {
   readFile: (path) => request(`/files/${path}`),
   saveFile: (path, content) =>
     request(`/files/${path}`, { method: "PUT", body: JSON.stringify({ content }) }),
+  deleteFile: (path) =>
+    request(`/files/${path}`, { method: "DELETE" }),
 
   // Models
   listModels: () => request("/models"),
@@ -102,21 +104,27 @@ export const api = {
   // Lint
   runLint: (fix = false) =>
     request(`/lint?fix=${fix}`, { method: "POST" }),
+  getLintConfig: () => request("/lint/config"),
+  saveLintConfig: (content) =>
+    request("/lint/config", { method: "PUT", body: JSON.stringify({ content }) }),
+  deleteLintConfig: () =>
+    request("/lint/config", { method: "DELETE" }),
 
   // DAG
   getDAG: () => request("/dag"),
 
   // Docs
   getDocs: () => request("/docs/markdown"),
+  getStructuredDocs: () => request("/docs/structured"),
 
   // Scheduler
   getScheduler: () => request("/scheduler"),
 
   // Notebooks
   listNotebooks: () => request("/notebooks"),
-  getNotebook: (name) => request(`/notebooks/${name}`),
+  getNotebook: (name) => request(`/notebooks/open/${name}`),
   saveNotebook: (name, notebook) =>
-    request(`/notebooks/${name}`, {
+    request(`/notebooks/save/${name}`, {
       method: "POST",
       body: JSON.stringify({ notebook }),
     }),
@@ -124,11 +132,11 @@ export const api = {
     request(`/notebooks/create/${name}?title=${encodeURIComponent(title)}`, {
       method: "POST",
     }),
-  runNotebook: (name) => request(`/notebooks/${name}/run`, { method: "POST" }),
-  runCell: (name, source) =>
-    request(`/notebooks/${name}/run-cell`, {
+  runNotebook: (name) => request(`/notebooks/run/${name}`, { method: "POST" }),
+  runCell: (name, source, { reset = false } = {}) =>
+    request(`/notebooks/run-cell/${name}`, {
       method: "POST",
-      body: JSON.stringify({ source }),
+      body: JSON.stringify({ source, reset }),
     }),
 
   // Import

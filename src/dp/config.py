@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import re
 from dataclasses import dataclass, field
@@ -163,62 +164,227 @@ lint:
   dialect: duckdb
 """
 
-SAMPLE_INGEST_SCRIPT = '''\
-"""Sample ingest script.
-
-The platform calls run(db) with a DuckDB connection.
-The script should create/replace tables in the landing schema.
-"""
-
-import duckdb
-
-
-def run(db: duckdb.DuckDBPyConnection) -> None:
-    db.execute("CREATE SCHEMA IF NOT EXISTS landing")
-
-    # Sample data to demonstrate the pipeline
-    db.execute("""
-        CREATE OR REPLACE TABLE landing.example AS
-        SELECT * FROM (VALUES
-            (1, 'Alice', 'alice@example.com'),
-            (2, 'Bob', 'bob@example.com'),
-            (3, 'Charlie', 'charlie@example.com')
-        ) AS t(id, name, email)
-    """)
-
-    # Replace the above with your own data loading, for example:
-    # db.execute("""
-    #     CREATE OR REPLACE TABLE landing.customers AS
-    #     SELECT * FROM read_csv(\'data/customers.csv\', auto_detect=true)
-    # """)
-'''
+SAMPLE_INGEST_NOTEBOOK = json.dumps({
+    "title": "Earthquake Ingestion",
+    "cells": [
+        {
+            "id": "cell_1",
+            "type": "markdown",
+            "source": "# Earthquake Data Ingestion\n\nFetches M2.5+ earthquakes from the past 30 days via the [USGS GeoJSON API](https://earthquake.usgs.gov/earthquakes/feed/v1.0/geojson.php).\n\nThis notebook demonstrates using a `.dpnb` notebook as an ingest step in the pipeline.",
+        },
+        {
+            "id": "cell_2",
+            "type": "code",
+            "source": 'import json\nfrom urllib.request import urlopen\n\nFEED_URL = "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/2.5_month.geojson"\n\nprint("Fetching earthquakes from USGS...")\nwith urlopen(FEED_URL, timeout=30) as resp:\n    data = json.loads(resp.read())\n\nfeatures = data.get("features", [])\nprint(f"Got {len(features)} earthquakes (M2.5+, last 30 days)")',
+            "outputs": [],
+        },
+        {
+            "id": "cell_3",
+            "type": "markdown",
+            "source": "## Create landing table\n\nCreate the `landing.earthquakes` table and load the raw data.",
+        },
+        {
+            "id": "cell_4",
+            "type": "code",
+            "source": 'db.execute("CREATE SCHEMA IF NOT EXISTS landing")\n\ndb.execute("""\n    CREATE OR REPLACE TABLE landing.earthquakes (\n        id VARCHAR, magnitude DOUBLE, place VARCHAR,\n        event_time BIGINT, updated BIGINT,\n        latitude DOUBLE, longitude DOUBLE, depth_km DOUBLE,\n        felt INTEGER, tsunami INTEGER, sig INTEGER,\n        mag_type VARCHAR, event_type VARCHAR, status VARCHAR,\n        detail_url VARCHAR\n    )\n""")\n\nrows = []\nfor f in features:\n    p = f.get("properties", {})\n    c = f.get("geometry", {}).get("coordinates", [0, 0, 0])\n    rows.append((\n        str(f.get("id", "")),\n        p.get("mag"),\n        str(p.get("place", "")),\n        p.get("time"),\n        p.get("updated"),\n        c[1] if len(c) > 1 else None,\n        c[0] if len(c) > 0 else None,\n        c[2] if len(c) > 2 else None,\n        p.get("felt"),\n        p.get("tsunami"),\n        p.get("sig"),\n        str(p.get("magType", "")),\n        str(p.get("type", "")),\n        str(p.get("status", "")),\n        str(p.get("detail", "")),\n    ))\n\nif rows:\n    db.executemany(\n        "INSERT INTO landing.earthquakes VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)",\n        rows,\n    )\n\nprint(f"Loaded {len(rows)} earthquakes into landing.earthquakes")',
+            "outputs": [],
+        },
+        {
+            "id": "cell_5",
+            "type": "markdown",
+            "source": "## Preview\n\nQuick look at the data we just loaded.",
+        },
+        {
+            "id": "cell_6",
+            "type": "code",
+            "source": 'db.execute("SELECT * FROM landing.earthquakes ORDER BY magnitude DESC LIMIT 10")',
+            "outputs": [],
+        },
+    ],
+}, indent=2) + "\n"
 
 SAMPLE_BRONZE_SQL = """\
--- config: materialized=view, schema=bronze
--- depends_on: landing.example
+-- config: materialized=table, schema=bronze
+-- depends_on: landing.earthquakes
 
 SELECT
-    *
-FROM landing.example
+    id                                                          AS event_id,
+    magnitude,
+    mag_type,
+    place,
+    epoch_ms(event_time)                                        AS event_time,
+    epoch_ms(updated)                                           AS updated_at,
+    latitude,
+    longitude,
+    depth_km,
+    COALESCE(felt, 0)                                           AS felt_reports,
+    CASE WHEN tsunami = 1 THEN true ELSE false END              AS tsunami_alert,
+    sig                                                         AS significance,
+    event_type,
+    status
+FROM landing.earthquakes
+WHERE magnitude IS NOT NULL
+"""
+
+SAMPLE_SILVER_EVENTS_SQL = """\
+-- config: materialized=table, schema=silver
+-- depends_on: bronze.earthquakes
+
+SELECT
+    event_id,
+    event_time,
+    magnitude,
+    mag_type,
+    CASE
+        WHEN magnitude >= 8.0 THEN 'Great'
+        WHEN magnitude >= 7.0 THEN 'Major'
+        WHEN magnitude >= 6.0 THEN 'Strong'
+        WHEN magnitude >= 5.0 THEN 'Moderate'
+        WHEN magnitude >= 4.0 THEN 'Light'
+        ELSE 'Minor'
+    END                                                         AS magnitude_class,
+    place,
+    CASE
+        WHEN place LIKE '% of %'
+            THEN trim(split_part(place, ' of ', 2))
+        ELSE place
+    END                                                         AS region,
+    latitude,
+    longitude,
+    depth_km,
+    CASE
+        WHEN depth_km < 70  THEN 'Shallow'
+        WHEN depth_km < 300 THEN 'Intermediate'
+        ELSE 'Deep'
+    END                                                         AS depth_class,
+    felt_reports,
+    tsunami_alert,
+    significance,
+    CAST(event_time AS DATE)                                    AS event_date,
+    hour(event_time)                                            AS event_hour
+FROM bronze.earthquakes
+"""
+
+SAMPLE_SILVER_DAILY_SQL = """\
+-- config: materialized=table, schema=silver
+-- depends_on: silver.earthquake_events
+
+SELECT
+    event_date,
+    COUNT(*)                                                    AS total_events,
+    round(AVG(magnitude), 2)                                    AS avg_magnitude,
+    MAX(magnitude)                                              AS max_magnitude,
+    round(AVG(depth_km), 1)                                     AS avg_depth_km,
+    SUM(CASE WHEN magnitude_class IN ('Strong','Major','Great')
+        THEN 1 ELSE 0 END)                                     AS significant_count,
+    SUM(CASE WHEN tsunami_alert THEN 1 ELSE 0 END)             AS tsunami_alerts,
+    SUM(felt_reports)                                           AS total_felt_reports,
+    ARG_MAX(place, magnitude)                                   AS strongest_location
+FROM silver.earthquake_events
+GROUP BY event_date
+ORDER BY event_date DESC
+"""
+
+SAMPLE_GOLD_SUMMARY_SQL = """\
+-- config: materialized=table, schema=gold
+-- depends_on: silver.earthquake_events, silver.earthquake_daily
+
+SELECT
+    d.event_date,
+    d.total_events,
+    d.avg_magnitude,
+    d.max_magnitude,
+    d.avg_depth_km,
+    d.significant_count,
+    d.tsunami_alerts,
+    d.total_felt_reports,
+    d.strongest_location,
+    SUM(CASE WHEN e.magnitude_class = 'Minor'    THEN 1 ELSE 0 END) AS minor_count,
+    SUM(CASE WHEN e.magnitude_class = 'Light'    THEN 1 ELSE 0 END) AS light_count,
+    SUM(CASE WHEN e.magnitude_class = 'Moderate' THEN 1 ELSE 0 END) AS moderate_count,
+    SUM(CASE WHEN e.magnitude_class = 'Strong'   THEN 1 ELSE 0 END) AS strong_count,
+    SUM(CASE WHEN e.magnitude_class = 'Major'    THEN 1 ELSE 0 END) AS major_count,
+    SUM(CASE WHEN e.magnitude_class = 'Great'    THEN 1 ELSE 0 END) AS great_count
+FROM silver.earthquake_daily d
+JOIN silver.earthquake_events e ON e.event_date = d.event_date
+GROUP BY ALL
+ORDER BY d.event_date DESC
+"""
+
+SAMPLE_GOLD_TOP_SQL = """\
+-- config: materialized=table, schema=gold
+-- depends_on: silver.earthquake_events
+
+SELECT
+    event_id,
+    event_time,
+    magnitude,
+    magnitude_class,
+    place,
+    region,
+    latitude,
+    longitude,
+    depth_km,
+    depth_class,
+    felt_reports,
+    tsunami_alert,
+    significance
+FROM silver.earthquake_events
+WHERE magnitude >= 4.5
+ORDER BY magnitude DESC, event_time DESC
+"""
+
+SAMPLE_GOLD_REGIONS_SQL = """\
+-- config: materialized=table, schema=gold
+-- depends_on: silver.earthquake_events
+
+SELECT
+    region,
+    COUNT(*)                                                    AS total_events,
+    round(AVG(magnitude), 2)                                    AS avg_magnitude,
+    MAX(magnitude)                                              AS max_magnitude,
+    round(AVG(depth_km), 1)                                     AS avg_depth_km,
+    SUM(CASE WHEN magnitude >= 5.0 THEN 1 ELSE 0 END)          AS significant_events,
+    SUM(CASE WHEN tsunami_alert THEN 1 ELSE 0 END)             AS tsunami_alerts,
+    MIN(event_date)                                             AS first_event,
+    MAX(event_date)                                             AS last_event
+FROM silver.earthquake_events
+GROUP BY region
+HAVING COUNT(*) >= 3
+ORDER BY total_events DESC
 """
 
 SAMPLE_EXPORT_SCRIPT = '''\
-"""Sample export script.
+"""Export earthquake analytics to CSV files."""
 
-The platform calls run(db) with a DuckDB connection.
-Read from the warehouse and write to an external destination.
-"""
+from pathlib import Path
 
-import duckdb
+output_dir = Path(__file__).parent.parent / "output"
+output_dir.mkdir(exist_ok=True)
 
+db.execute(f"""
+    COPY gold.earthquake_summary
+    TO \\'{output_dir / "earthquake_summary.csv"}\\'
+    (HEADER, DELIMITER \\',\\')
+""")
+rows = db.execute("SELECT COUNT(*) FROM gold.earthquake_summary").fetchone()[0]
+print(f"Exported {rows} rows to output/earthquake_summary.csv")
 
-def run(db: duckdb.DuckDBPyConnection) -> None:
-    # Example: export a gold table to CSV
-    # db.execute("""
-    #     COPY gold.dim_customers TO 'output/customers.csv'
-    #     (HEADER, DELIMITER ',')
-    # """)
-    pass
+db.execute(f"""
+    COPY gold.top_earthquakes
+    TO \\'{output_dir / "top_earthquakes.csv"}\\'
+    (HEADER, DELIMITER \\',\\')
+""")
+rows = db.execute("SELECT COUNT(*) FROM gold.top_earthquakes").fetchone()[0]
+print(f"Exported {rows} rows to output/top_earthquakes.csv")
+
+db.execute(f"""
+    COPY gold.region_risk
+    TO \\'{output_dir / "region_risk.csv"}\\'
+    (HEADER, DELIMITER \\',\\')
+""")
+rows = db.execute("SELECT COUNT(*) FROM gold.region_risk").fetchone()[0]
+print(f"Exported {rows} rows to output/region_risk.csv")
 '''
 
 CLAUDE_MD_TEMPLATE = """\
@@ -276,14 +442,14 @@ GROUP BY 1, 2
 ## Python Script Convention
 
 ```python
-import duckdb
-
-def run(db: duckdb.DuckDBPyConnection) -> None:
-    db.execute("CREATE SCHEMA IF NOT EXISTS landing")
-    db.execute("CREATE OR REPLACE TABLE landing.data AS SELECT * FROM ...")
+# A DuckDB connection is available as `db` — just write top-level code
+db.execute("CREATE SCHEMA IF NOT EXISTS landing")
+db.execute("CREATE OR REPLACE TABLE landing.data AS SELECT * FROM ...")
 ```
 
-- Every script must have a `run(db)` function
+- Scripts run as top-level code with `db` (DuckDB connection) pre-injected
+- Legacy `def run(db)` scripts are still supported (backward compatible)
+- `.dpnb` notebooks can also be used as ingest/export steps
 - Scripts prefixed with `_` are skipped
 
 ## Schemas

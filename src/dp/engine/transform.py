@@ -25,6 +25,10 @@ console = Console()
 CONFIG_PATTERN = re.compile(r"^--\s*config:\s*(.+)$", re.MULTILINE)
 # -- depends_on: bronze.customers, bronze.orders
 DEPENDS_PATTERN = re.compile(r"^--\s*depends_on:\s*(.+)$", re.MULTILINE)
+# -- description: Human-readable model description
+DESCRIPTION_PATTERN = re.compile(r"^--\s*description:\s*(.+)$", re.MULTILINE)
+# -- col: column_name: Column description
+COL_PATTERN = re.compile(r"^--\s*col:\s*(\w+):\s*(.+)$", re.MULTILINE)
 
 
 @dataclass
@@ -39,6 +43,8 @@ class SQLModel:
     query: str  # SQL without config comments
     materialized: str  # "view" or "table"
     depends_on: list[str] = field(default_factory=list)
+    description: str = ""
+    column_docs: dict[str, str] = field(default_factory=dict)
     content_hash: str = ""
     upstream_hash: str = ""
 
@@ -74,13 +80,29 @@ def _parse_depends(sql: str) -> list[str]:
     return [dep.strip() for dep in match.group(1).split(",") if dep.strip()]
 
 
+def _parse_description(sql: str) -> str:
+    """Parse -- description: text from SQL header."""
+    match = DESCRIPTION_PATTERN.search(sql)
+    return match.group(1).strip() if match else ""
+
+
+def _parse_column_docs(sql: str) -> dict[str, str]:
+    """Parse -- col: name: description lines from SQL header."""
+    return {m.group(1): m.group(2).strip() for m in COL_PATTERN.finditer(sql)}
+
+
 def _strip_config_comments(sql: str) -> str:
-    """Remove config/depends comments, return the actual query."""
+    """Remove config/depends/description/col comments, return the actual query."""
     lines = sql.split("\n")
     query_lines = []
     for line in lines:
         stripped = line.strip()
-        if stripped.startswith("-- config:") or stripped.startswith("-- depends_on:"):
+        if (
+            stripped.startswith("-- config:")
+            or stripped.startswith("-- depends_on:")
+            or stripped.startswith("-- description:")
+            or stripped.startswith("-- col:")
+        ):
             continue
         query_lines.append(line)
     # Strip leading blank lines
@@ -103,6 +125,8 @@ def discover_models(transform_dir: Path) -> list[SQLModel]:
         sql = sql_file.read_text()
         config = _parse_config(sql)
         depends = _parse_depends(sql)
+        description = _parse_description(sql)
+        column_docs = _parse_column_docs(sql)
         query = _strip_config_comments(sql)
 
         # Schema from folder name (convention) or config override
@@ -122,6 +146,8 @@ def discover_models(transform_dir: Path) -> list[SQLModel]:
                 query=query,
                 materialized=materialized,
                 depends_on=depends,
+                description=description,
+                column_docs=column_docs,
             )
         )
 

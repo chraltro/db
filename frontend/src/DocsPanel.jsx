@@ -1,205 +1,99 @@
 import React, { useState, useEffect } from "react";
 import { api } from "./api";
 
-// Minimal markdown renderer — handles headers, tables, code blocks, bold, links, lists
-function renderMarkdown(md) {
-  const lines = md.split("\n");
-  const elements = [];
-  let i = 0;
-  let key = 0;
-
-  while (i < lines.length) {
-    const line = lines[i];
-
-    // Code blocks
-    if (line.startsWith("```")) {
-      const lang = line.slice(3).trim();
-      const codeLines = [];
-      i++;
-      while (i < lines.length && !lines[i].startsWith("```")) {
-        codeLines.push(lines[i]);
-        i++;
-      }
-      i++; // skip closing ```
-      elements.push(
-        <pre key={key++} style={mdStyles.codeBlock}>
-          <code>{codeLines.join("\n")}</code>
-        </pre>,
-      );
-      continue;
-    }
-
-    // Tables
-    if (line.includes("|") && line.trim().startsWith("|")) {
-      const tableRows = [];
-      while (i < lines.length && lines[i].includes("|") && lines[i].trim().startsWith("|")) {
-        const cells = lines[i]
-          .split("|")
-          .slice(1, -1)
-          .map((c) => c.trim());
-        tableRows.push(cells);
-        i++;
-      }
-      if (tableRows.length >= 2) {
-        const header = tableRows[0];
-        // Skip separator row (row 1)
-        const body = tableRows.slice(2);
-        elements.push(
-          <table key={key++} style={mdStyles.table}>
-            <thead>
-              <tr>
-                {header.map((h, j) => (
-                  <th key={j} style={mdStyles.th}>
-                    {renderInline(h)}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {body.map((row, ri) => (
-                <tr key={ri}>
-                  {row.map((cell, ci) => (
-                    <td key={ci} style={mdStyles.td}>
-                      {renderInline(cell)}
-                    </td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>,
-        );
-      }
-      continue;
-    }
-
-    // Details/summary (pass through as-is)
-    if (line.trim().startsWith("<details>") || line.trim().startsWith("</details>")) {
-      i++;
-      continue;
-    }
-    if (line.trim().startsWith("<summary>")) {
-      const text = line.replace(/<\/?summary>/g, "").trim();
-      elements.push(
-        <div key={key++} style={mdStyles.summary}>
-          {text}
-        </div>,
-      );
-      i++;
-      continue;
-    }
-
-    // Headings
-    if (line.startsWith("### ")) {
-      elements.push(
-        <h3 key={key++} style={mdStyles.h3}>
-          {renderInline(line.slice(4).replace(/<[^>]*>/g, ""))}
-        </h3>,
-      );
-      i++;
-      continue;
-    }
-    if (line.startsWith("## ")) {
-      elements.push(
-        <h2 key={key++} style={mdStyles.h2}>
-          {renderInline(line.slice(3))}
-        </h2>,
-      );
-      i++;
-      continue;
-    }
-    if (line.startsWith("# ")) {
-      elements.push(
-        <h1 key={key++} style={mdStyles.h1}>
-          {renderInline(line.slice(2))}
-        </h1>,
-      );
-      i++;
-      continue;
-    }
-
-    // Horizontal rule
-    if (line.trim() === "---") {
-      elements.push(<hr key={key++} style={mdStyles.hr} />);
-      i++;
-      continue;
-    }
-
-    // List items
-    if (line.trimStart().startsWith("- ")) {
-      const indent = line.length - line.trimStart().length;
-      elements.push(
-        <div key={key++} style={{ ...mdStyles.listItem, paddingLeft: 12 + indent * 8 }}>
-          {renderInline(line.trimStart().slice(2))}
-        </div>,
-      );
-      i++;
-      continue;
-    }
-
-    // Empty line
-    if (line.trim() === "") {
-      i++;
-      continue;
-    }
-
-    // Paragraph
-    elements.push(
-      <p key={key++} style={mdStyles.p}>
-        {renderInline(line)}
-      </p>,
-    );
-    i++;
-  }
-
-  return elements;
+function NavItem({ table, isActive, onClick }) {
+  return (
+    <div
+      style={{
+        ...s.navItem,
+        background: isActive ? "var(--dp-bg-secondary)" : "transparent",
+        borderLeft: isActive ? "2px solid var(--dp-accent)" : "2px solid transparent",
+      }}
+      onClick={onClick}
+    >
+      <span style={s.navLabel}>{table.name}</span>
+      <span style={s.navBadge}>{table.type}</span>
+    </div>
+  );
 }
 
-function renderInline(text) {
-  // Bold: **text**
-  // Code: `text`
-  // Links: [text](url)
-  const parts = [];
-  let remaining = text;
-  let k = 0;
+function TableDetail({ table }) {
+  const [showSql, setShowSql] = useState(false);
 
-  while (remaining.length > 0) {
-    // Code
-    const codeMatch = remaining.match(/`([^`]+)`/);
-    // Bold
-    const boldMatch = remaining.match(/\*\*([^*]+)\*\*/);
-
-    const matches = [codeMatch, boldMatch].filter(Boolean);
-    if (matches.length === 0) {
-      parts.push(remaining);
-      break;
-    }
-
-    // Pick earliest match
-    const earliest = matches.reduce((a, b) => (a.index < b.index ? a : b));
-
-    if (earliest.index > 0) {
-      parts.push(remaining.slice(0, earliest.index));
-    }
-
-    if (earliest === codeMatch) {
-      parts.push(
-        <code key={k++} style={mdStyles.inlineCode}>
-          {codeMatch[1]}
-        </code>,
-      );
-    } else {
-      parts.push(<strong key={k++}>{boldMatch[1]}</strong>);
-    }
-
-    remaining = remaining.slice(earliest.index + earliest[0].length);
+  if (!table) {
+    return <div style={s.detailEmpty}>Select a table from the sidebar to view details.</div>;
   }
 
-  return parts;
+  const hasColDocs = table.columns.some((c) => c.description);
+
+  return (
+    <div style={s.detail}>
+      <div style={s.detailHeader}>
+        <code style={s.detailTitle}>{table.full_name}</code>
+        <span style={s.detailType}>{table.type.toUpperCase()}</span>
+      </div>
+
+      {table.description && <p style={s.detailDesc}>{table.description}</p>}
+
+      <div style={s.metaRow}>
+        {table.materialized && (
+          <span style={s.metaTag}>Materialized: {table.materialized}</span>
+        )}
+        {table.row_count != null && (
+          <span style={s.metaTag}>Rows: {table.row_count.toLocaleString()}</span>
+        )}
+        {table.depends_on && table.depends_on.length > 0 && (
+          <span style={s.metaTag}>
+            Depends on: {table.depends_on.map((d) => (
+              <code key={d} style={s.depCode}>{d}</code>
+            ))}
+          </span>
+        )}
+      </div>
+
+      <h4 style={s.sectionTitle}>Columns ({table.columns.length})</h4>
+      <table style={s.colTable}>
+        <thead>
+          <tr>
+            <th style={s.colTh}>Column</th>
+            <th style={s.colTh}>Type</th>
+            <th style={s.colTh}>Nullable</th>
+            {hasColDocs && <th style={s.colTh}>Description</th>}
+          </tr>
+        </thead>
+        <tbody>
+          {table.columns.map((col) => (
+            <tr key={col.name}>
+              <td style={s.colTdName}><code>{col.name}</code></td>
+              <td style={s.colTd}>{col.type}</td>
+              <td style={s.colTd}>{col.nullable ? "yes" : "no"}</td>
+              {hasColDocs && <td style={s.colTd}>{col.description}</td>}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
+      {table.sql && (
+        <div style={s.sqlSection}>
+          <button onClick={() => setShowSql(!showSql)} style={s.sqlToggle}>
+            {showSql ? "\u25BE" : "\u25B8"} SQL Source
+          </button>
+          {showSql && (
+            <pre style={s.sqlBlock}>
+              <code>{table.sql}</code>
+            </pre>
+          )}
+        </div>
+      )}
+    </div>
+  );
 }
 
 export default function DocsPanel() {
-  const [markdown, setMarkdown] = useState(null);
+  const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [selected, setSelected] = useState(null);
+  const [expandedSchemas, setExpandedSchemas] = useState({});
 
   useEffect(() => {
     loadDocs();
@@ -208,51 +102,119 @@ export default function DocsPanel() {
   async function loadDocs() {
     setLoading(true);
     try {
-      const data = await api.getDocs();
-      setMarkdown(data.markdown);
+      const result = await api.getStructuredDocs();
+      setData(result);
+      // Auto-expand all schemas and select first table
+      const expanded = {};
+      for (const schema of result.schemas || []) {
+        expanded[schema.name] = true;
+      }
+      setExpandedSchemas(expanded);
+      if (!selected && result.schemas?.length > 0 && result.schemas[0].tables.length > 0) {
+        setSelected(result.schemas[0].tables[0].full_name);
+      }
     } catch {}
     setLoading(false);
   }
 
+  function toggleSchema(name) {
+    setExpandedSchemas((prev) => ({ ...prev, [name]: !prev[name] }));
+  }
+
+  // Find selected table object
+  let selectedTable = null;
+  if (data && selected) {
+    for (const schema of data.schemas) {
+      for (const t of schema.tables) {
+        if (t.full_name === selected) {
+          selectedTable = t;
+          break;
+        }
+      }
+      if (selectedTable) break;
+    }
+  }
+
+  const totalTables = data ? data.schemas.reduce((sum, sc) => sum + sc.tables.length, 0) : 0;
+
   return (
-    <div style={styles.container}>
-      <div style={styles.header}>
+    <div style={s.container}>
+      <div style={s.header}>
         <span>Documentation</span>
-        <button onClick={loadDocs} style={styles.refreshBtn}>
-          Refresh
-        </button>
+        <span style={s.headerCount}>{totalTables > 0 ? `${totalTables} tables` : ""}</span>
+        <button onClick={loadDocs} style={s.refreshBtn}>Refresh</button>
       </div>
-      <div style={styles.content}>
-        {loading && <div style={styles.loading}>Generating docs...</div>}
-        {!loading && markdown && renderMarkdown(markdown)}
-        {!loading && !markdown && (
-          <div style={styles.empty}>No documentation available. Run a pipeline first.</div>
+      <div style={s.body}>
+        {loading && <div style={s.loading}>Loading docs...</div>}
+        {!loading && (!data || data.schemas.length === 0) && (
+          <div style={s.loading}>No documentation available. Run a pipeline first.</div>
+        )}
+        {!loading && data && data.schemas.length > 0 && (
+          <>
+            <div style={s.nav}>
+              {data.schemas.map((schema) => (
+                <div key={schema.name}>
+                  <div style={s.schemaRow} onClick={() => toggleSchema(schema.name)}>
+                    <span style={{ ...s.schemaArrow, transform: expandedSchemas[schema.name] ? "rotate(0deg)" : "rotate(-90deg)" }}>
+                      {"\u25BE"}
+                    </span>
+                    <span style={s.schemaName}>{schema.name}</span>
+                    <span style={s.schemaCount}>{schema.tables.length}</span>
+                  </div>
+                  {expandedSchemas[schema.name] && schema.tables.map((t) => (
+                    <NavItem
+                      key={t.full_name}
+                      table={t}
+                      isActive={selected === t.full_name}
+                      onClick={() => setSelected(t.full_name)}
+                    />
+                  ))}
+                </div>
+              ))}
+            </div>
+            <div style={s.content}>
+              <TableDetail table={selectedTable} />
+            </div>
+          </>
         )}
       </div>
     </div>
   );
 }
 
-const styles = {
+const s = {
   container: { display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" },
-  header: { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 12px", borderBottom: "1px solid var(--dp-border)", fontWeight: 600, fontSize: "13px" },
+  header: { display: "flex", alignItems: "center", gap: "8px", padding: "8px 12px", borderBottom: "1px solid var(--dp-border)", fontWeight: 600, fontSize: "13px" },
+  headerCount: { color: "var(--dp-text-dim)", fontWeight: 400, fontSize: "12px", flex: 1 },
   refreshBtn: { background: "var(--dp-btn-bg)", border: "1px solid var(--dp-btn-border)", borderRadius: "var(--dp-radius-lg)", color: "var(--dp-text)", padding: "4px 12px", cursor: "pointer", fontSize: "12px", fontWeight: 500 },
-  content: { flex: 1, overflow: "auto", padding: "16px 24px", maxWidth: "900px" },
-  loading: { color: "var(--dp-text-secondary)", textAlign: "center", padding: "24px" },
-  empty: { color: "var(--dp-text-dim)", textAlign: "center", padding: "24px" },
-};
-
-const mdStyles = {
-  h1: { fontSize: "24px", fontWeight: 700, margin: "24px 0 12px", borderBottom: "1px solid var(--dp-border)", paddingBottom: "8px" },
-  h2: { fontSize: "20px", fontWeight: 600, margin: "20px 0 10px", borderBottom: "1px solid var(--dp-border)", paddingBottom: "6px" },
-  h3: { fontSize: "16px", fontWeight: 600, margin: "16px 0 8px" },
-  p: { margin: "4px 0", lineHeight: 1.5, fontSize: "13px" },
-  hr: { border: "none", borderTop: "1px solid var(--dp-border)", margin: "16px 0" },
-  listItem: { fontSize: "13px", lineHeight: 1.6, paddingLeft: "12px" },
-  table: { width: "100%", borderCollapse: "collapse", margin: "8px 0", fontSize: "12px", fontFamily: "var(--dp-font-mono)" },
-  th: { textAlign: "left", padding: "6px 12px", borderBottom: "1px solid var(--dp-border-light)", color: "var(--dp-text-secondary)", fontWeight: 600 },
-  td: { padding: "4px 12px", borderBottom: "1px solid var(--dp-border)", color: "var(--dp-text)" },
-  codeBlock: { background: "var(--dp-bg-secondary)", border: "1px solid var(--dp-border)", borderRadius: "var(--dp-radius-lg)", padding: "12px", margin: "8px 0", fontSize: "12px", fontFamily: "var(--dp-font-mono)", overflow: "auto", color: "var(--dp-text)" },
-  inlineCode: { background: "var(--dp-btn-bg)", padding: "1px 5px", borderRadius: "3px", fontSize: "12px", fontFamily: "var(--dp-font-mono)" },
-  summary: { color: "var(--dp-accent)", cursor: "pointer", fontSize: "13px", margin: "4px 0" },
+  body: { display: "flex", flex: 1, overflow: "hidden" },
+  loading: { color: "var(--dp-text-secondary)", textAlign: "center", padding: "24px", width: "100%" },
+  // Left nav
+  nav: { width: "220px", minWidth: "220px", borderRight: "1px solid var(--dp-border)", overflow: "auto", padding: "4px 0" },
+  schemaRow: { display: "flex", alignItems: "center", gap: "6px", padding: "6px 12px", cursor: "pointer", fontSize: "11px", fontWeight: 600, color: "var(--dp-text-dim)", letterSpacing: "0.5px", textTransform: "uppercase" },
+  schemaArrow: { fontSize: "10px", width: "10px", display: "inline-block", transition: "transform 0.12s ease" },
+  schemaName: { flex: 1 },
+  schemaCount: { fontSize: "10px", color: "var(--dp-text-dim)", fontWeight: 400 },
+  navItem: { display: "flex", alignItems: "center", gap: "6px", padding: "5px 12px 5px 28px", cursor: "pointer", fontSize: "12px", whiteSpace: "nowrap" },
+  navLabel: { flex: 1, overflow: "hidden", textOverflow: "ellipsis", color: "var(--dp-text)" },
+  navBadge: { fontSize: "10px", color: "var(--dp-text-dim)", flexShrink: 0 },
+  // Right content
+  content: { flex: 1, overflow: "auto", padding: "20px 28px" },
+  detailEmpty: { color: "var(--dp-text-dim)", fontSize: "13px", padding: "24px", textAlign: "center" },
+  detail: {},
+  detailHeader: { display: "flex", alignItems: "center", gap: "10px", marginBottom: "12px" },
+  detailTitle: { fontSize: "18px", fontWeight: 600, fontFamily: "var(--dp-font-mono)", color: "var(--dp-text)" },
+  detailType: { fontSize: "11px", fontWeight: 500, color: "var(--dp-text-dim)", background: "var(--dp-bg-secondary)", padding: "2px 8px", borderRadius: "var(--dp-radius)" },
+  detailDesc: { margin: "0 0 12px", fontSize: "13px", lineHeight: 1.5, color: "var(--dp-text-secondary)" },
+  metaRow: { display: "flex", flexWrap: "wrap", gap: "8px", marginBottom: "16px" },
+  metaTag: { fontSize: "12px", color: "var(--dp-text-secondary)", background: "var(--dp-bg-secondary)", padding: "3px 10px", borderRadius: "var(--dp-radius)", display: "inline-flex", alignItems: "center", gap: "4px" },
+  depCode: { fontFamily: "var(--dp-font-mono)", fontSize: "11px", color: "var(--dp-accent)" },
+  sectionTitle: { fontSize: "13px", fontWeight: 600, margin: "16px 0 8px", color: "var(--dp-text)" },
+  colTable: { width: "100%", borderCollapse: "collapse", fontSize: "12px", fontFamily: "var(--dp-font-mono)" },
+  colTh: { textAlign: "left", padding: "6px 12px", borderBottom: "1px solid var(--dp-border-light)", color: "var(--dp-text-secondary)", fontWeight: 600, fontFamily: "var(--dp-font)", fontSize: "11px" },
+  colTd: { padding: "4px 12px", borderBottom: "1px solid var(--dp-border)", color: "var(--dp-text)", fontSize: "12px" },
+  colTdName: { padding: "4px 12px", borderBottom: "1px solid var(--dp-border)", color: "var(--dp-accent)", fontSize: "12px" },
+  sqlSection: { marginTop: "16px" },
+  sqlToggle: { background: "none", border: "none", color: "var(--dp-accent)", cursor: "pointer", fontSize: "12px", fontWeight: 500, padding: "4px 0" },
+  sqlBlock: { background: "var(--dp-bg-secondary)", border: "1px solid var(--dp-border)", borderRadius: "var(--dp-radius-lg)", padding: "12px", margin: "8px 0", fontSize: "12px", fontFamily: "var(--dp-font-mono)", overflow: "auto", color: "var(--dp-text)" },
 };

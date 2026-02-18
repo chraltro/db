@@ -44,11 +44,22 @@ function CellOutput({ outputs }) {
   );
 }
 
-function NotebookCell({ cell, notebookName, onUpdate }) {
+function NotebookCell({ cell, notebookName, onUpdate, onDelete, externalRunning }) {
   const [source, setSource] = useState(cell.source || "");
   const [outputs, setOutputs] = useState(cell.outputs || []);
   const [running, setRunning] = useState(false);
   const [duration, setDuration] = useState(cell.duration_ms);
+  const isRunning = running || externalRunning;
+
+  // Sync from parent when cell props change (e.g. after Run All)
+  useEffect(() => {
+    setOutputs(cell.outputs || []);
+    setDuration(cell.duration_ms);
+  }, [cell.outputs, cell.duration_ms]);
+
+  useEffect(() => {
+    setSource(cell.source || "");
+  }, [cell.id]);
 
   async function runCell() {
     setRunning(true);
@@ -66,8 +77,10 @@ function NotebookCell({ cell, notebookName, onUpdate }) {
   if (cell.type === "markdown") {
     return (
       <div style={cs.mdCell}>
-        <div style={cs.cellHeaderMd}>
+        <div style={cs.cellHeader}>
           <span style={cs.cellType}>MD</span>
+          <span style={{ flex: 1 }} />
+          <button data-dp-danger="" onClick={onDelete} style={cs.deleteBtn} title="Delete cell">&times;</button>
         </div>
         <textarea
           value={source}
@@ -85,11 +98,13 @@ function NotebookCell({ cell, notebookName, onUpdate }) {
   return (
     <div style={cs.codeCell}>
       <div style={cs.cellHeader}>
-        <button onClick={runCell} disabled={running} style={cs.runBtn}>
-          {running ? "..." : "\u25B6"}
+        <button onClick={runCell} disabled={isRunning} style={cs.runBtn}>
+          {isRunning ? "..." : "\u25B6"}
         </button>
         <span style={cs.cellType}>SQL</span>
+        <span style={{ flex: 1 }} />
         {duration != null && <span style={cs.duration}>{duration}ms</span>}
+        <button data-dp-danger="" onClick={onDelete} style={cs.deleteBtn} title="Delete cell">&times;</button>
       </div>
       <textarea
         value={source}
@@ -112,13 +127,22 @@ function NotebookCell({ cell, notebookName, onUpdate }) {
   );
 }
 
-export default function NotebookPanel() {
+export default function NotebookPanel({ openPath }) {
   const [notebooks, setNotebooks] = useState([]);
   const [active, setActive] = useState(null);
   const [notebook, setNotebook] = useState(null);
   const [newName, setNewName] = useState("");
+  const [runningAll, setRunningAll] = useState(false);
+  const [runningCellId, setRunningCellId] = useState(null);
 
   useEffect(() => { loadList(); }, []);
+
+  // Open a notebook when openPath changes (e.g. clicked from file tree)
+  useEffect(() => {
+    if (openPath && openPath !== active) {
+      openNotebook(openPath);
+    }
+  }, [openPath]);
 
   async function loadList() {
     try {
@@ -160,14 +184,32 @@ export default function NotebookPanel() {
   }
 
   async function runAll() {
-    if (!active) return;
+    if (!active || !notebook || runningAll) return;
+    setRunningAll(true);
     try {
       await saveNotebook();
-      const result = await api.runNotebook(active);
-      setNotebook(result);
+      const cells = [...notebook.cells];
+      let firstCode = true;
+      for (let i = 0; i < cells.length; i++) {
+        const cell = cells[i];
+        if (cell.type !== "code") continue;
+        setRunningCellId(cell.id);
+        try {
+          const result = await api.runCell(active, cell.source, { reset: firstCode });
+          firstCode = false;
+          cells[i] = { ...cell, outputs: result.outputs, duration_ms: result.duration_ms };
+          setNotebook((prev) => ({ ...prev, cells: [...cells] }));
+        } catch (e) {
+          cells[i] = { ...cell, outputs: [{ type: "error", text: e.message }] };
+          setNotebook((prev) => ({ ...prev, cells: [...cells] }));
+          break;
+        }
+      }
     } catch (e) {
       alert(e.message);
     }
+    setRunningCellId(null);
+    setRunningAll(false);
   }
 
   function addCell(type) {
@@ -209,9 +251,9 @@ export default function NotebookPanel() {
             <div style={s.empty}>No notebooks yet. Create one above.</div>
           )}
           {notebooks.map((nb) => (
-            <div key={nb.name} data-dp-notebook="" onClick={() => openNotebook(nb.name)} style={s.nbItem}>
+            <div key={nb.path} data-dp-notebook="" onClick={() => openNotebook(nb.path)} style={s.nbItem}>
               <span style={s.nbName}>{nb.title || nb.name}</span>
-              <span style={s.nbMeta}>{nb.cells} cells</span>
+              <span style={s.nbMeta}><span style={s.nbPath}>{nb.path}</span> · {nb.cells} cells</span>
             </div>
           ))}
         </div>
@@ -228,7 +270,9 @@ export default function NotebookPanel() {
           <button onClick={() => addCell("code")} style={s.btn}>+ Code</button>
           <button onClick={() => addCell("markdown")} style={s.btn}>+ Markdown</button>
           <button onClick={saveNotebook} style={s.btn}>Save</button>
-          <button onClick={runAll} style={s.runAllBtn}>Run All</button>
+          <button onClick={runAll} disabled={runningAll} style={s.runAllBtn}>
+            {runningAll ? "Running..." : "Run All"}
+          </button>
         </div>
       </div>
       <div style={s.cells}>
@@ -241,8 +285,9 @@ export default function NotebookPanel() {
               cell={cell}
               notebookName={active}
               onUpdate={(updated) => updateCell(i, updated)}
+              onDelete={() => deleteCell(i)}
+              externalRunning={runningCellId === cell.id}
             />
-            <button data-dp-danger="" onClick={() => deleteCell(i)} style={cs.deleteBtn} title="Delete cell">&times;</button>
           </div>
         ))}
       </div>
@@ -262,6 +307,7 @@ const s = {
   nbItem: { padding: "10px 12px", borderRadius: "var(--dp-radius-lg)", cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "4px", border: "1px solid var(--dp-border)" },
   nbName: { fontWeight: 500, fontSize: "13px" },
   nbMeta: { color: "var(--dp-text-secondary)", fontSize: "12px" },
+  nbPath: { fontFamily: "var(--dp-font-mono)", fontSize: "11px", color: "var(--dp-text-dim)" },
   nbHeader: { display: "flex", alignItems: "center", gap: "12px", padding: "8px 12px", borderBottom: "1px solid var(--dp-border)" },
   backBtn: { padding: "4px 8px", background: "none", border: "1px solid var(--dp-border-light)", borderRadius: "var(--dp-radius-lg)", color: "var(--dp-text-secondary)", cursor: "pointer", fontSize: "12px" },
   nbTitle: { fontWeight: 600, fontSize: "14px", flex: 1 },
@@ -274,11 +320,10 @@ const cs = {
   cellWrap: { position: "relative", marginBottom: "10px" },
   codeCell: { border: "1px solid var(--dp-border)", borderRadius: "var(--dp-radius-lg)", background: "var(--dp-bg-tertiary)", overflow: "hidden" },
   mdCell: { border: "1px solid var(--dp-border)", borderRadius: "var(--dp-radius-lg)", background: "var(--dp-bg-tertiary)", overflow: "hidden" },
-  cellHeader: { display: "flex", alignItems: "center", gap: "8px", padding: "4px 8px", borderBottom: "1px solid var(--dp-border)", background: "var(--dp-bg-secondary)" },
-  cellHeaderMd: { display: "flex", alignItems: "center", gap: "8px", padding: "4px 8px", borderBottom: "1px solid var(--dp-border)", background: "var(--dp-bg-secondary)" },
+  cellHeader: { display: "flex", alignItems: "center", gap: "8px", padding: "4px 8px", minHeight: "32px", borderBottom: "1px solid var(--dp-border)", background: "var(--dp-bg-secondary)" },
   cellType: { fontSize: "9px", fontWeight: 700, color: "var(--dp-text-dim)", letterSpacing: "0.5px", textTransform: "uppercase" },
   runBtn: { width: "28px", height: "24px", background: "var(--dp-green)", border: "none", borderRadius: "var(--dp-radius)", color: "#fff", cursor: "pointer", fontSize: "11px", fontWeight: 600 },
-  duration: { color: "var(--dp-text-secondary)", fontSize: "11px", marginLeft: "auto" },
+  duration: { color: "var(--dp-text-secondary)", fontSize: "11px" },
   codeInput: { width: "100%", padding: "8px 12px", background: "transparent", border: "none", color: "var(--dp-text)", fontFamily: "var(--dp-font-mono)", fontSize: "13px", resize: "vertical", outline: "none", boxSizing: "border-box", lineHeight: 1.5 },
   mdInput: { width: "100%", padding: "8px 12px", background: "transparent", border: "none", color: "var(--dp-text)", fontSize: "13px", resize: "vertical", outline: "none", boxSizing: "border-box", lineHeight: 1.5 },
   outputArea: { borderTop: "1px solid var(--dp-border)", padding: "8px 12px", maxHeight: "300px", overflow: "auto", background: "color-mix(in srgb, var(--dp-bg) 50%, var(--dp-bg-tertiary))" },
@@ -290,5 +335,5 @@ const cs = {
   truncated: { padding: "4px", color: "var(--dp-yellow)", fontSize: "11px" },
   error: { color: "var(--dp-red)", fontSize: "12px", fontFamily: "var(--dp-font-mono)", margin: 0, whiteSpace: "pre-wrap" },
   text: { color: "var(--dp-text)", fontSize: "12px", fontFamily: "var(--dp-font-mono)", margin: 0, whiteSpace: "pre-wrap" },
-  deleteBtn: { position: "absolute", top: "4px", right: "4px", width: "22px", height: "22px", background: "none", border: "none", color: "var(--dp-text-dim)", cursor: "pointer", fontSize: "14px", lineHeight: "22px", textAlign: "center", borderRadius: "var(--dp-radius)" },
+  deleteBtn: { width: "22px", height: "22px", background: "none", border: "none", color: "var(--dp-text-dim)", cursor: "pointer", fontSize: "14px", lineHeight: "22px", textAlign: "center", borderRadius: "var(--dp-radius)", flexShrink: 0 },
 };

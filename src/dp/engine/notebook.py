@@ -7,6 +7,7 @@ Code cells share a namespace with `db` (DuckDB connection) and `pd` (pandas if a
 
 from __future__ import annotations
 
+import ast
 import io
 import json
 import sys
@@ -91,17 +92,29 @@ def execute_cell(
 
     try:
         with redirect_stdout(stdout_capture), redirect_stderr(stderr_capture):
-            # If the last line is an expression, capture its value
-            lines = source.strip().split("\n")
-            # Try to compile as an expression first (for display)
-            try:
-                code = compile(source, "<cell>", "eval")
-                result = eval(code, namespace)
-                if result is not None:
-                    outputs.append(_format_result(result))
-            except SyntaxError:
-                # Not a simple expression — execute as statements
-                exec(compile(source, "<cell>", "exec"), namespace)
+            # Parse source into an AST so we can separate the last expression
+            # from preceding statements. exec() discards expression values,
+            # so we eval() the last expression separately to capture its result.
+            tree = ast.parse(source)
+            last_expr_value = None
+
+            if tree.body and isinstance(tree.body[-1], ast.Expr):
+                # Last statement is an expression — pop it off for eval
+                last_expr_node = tree.body.pop()
+                # Execute all preceding statements
+                if tree.body:
+                    exec(compile(tree, "<cell>", "exec"), namespace)
+                # Eval the last expression to capture its display value
+                expr_code = compile(
+                    ast.Expression(last_expr_node.value), "<cell>", "eval"
+                )
+                last_expr_value = eval(expr_code, namespace)
+            else:
+                # No trailing expression (e.g. assignment, import, etc.)
+                exec(compile(tree, "<cell>", "exec"), namespace)
+
+            if last_expr_value is not None:
+                outputs.append(_format_result(last_expr_value))
 
         # Capture stdout
         stdout_text = stdout_capture.getvalue()

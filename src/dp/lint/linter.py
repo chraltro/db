@@ -35,12 +35,20 @@ def lint(
         console.print("[yellow]No SQL files found in transform/[/yellow]")
         return 0, []
 
-    # Build config
-    config_kwargs: dict = {"dialect": dialect}
-    if rules:
-        config_kwargs["rules"] = rules
-
-    config = FluffConfig.from_kwargs(**config_kwargs)
+    # Use .sqlfluff config file from project root if it exists,
+    # falling back to kwargs-based config
+    project_dir = transform_dir.parent
+    sqlfluff_file = project_dir / ".sqlfluff"
+    if sqlfluff_file.exists():
+        overrides: dict = {}
+        if rules:
+            overrides["rules"] = ",".join(rules)
+        config = FluffConfig.from_path(path=str(project_dir), overrides=overrides or None)
+    else:
+        config_kwargs: dict = {"dialect": dialect}
+        if rules:
+            config_kwargs["rules"] = rules
+        config = FluffConfig.from_kwargs(**config_kwargs)
     linter = Linter(config=config)
 
     all_violations: list[dict] = []
@@ -60,24 +68,26 @@ def lint(
                 break
         clean_sql = "\n".join(lines[header_count:])
 
+        result = linter.lint_string(clean_sql, fix=fix)
+
         if fix:
-            result = linter.fix_string(clean_sql)
-            if result.tree:
-                fixed_sql = result.tree.raw
+            fixed_sql, changed = result.fix_string()
+            if changed:
                 # Re-insert config comment header
                 header_lines = lines[:header_count]
                 sql_file.write_text("\n".join(header_lines) + "\n" + fixed_sql)
-        else:
-            result = linter.lint_string(clean_sql)
+                # Re-lint to report only remaining (unfixable) violations
+                result = linter.lint_string(fixed_sql)
 
         rel_path = sql_file.relative_to(transform_dir.parent)
-        for violation in result.violations:
+        for violation in result.get_violations():
             all_violations.append({
                 "file": str(rel_path),
                 "line": violation.line_no + header_count,
                 "col": violation.line_pos,
                 "code": violation.rule_code(),
                 "description": violation.desc(),
+                "fixable": bool(violation.fixable),
             })
 
     return len(all_violations), all_violations

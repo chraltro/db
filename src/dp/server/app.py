@@ -310,13 +310,44 @@ class SaveFileRequest(BaseModel):
 
 @app.put("/api/files/{file_path:path}")
 def save_file(request: Request, file_path: str, req: SaveFileRequest) -> dict:
-    """Save a file."""
+    """Save a file (creates it if it doesn't exist)."""
     _require_permission(request, "write")
-    full_path = _get_project_dir() / file_path
-    if not full_path.exists():
-        raise HTTPException(404, f"File not found: {file_path}")
+    project_dir = _get_project_dir()
+    full_path = (project_dir / file_path).resolve()
+    # Path traversal protection
+    if not str(full_path).startswith(str(project_dir.resolve())):
+        raise HTTPException(400, "Invalid file path")
+    # Only allow known file extensions
+    if full_path.suffix not in (".sql", ".py", ".yml", ".yaml", ".dpnb", ".sqlfluff"):
+        raise HTTPException(400, f"Unsupported file type: {full_path.suffix}")
+    full_path.parent.mkdir(parents=True, exist_ok=True)
     full_path.write_text(req.content)
     return {"path": file_path, "status": "saved"}
+
+
+@app.delete("/api/files/{file_path:path}")
+def delete_file(request: Request, file_path: str) -> dict:
+    """Delete a file."""
+    _require_permission(request, "write")
+    project_dir = _get_project_dir()
+    full_path = (project_dir / file_path).resolve()
+    # Path traversal protection
+    if not str(full_path).startswith(str(project_dir.resolve())):
+        raise HTTPException(400, "Invalid file path")
+    if not full_path.exists():
+        raise HTTPException(404, f"File not found: {file_path}")
+    if not full_path.is_file():
+        raise HTTPException(400, "Not a file")
+    # Prevent deleting critical files
+    if full_path.name in ("project.yml", ".env", ".gitignore"):
+        raise HTTPException(400, f"Cannot delete {full_path.name}")
+    full_path.unlink()
+    # Remove empty parent directories up to project root
+    parent = full_path.parent
+    while parent != project_dir.resolve() and parent.is_dir() and not any(parent.iterdir()):
+        parent.rmdir()
+        parent = parent.parent
+    return {"path": file_path, "status": "deleted"}
 
 
 def _detect_language(path: Path) -> str:
@@ -624,14 +655,85 @@ def lint_endpoint(request: Request, fix: bool = False) -> dict:
     return {"count": count, "violations": violations}
 
 
+@app.get("/api/lint/config")
+def get_lint_config(request: Request) -> dict:
+    """Get the .sqlfluff config file contents."""
+    _require_permission(request, "read")
+    sqlfluff_path = _get_project_dir() / ".sqlfluff"
+    if not sqlfluff_path.exists():
+        return {"exists": False, "content": ""}
+    return {"exists": True, "content": sqlfluff_path.read_text()}
+
+
+class LintConfigRequest(BaseModel):
+    content: str
+
+
+@app.put("/api/lint/config")
+def save_lint_config(request: Request, req: LintConfigRequest) -> dict:
+    """Save the .sqlfluff config file."""
+    _require_permission(request, "write")
+    sqlfluff_path = _get_project_dir() / ".sqlfluff"
+    sqlfluff_path.write_text(req.content)
+    return {"status": "saved"}
+
+
+@app.delete("/api/lint/config")
+def delete_lint_config(request: Request) -> dict:
+    """Delete the .sqlfluff config file (revert to defaults)."""
+    _require_permission(request, "write")
+    sqlfluff_path = _get_project_dir() / ".sqlfluff"
+    if sqlfluff_path.exists():
+        sqlfluff_path.unlink()
+    return {"status": "deleted"}
+
+
 # --- DAG ---
+
+
+def _scan_ingest_targets(project_dir: Path) -> dict[str, list[str]]:
+    """Scan ingest scripts for tables they create (schema.table patterns).
+
+    Returns a mapping of fully-qualified table name -> list of script paths.
+    """
+    import re
+
+    ingest_dir = project_dir / "ingest"
+    if not ingest_dir.is_dir():
+        return {}
+
+    pattern = re.compile(
+        r"(?:CREATE\s+(?:OR\s+REPLACE\s+)?(?:TABLE|VIEW)\s+|INTO\s+)"
+        r"(\w+\.\w+)",
+        re.IGNORECASE,
+    )
+
+    targets: dict[str, list[str]] = {}
+    files = sorted(list(ingest_dir.glob("*.py")) + list(ingest_dir.glob("*.dpnb")), key=lambda p: p.name)
+    for script_file in files:
+        if script_file.name.startswith("_"):
+            continue
+        try:
+            text = script_file.read_text()
+        except Exception:
+            continue
+        for match in pattern.finditer(text):
+            table_ref = match.group(1).lower()
+            rel_path = str(script_file.relative_to(project_dir))
+            if table_ref not in targets:
+                targets[table_ref] = []
+            if rel_path not in targets[table_ref]:
+                targets[table_ref].append(rel_path)
+
+    return targets
 
 
 @app.get("/api/dag")
 def get_dag(request: Request) -> dict:
     """Get the model DAG for visualization."""
     _require_permission(request, "read")
-    transform_dir = _get_project_dir() / "transform"
+    project_dir = _get_project_dir()
+    transform_dir = project_dir / "transform"
     models = discover_models(transform_dir)
     ordered = build_dag(models)
 
@@ -639,11 +741,29 @@ def get_dag(request: Request) -> dict:
     edges = []
     model_set = {m.full_name for m in models}
 
+    ingest_targets = _scan_ingest_targets(project_dir)
+
     external_deps: set[str] = set()
     for m in models:
         for dep in m.depends_on:
             if dep not in model_set:
                 external_deps.add(dep)
+
+    # Add ingest script nodes that feed into source tables
+    added_scripts: set[str] = set()
+    for dep in sorted(external_deps):
+        for script_path in ingest_targets.get(dep, []):
+            script_id = f"script:{script_path}"
+            if script_id not in added_scripts:
+                added_scripts.add(script_id)
+                nodes.append({
+                    "id": script_id,
+                    "label": Path(script_path).name,
+                    "schema": "ingest",
+                    "type": "ingest",
+                    "path": script_path,
+                })
+            edges.append({"source": script_id, "target": dep})
 
     for dep in sorted(external_deps):
         schema = dep.split(".")[0] if "." in dep else "source"
@@ -657,10 +777,10 @@ def get_dag(request: Request) -> dict:
     for m in ordered:
         nodes.append({
             "id": m.full_name,
-            "label": m.full_name,
+            "label": m.path.name,
             "schema": m.schema,
             "type": m.materialized,
-            "path": str(m.path.relative_to(_get_project_dir())),
+            "path": str(m.path.relative_to(project_dir)),
         })
 
     for m in models:
@@ -690,6 +810,22 @@ def get_docs_markdown(request: Request) -> dict:
         conn.close()
 
 
+@app.get("/api/docs/structured")
+def get_docs_structured(request: Request) -> dict:
+    """Generate structured documentation for two-pane UI."""
+    _require_permission(request, "read")
+    from dp.engine.docs import generate_structured_docs
+
+    db_path = _get_db_path()
+    if not db_path.exists():
+        return {"schemas": []}
+    conn = connect(db_path, read_only=True)
+    try:
+        return generate_structured_docs(conn, _get_project_dir() / "transform")
+    finally:
+        conn.close()
+
+
 # --- Scheduler status ---
 
 
@@ -709,6 +845,11 @@ def get_scheduler_status(request: Request) -> dict:
 class NotebookCellRequest(BaseModel):
     source: str
     cell_id: str | None = None
+    reset: bool = False
+
+
+# Per-notebook namespace store for persistent cell execution
+_notebook_namespaces: dict[str, dict] = {}
 
 
 class SaveNotebookRequest(BaseModel):
@@ -717,43 +858,56 @@ class SaveNotebookRequest(BaseModel):
 
 @app.get("/api/notebooks")
 def list_notebooks(request: Request) -> list[dict]:
-    """List all notebooks in the notebooks/ directory."""
+    """List all .dpnb notebooks in the project."""
     _require_permission(request, "read")
-    nb_dir = _get_project_dir() / "notebooks"
-    if not nb_dir.exists():
-        return []
+    project_dir = _get_project_dir()
     notebooks = []
-    for f in sorted(nb_dir.glob("*.dpnb")):
+    for f in sorted(project_dir.rglob("*.dpnb")):
+        rel = str(f.relative_to(project_dir)).replace("\\", "/")
         try:
             data = json.loads(f.read_text())
             notebooks.append({
                 "name": f.stem,
-                "path": f"notebooks/{f.name}",
+                "path": rel,
                 "title": data.get("title", f.stem),
                 "cells": len(data.get("cells", [])),
             })
         except Exception:
-            notebooks.append({"name": f.stem, "path": f"notebooks/{f.name}", "title": f.stem, "cells": 0})
+            notebooks.append({"name": f.stem, "path": rel, "title": f.stem, "cells": 0})
     return notebooks
 
 
-@app.get("/api/notebooks/{name}")
+def _resolve_notebook(project_dir: Path, name: str) -> Path:
+    """Resolve a notebook name or path to a file path."""
+    # Try as a relative path first (e.g. "ingest/earthquakes.dpnb")
+    if "/" in name or name.endswith(".dpnb"):
+        candidate = project_dir / name
+        if not candidate.suffix:
+            candidate = candidate.with_suffix(".dpnb")
+        if candidate.exists():
+            return candidate
+    # Fall back to notebooks/ directory
+    nb_path = project_dir / "notebooks" / f"{name}.dpnb"
+    return nb_path
+
+
+@app.get("/api/notebooks/open/{name:path}")
 def get_notebook(request: Request, name: str) -> dict:
     """Get a notebook's contents."""
     _require_permission(request, "read")
     from dp.engine.notebook import load_notebook
-    nb_path = _get_project_dir() / "notebooks" / f"{name}.dpnb"
+    nb_path = _resolve_notebook(_get_project_dir(), name)
     if not nb_path.exists():
         raise HTTPException(404, f"Notebook '{name}' not found")
     return load_notebook(nb_path)
 
 
-@app.post("/api/notebooks/{name}")
+@app.post("/api/notebooks/save/{name:path}")
 def save_notebook_endpoint(request: Request, name: str, req: SaveNotebookRequest) -> dict:
     """Save a notebook."""
     _require_permission(request, "write")
     from dp.engine.notebook import save_notebook
-    nb_path = _get_project_dir() / "notebooks" / f"{name}.dpnb"
+    nb_path = _resolve_notebook(_get_project_dir(), name)
     save_notebook(nb_path, req.notebook)
     return {"status": "saved", "name": name}
 
@@ -771,12 +925,12 @@ def create_notebook_endpoint(request: Request, name: str, title: str = "") -> di
     return nb
 
 
-@app.post("/api/notebooks/{name}/run")
+@app.post("/api/notebooks/run/{name:path}")
 def run_notebook_endpoint(request: Request, name: str) -> dict:
     """Execute all cells in a notebook."""
     _require_permission(request, "execute")
     from dp.engine.notebook import load_notebook, run_notebook, save_notebook
-    nb_path = _get_project_dir() / "notebooks" / f"{name}.dpnb"
+    nb_path = _resolve_notebook(_get_project_dir(), name)
     if not nb_path.exists():
         raise HTTPException(404, f"Notebook '{name}' not found")
     nb = load_notebook(nb_path)
@@ -790,16 +944,24 @@ def run_notebook_endpoint(request: Request, name: str) -> dict:
         conn.close()
 
 
-@app.post("/api/notebooks/{name}/run-cell")
+@app.post("/api/notebooks/run-cell/{name:path}")
 def run_cell_endpoint(request: Request, name: str, req: NotebookCellRequest) -> dict:
-    """Execute a single notebook cell."""
+    """Execute a single notebook cell.
+
+    Namespaces are persisted per notebook so variables defined in one cell
+    are available in subsequent cells. Send reset=true to clear the namespace
+    (e.g. at the start of Run All).
+    """
     _require_permission(request, "execute")
     from dp.engine.notebook import execute_cell
+    if req.reset:
+        _notebook_namespaces.pop(name, None)
+    namespace = _notebook_namespaces.get(name)
     db_path = _get_db_path()
     conn = connect(db_path)
     try:
-        result = execute_cell(conn, req.source)
-        # Don't return the namespace
+        result = execute_cell(conn, req.source, namespace)
+        _notebook_namespaces[name] = result["namespace"]
         return {"outputs": result["outputs"], "duration_ms": result["duration_ms"]}
     finally:
         conn.close()

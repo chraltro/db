@@ -7,6 +7,7 @@ const SCHEMA_COLORS = {
   silver: "#8b949e",
   gold: "#e3b341",
   source: "#484f58",
+  ingest: "#58a6ff",
 };
 
 const NODE_W = 160;
@@ -168,34 +169,20 @@ export default function DAGPanel({ onOpenFile }) {
       ctx.strokeStyle = color;
       ctx.lineWidth = isHovered ? 2.5 : (isTable ? 2 : 1.5);
 
-      if (n.type === "source") {
-        // Diamond shape
-        ctx.beginPath();
-        const cx = pos.x + NODE_W / 2;
-        const cy = pos.y + NODE_H / 2;
-        ctx.moveTo(cx, pos.y);
-        ctx.lineTo(pos.x + NODE_W, cy);
-        ctx.lineTo(cx, pos.y + NODE_H);
-        ctx.lineTo(pos.x, cy);
-        ctx.closePath();
-        ctx.fill();
-        ctx.stroke();
-      } else {
-        // Rounded rect with subtle shadow on hover
-        const r = 6;
-        if (isHovered) {
-          ctx.shadowColor = color;
-          ctx.shadowBlur = 12;
-          ctx.shadowOffsetX = 0;
-          ctx.shadowOffsetY = 2;
-        }
-        ctx.beginPath();
-        ctx.roundRect(pos.x, pos.y, NODE_W, NODE_H, r);
-        ctx.fill();
-        ctx.stroke();
-        ctx.shadowColor = "transparent";
-        ctx.shadowBlur = 0;
+      // Rounded rect for all nodes, with subtle shadow on hover
+      const r = 6;
+      if (isHovered) {
+        ctx.shadowColor = color;
+        ctx.shadowBlur = 12;
+        ctx.shadowOffsetX = 0;
+        ctx.shadowOffsetY = 2;
       }
+      ctx.beginPath();
+      ctx.roundRect(pos.x, pos.y, NODE_W, NODE_H, r);
+      ctx.fill();
+      ctx.stroke();
+      ctx.shadowColor = "transparent";
+      ctx.shadowBlur = 0;
 
       // Label
       ctx.fillStyle = isHovered ? getCV("--dp-accent") : getCV("--dp-text");
@@ -205,13 +192,11 @@ export default function DAGPanel({ onOpenFile }) {
       ctx.fillText(n.label, pos.x + NODE_W / 2, pos.y + NODE_H / 2, NODE_W - 20);
 
       // Type badge
-      if (n.type !== "source") {
-        const badge = n.type === "table" ? "T" : "V";
-        ctx.fillStyle = color;
-        ctx.font = `bold 9px ${monoFamily}`;
-        ctx.textAlign = "right";
-        ctx.fillText(badge, pos.x + NODE_W - 6, pos.y + 12);
-      }
+      const badge = n.type === "ingest" ? "I" : n.type === "source" ? "S" : n.type === "table" ? "T" : "V";
+      ctx.fillStyle = color;
+      ctx.font = `bold 9px ${monoFamily}`;
+      ctx.textAlign = "right";
+      ctx.fillText(badge, pos.x + NODE_W - 6, pos.y + 12);
     }
 
     ctx.globalAlpha = 1;
@@ -274,6 +259,10 @@ export default function DAGPanel({ onOpenFile }) {
         <span style={styles.headerTitle}>Model Lineage</span>
         <div style={styles.legend}>
           <span style={styles.legendItem}>
+            <span style={{ ...styles.legendDot, background: SCHEMA_COLORS.ingest }} />
+            ingest
+          </span>
+          <span style={styles.legendItem}>
             <span style={{ ...styles.legendDot, background: SCHEMA_COLORS.landing }} />
             landing
           </span>
@@ -290,6 +279,7 @@ export default function DAGPanel({ onOpenFile }) {
             gold
           </span>
           <span style={styles.legendSep}>|</span>
+          <span style={styles.legendItem}>I = ingest</span>
           <span style={styles.legendItem}>V = view</span>
           <span style={styles.legendItem}>T = table</span>
         </div>

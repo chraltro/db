@@ -83,12 +83,12 @@ tests/                        # pytest test suite
 
 ```
 User project layout (created by `dp init`):
-  ingest/         Python scripts — each has run(db) function
+  ingest/         Python scripts (or .dpnb notebooks)
   transform/
     bronze/       Light cleanup SQL
     silver/       Business logic SQL
     gold/         Consumption-ready SQL
-  export/         Python scripts — each has run(db) function
+  export/         Python scripts (or .dpnb notebooks)
   notebooks/      .dpnb interactive notebooks
   project.yml     Config: streams, connections, schedules
   .env            Secrets (never committed)
@@ -127,18 +127,19 @@ GROUP BY 1, 2
 - No Jinja, no templating — just plain SQL
 - Change detection uses SHA256 hash of normalized SQL content
 
-### Python Script Contract
+### Python Script Convention
 
-Ingest and export scripts must expose a `run(db)` function:
+Ingest and export scripts are plain Python with a `db` (DuckDB connection) pre-injected:
 
 ```python
-import duckdb
-
-def run(db: duckdb.DuckDBPyConnection) -> None:
-    db.execute("CREATE SCHEMA IF NOT EXISTS landing")
-    db.execute("CREATE OR REPLACE TABLE landing.data AS SELECT * FROM ...")
+# A DuckDB connection is available as `db` — just write top-level code
+db.execute("CREATE SCHEMA IF NOT EXISTS landing")
+db.execute("CREATE OR REPLACE TABLE landing.data AS SELECT * FROM ...")
 ```
 
+- Scripts run as top-level code with `db` pre-injected (no wrapper function needed)
+- Legacy `def run(db)` scripts are still supported (backward compatible)
+- `.dpnb` notebooks can also be used as ingest/export pipeline steps
 - Scripts prefixed with `_` are skipped
 - Ingest failures stop the pipeline (data integrity)
 - `stdout`/`stderr` are captured and logged

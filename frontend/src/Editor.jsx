@@ -1,12 +1,99 @@
-import React from "react";
-import MonacoEditor from "@monaco-editor/react";
+import React, { useEffect, useRef } from "react";
+import MonacoEditor, { loader } from "@monaco-editor/react";
 import { useTheme } from "./ThemeProvider";
 import { getTheme } from "./themes";
+import { api } from "./api";
 
-export default function Editor({ content, language, onChange, activeFile }) {
+// Cache for table schema lookups to avoid repeated API calls
+const schemaCache = new Map();
+
+// Register the SQL hover provider once when Monaco loads
+let hoverRegistered = false;
+loader.init().then((monaco) => {
+  if (hoverRegistered) return;
+  hoverRegistered = true;
+
+  monaco.languages.registerHoverProvider("sql", {
+    provideHover: async (model, position) => {
+      const line = model.getLineContent(position.lineNumber);
+      const word = model.getWordAtPosition(position);
+      if (!word) return null;
+
+      // Detect schema.table pattern around cursor
+      let schema = null;
+      let table = null;
+
+      // Case 1: cursor is on the table part (after the dot)
+      const before = line.substring(0, word.startColumn - 1);
+      const dotBefore = before.match(/(\w+)\.\s*$/);
+      if (dotBefore) {
+        schema = dotBefore[1];
+        table = word.word;
+      }
+
+      // Case 2: cursor is on the schema part (before the dot)
+      if (!schema) {
+        const after = line.substring(word.endColumn - 1);
+        const dotAfter = after.match(/^\s*\.(\w+)/);
+        if (dotAfter) {
+          schema = word.word;
+          table = dotAfter[1];
+        }
+      }
+
+      if (!schema || !table) return null;
+
+      const cacheKey = `${schema}.${table}`;
+      let info = schemaCache.get(cacheKey);
+
+      if (info === undefined) {
+        try {
+          info = await api.describeTable(schema, table);
+          schemaCache.set(cacheKey, info);
+        } catch {
+          schemaCache.set(cacheKey, null);
+          info = null;
+        }
+      }
+
+      if (!info || !info.columns || info.columns.length === 0) {
+        return {
+          range: new monaco.Range(position.lineNumber, word.startColumn, position.lineNumber, word.endColumn),
+          contents: [{ value: `*${schema}.${table}* — table not found in warehouse` }],
+        };
+      }
+
+      const lines = [`**${schema}.${table}** — ${info.columns.length} columns`, ""];
+      for (const col of info.columns) {
+        lines.push(`- \`${col.name}\` *${col.type}*`);
+      }
+
+      return {
+        range: new monaco.Range(position.lineNumber, word.startColumn, position.lineNumber, word.endColumn),
+        contents: [{ value: lines.join("\n") }],
+      };
+    },
+  });
+});
+
+export default function Editor({ content, language, onChange, activeFile, onMount, goToLine }) {
   const { themeId } = useTheme();
   const currentTheme = getTheme(themeId);
   const monacoTheme = currentTheme.dark ? "vs-dark" : "vs";
+  const editorRef = useRef(null);
+
+  function handleEditorMount(editor) {
+    editorRef.current = editor;
+    if (onMount) onMount(editor);
+  }
+
+  useEffect(() => {
+    if (!goToLine || !editorRef.current) return;
+    const { line, col } = goToLine;
+    editorRef.current.revealLineInCenter(line);
+    editorRef.current.setPosition({ lineNumber: line, column: col || 1 });
+    editorRef.current.focus();
+  }, [goToLine]);
 
   if (!activeFile) {
     return (
@@ -37,8 +124,10 @@ export default function Editor({ content, language, onChange, activeFile }) {
       value={content}
       onChange={(val) => onChange(val || "")}
       theme={monacoTheme}
+      onMount={handleEditorMount}
       options={{
         minimap: { enabled: false },
+        hover: { above: false },
         fontSize: 13,
         lineNumbers: "on",
         renderLineHighlight: "all",

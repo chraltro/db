@@ -186,12 +186,100 @@ function UsersSection() {
   );
 }
 
-export default function SettingsPanel() {
+const DEFAULT_SQLFLUFF = `[sqlfluff]
+dialect = duckdb
+max_line_length = 120
+
+[sqlfluff:rules:capitalisation.keywords]
+capitalisation_policy = upper
+
+[sqlfluff:rules:capitalisation.identifiers]
+capitalisation_policy = lower
+
+[sqlfluff:rules:capitalisation.functions]
+capitalisation_policy = upper
+`;
+
+function LintConfigSection() {
+  const [content, setContent] = useState("");
+  const [exists, setExists] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => { loadConfig(); }, []);
+
+  async function loadConfig() {
+    try {
+      const data = await api.getLintConfig();
+      setExists(data.exists);
+      setContent(data.exists ? data.content : DEFAULT_SQLFLUFF);
+    } catch {}
+    setLoading(false);
+  }
+
+  async function save() {
+    try {
+      await api.saveLintConfig(content);
+      setExists(true);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    } catch (e) { alert(e.message); }
+  }
+
+  async function remove() {
+    if (!confirm("Delete .sqlfluff and revert to default lint settings?")) return;
+    try {
+      await api.deleteLintConfig();
+      setExists(false);
+      setContent(DEFAULT_SQLFLUFF);
+    } catch (e) { alert(e.message); }
+  }
+
+  if (loading) return null;
+
+  return (
+    <div style={sec.section}>
+      <h3 style={sec.heading}>SQLFluff Config</h3>
+      <p style={sec.desc}>
+        {exists
+          ? <>Editing <code style={sec.code}>.sqlfluff</code> in your project root. The linter uses this file.</>
+          : <>No <code style={sec.code}>.sqlfluff</code> file found. Save to create one with custom lint rules.</>}
+      </p>
+      <textarea
+        value={content}
+        onChange={(e) => { setContent(e.target.value); setSaved(false); }}
+        style={sec.configTextarea}
+        rows={14}
+        spellCheck={false}
+      />
+      <div style={{ ...sec.addRow, marginTop: "8px" }}>
+        <button onClick={save} style={sec.addBtn}>{saved ? "Saved" : "Save"}</button>
+        {exists && (
+          <button onClick={remove} style={sec.delBtn}>Delete .sqlfluff</button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function GuideSection({ onShowGuide }) {
+  return (
+    <div style={sec.section}>
+      <h3 style={sec.heading}>Getting Started Guide</h3>
+      <p style={sec.desc}>Re-watch the interactive tour that explains the main areas of the interface.</p>
+      <button onClick={onShowGuide} style={sec.addBtn}>Show Guide</button>
+    </div>
+  );
+}
+
+export default function SettingsPanel({ onShowGuide }) {
   return (
     <div style={sec.container}>
       <div style={sec.header}>Settings</div>
       <div style={sec.content}>
+        {onShowGuide && <GuideSection onShowGuide={onShowGuide} />}
         <ThemeSection />
+        <LintConfigSection />
         <SecretsSection />
         <UsersSection />
       </div>
@@ -216,6 +304,7 @@ const sec = {
   roleSelect: { padding: "4px 8px", background: "var(--dp-bg-tertiary)", border: "1px solid var(--dp-border-light)", borderRadius: "var(--dp-radius)", color: "var(--dp-text)", fontSize: "12px" },
   addBtn: { padding: "6px 14px", background: "var(--dp-green)", border: "1px solid var(--dp-green-border)", borderRadius: "var(--dp-radius-lg)", color: "#fff", cursor: "pointer", fontSize: "12px", fontWeight: 500, whiteSpace: "nowrap" },
   delBtn: { padding: "3px 8px", background: "var(--dp-btn-bg)", border: "1px solid var(--dp-btn-border)", borderRadius: "var(--dp-radius)", color: "var(--dp-red)", cursor: "pointer", fontSize: "11px" },
+  configTextarea: { width: "100%", padding: "10px 12px", background: "var(--dp-bg-tertiary)", border: "1px solid var(--dp-border-light)", borderRadius: "var(--dp-radius-lg)", color: "var(--dp-text)", fontFamily: "var(--dp-font-mono)", fontSize: "12px", lineHeight: 1.6, resize: "vertical", boxSizing: "border-box", outline: "none" },
   themeGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: "10px" },
   themeCard: { padding: "12px", borderRadius: "var(--dp-radius-lg)", cursor: "pointer", textAlign: "left", display: "block" },
 };

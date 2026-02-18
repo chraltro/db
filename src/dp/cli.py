@@ -40,7 +40,12 @@ def init(
         PROJECT_YML_TEMPLATE,
         SAMPLE_BRONZE_SQL,
         SAMPLE_EXPORT_SCRIPT,
-        SAMPLE_INGEST_SCRIPT,
+        SAMPLE_GOLD_REGIONS_SQL,
+        SAMPLE_GOLD_SUMMARY_SQL,
+        SAMPLE_GOLD_TOP_SQL,
+        SAMPLE_INGEST_NOTEBOOK,
+        SAMPLE_SILVER_DAILY_SQL,
+        SAMPLE_SILVER_EVENTS_SQL,
     )
     from dp.engine.secrets import ENV_TEMPLATE
 
@@ -53,17 +58,22 @@ def init(
 
     # project.yml
     (target / "project.yml").write_text(PROJECT_YML_TEMPLATE.format(name=name))
-    # Sample files
-    (target / "ingest" / "example.py").write_text(SAMPLE_INGEST_SCRIPT)
-    (target / "transform" / "bronze" / "example.sql").write_text(SAMPLE_BRONZE_SQL)
-    (target / "export" / "example.py").write_text(SAMPLE_EXPORT_SCRIPT)
+    # Sample pipeline: earthquake data from USGS API
+    (target / "ingest" / "earthquakes.dpnb").write_text(SAMPLE_INGEST_NOTEBOOK)
+    (target / "transform" / "bronze" / "earthquakes.sql").write_text(SAMPLE_BRONZE_SQL)
+    (target / "transform" / "silver" / "earthquake_events.sql").write_text(SAMPLE_SILVER_EVENTS_SQL)
+    (target / "transform" / "silver" / "earthquake_daily.sql").write_text(SAMPLE_SILVER_DAILY_SQL)
+    (target / "transform" / "gold" / "earthquake_summary.sql").write_text(SAMPLE_GOLD_SUMMARY_SQL)
+    (target / "transform" / "gold" / "top_earthquakes.sql").write_text(SAMPLE_GOLD_TOP_SQL)
+    (target / "transform" / "gold" / "region_risk.sql").write_text(SAMPLE_GOLD_REGIONS_SQL)
+    (target / "export" / "earthquake_report.py").write_text(SAMPLE_EXPORT_SCRIPT)
     # .env secrets file
     (target / ".env").write_text(ENV_TEMPLATE)
     # Notebooks directory
     (target / "notebooks").mkdir(parents=True, exist_ok=True)
     # .gitignore
     (target / ".gitignore").write_text(
-        "warehouse.duckdb\nwarehouse.duckdb.wal\n__pycache__/\n*.pyc\n.venv/\n.env\n"
+        "warehouse.duckdb\nwarehouse.duckdb.wal\n__pycache__/\n*.pyc\n.venv/\n.env\noutput/\n"
     )
     # Agent instructions for LLM tools (Claude Code, Cursor, etc.)
     (target / "CLAUDE.md").write_text(CLAUDE_MD_TEMPLATE.format(name=name))
@@ -74,10 +84,10 @@ def init(
     for d in dirs:
         console.print(f"  {d}/")
     console.print()
-    console.print("Next steps:")
-    console.print("  1. Add ingest scripts to ingest/")
-    console.print("  2. Write SQL transforms in transform/bronze|silver|gold/")
-    console.print("  3. Run [bold]dp transform[/bold] to execute the pipeline")
+    console.print("Quick start:")
+    console.print(f"  cd {name}")
+    console.print("  dp stream full-refresh    # fetch earthquake data & build pipeline")
+    console.print("  dp serve                  # open web UI")
     console.print()
     console.print("[dim]AI assistant ready:[/dim] CLAUDE.md included for Claude Code, Cursor, and others.")
     console.print("[dim]Run [bold]dp context[/bold] to generate a project summary for any AI chat.[/dim]")
@@ -91,7 +101,7 @@ def run(
     script: Annotated[str, typer.Argument(help="Script path (e.g. ingest/customers.py)")],
     project_dir: Annotated[Optional[Path], typer.Option("--project", "-p")] = None,
 ) -> None:
-    """Run a single ingest or export script."""
+    """Run a single ingest or export script (.py or .dpnb notebook)."""
     from dp.config import load_project
     from dp.engine.database import connect
     from dp.engine.runner import run_script
@@ -754,7 +764,9 @@ def context(
     for script_type in ("ingest", "export"):
         script_dir = project_dir / script_type
         if script_dir.exists():
-            scripts = sorted(f.name for f in script_dir.glob("*.py") if not f.name.startswith("_"))
+            py_files = list(script_dir.glob("*.py"))
+            nb_files = list(script_dir.glob("*.dpnb"))
+            scripts = sorted(f.name for f in py_files + nb_files if not f.name.startswith("_"))
             if scripts:
                 lines.append(f"## {script_type.title()} Scripts")
                 for s in scripts:
@@ -814,7 +826,7 @@ def context(
     lines.append("## How to Help Me")
     lines.append("I'm working on this dp data platform project. You can help me by:")
     lines.append("- Writing SQL transform files (put them in transform/bronze/, silver/, or gold/)")
-    lines.append("- Writing Python ingest scripts (put them in ingest/, must have a run(db) function)")
+    lines.append("- Writing Python ingest scripts (put them in ingest/, `db` connection is pre-injected)")
     lines.append("- Debugging failed pipeline runs")
     lines.append("- Writing queries to analyze data in the warehouse")
     lines.append("- Adding new data sources or exports")

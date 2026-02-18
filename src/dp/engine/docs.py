@@ -81,6 +81,8 @@ def generate_docs(conn: duckdb.DuckDBPyConnection, transform_dir: Path) -> str:
             # Model metadata if available
             model = model_map.get(full_name)
             if model:
+                if model.description:
+                    lines.append(f"{model.description}\n")
                 if model.depends_on:
                     deps = ", ".join(f"`{d}`" for d in model.depends_on)
                     lines.append(f"**Depends on:** {deps}\n")
@@ -102,11 +104,22 @@ def generate_docs(conn: duckdb.DuckDBPyConnection, transform_dir: Path) -> str:
                 ORDER BY ordinal_position
             """, [schema_name, table_name]).fetchall()
 
-            lines.append("| Column | Type | Nullable |")
-            lines.append("|--------|------|----------|")
+            col_docs = model.column_docs if model else {}
+            has_docs = any(c[0] in col_docs for c in cols)
+
+            if has_docs:
+                lines.append("| Column | Type | Nullable | Description |")
+                lines.append("|--------|------|----------|-------------|")
+            else:
+                lines.append("| Column | Type | Nullable |")
+                lines.append("|--------|------|----------|")
             for col_name, data_type, nullable, default in cols:
                 null_str = "yes" if nullable == "YES" else "no"
-                lines.append(f"| `{col_name}` | {data_type} | {null_str} |")
+                if has_docs:
+                    desc = col_docs.get(col_name, "")
+                    lines.append(f"| `{col_name}` | {data_type} | {null_str} | {desc} |")
+                else:
+                    lines.append(f"| `{col_name}` | {data_type} | {null_str} |")
             lines.append("")
 
             # SQL source if available
@@ -131,3 +144,107 @@ def generate_docs(conn: duckdb.DuckDBPyConnection, transform_dir: Path) -> str:
         lines.append("```\n")
 
     return "\n".join(lines)
+
+
+def generate_structured_docs(
+    conn: duckdb.DuckDBPyConnection, transform_dir: Path
+) -> dict:
+    """Generate structured documentation for the warehouse.
+
+    Returns a JSON-serializable dict with schema/table metadata
+    for a two-pane UI layout.
+    """
+    from dp.engine.transform import discover_models
+
+    models = discover_models(transform_dir) if transform_dir.exists() else []
+    model_map = {m.full_name: m for m in models}
+
+    # Get all schemas (excluding internal)
+    schemas_raw = conn.execute("""
+        SELECT DISTINCT table_schema
+        FROM information_schema.tables
+        WHERE table_schema NOT IN ('information_schema', '_dp_internal')
+        ORDER BY
+            CASE table_schema
+                WHEN 'landing' THEN 1
+                WHEN 'bronze' THEN 2
+                WHEN 'silver' THEN 3
+                WHEN 'gold' THEN 4
+                ELSE 5
+            END
+    """).fetchall()
+
+    if not schemas_raw:
+        return {"schemas": []}
+
+    schema_list = []
+    for (schema_name,) in schemas_raw:
+        tables_raw = conn.execute("""
+            SELECT table_name, table_type
+            FROM information_schema.tables
+            WHERE table_schema = ?
+            ORDER BY table_name
+        """, [schema_name]).fetchall()
+
+        table_list = []
+        for table_name, table_type in tables_raw:
+            full_name = f"{schema_name}.{table_name}"
+            kind = "view" if table_type == "VIEW" else "table"
+            model = model_map.get(full_name)
+
+            # Row count
+            row_count = None
+            if kind == "table":
+                try:
+                    row_count = conn.execute(
+                        f"SELECT count(*) FROM {full_name}"
+                    ).fetchone()[0]
+                except Exception:
+                    pass
+
+            # Columns
+            cols_raw = conn.execute("""
+                SELECT column_name, data_type, is_nullable
+                FROM information_schema.columns
+                WHERE table_schema = ? AND table_name = ?
+                ORDER BY ordinal_position
+            """, [schema_name, table_name]).fetchall()
+
+            col_docs = model.column_docs if model else {}
+            columns = []
+            for col_name, data_type, nullable in cols_raw:
+                columns.append({
+                    "name": col_name,
+                    "type": data_type,
+                    "nullable": nullable == "YES",
+                    "description": col_docs.get(col_name, ""),
+                })
+
+            table_info: dict = {
+                "name": table_name,
+                "full_name": full_name,
+                "type": kind,
+                "columns": columns,
+                "row_count": row_count,
+            }
+
+            if model:
+                table_info["description"] = model.description or ""
+                table_info["depends_on"] = model.depends_on
+                table_info["materialized"] = model.materialized
+                table_info["sql"] = model.sql.strip()
+
+            table_list.append(table_info)
+
+        schema_list.append({"name": schema_name, "tables": table_list})
+
+    # Lineage
+    lineage = []
+    for m in models:
+        if m.depends_on:
+            for dep in m.depends_on:
+                lineage.append({"source": dep, "target": m.full_name})
+        else:
+            lineage.append({"source": "(source)", "target": m.full_name})
+
+    return {"schemas": schema_list, "lineage": lineage}
