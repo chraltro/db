@@ -9,6 +9,7 @@ from dp.engine.connector import (
     DiscoveredResource,
     ParamSpec,
     register_connector,
+    validate_identifier,
 )
 
 SHOPIFY_RESOURCES = [
@@ -72,9 +73,11 @@ class ShopifyConnector(BaseConnector):
         tables: list[str],
         target_schema: str = "landing",
     ) -> str:
+        validate_identifier(target_schema, "target schema")
+
         store = config.get("store", "")
         token_env = config.get("access_token", "")
-        if token_env.startswith("${") and token_env.endswith("}"):
+        if isinstance(token_env, str) and token_env.startswith("${") and token_env.endswith("}"):
             env_var = token_env[2:-1]
             token_line = f'access_token = os.environ.get("{env_var}", "")'
         else:
@@ -98,8 +101,9 @@ Syncs Shopify data from {store}.myshopify.com into {target_schema}.shopify_* tab
 import json
 import os
 import tempfile
+import time
+from urllib.error import HTTPError
 from urllib.request import Request, urlopen
-from urllib.parse import urlencode, urlparse, parse_qs
 
 {token_line}
 
@@ -109,6 +113,26 @@ BASE = f"https://{{STORE}}.myshopify.com"
 RESOURCES = {{
 {resource_map}
 }}
+
+PAGE_DELAY = 0.5  # Shopify rate limit: ~2 requests/second for REST
+
+
+def _fetch_with_retry(url, headers, max_retries=3):
+    """Fetch URL with retry on rate-limit (429) and server errors."""
+    for attempt in range(max_retries + 1):
+        try:
+            req = Request(url, headers=headers)
+            resp = urlopen(req, timeout=30)
+            return json.loads(resp.read()), resp.headers
+        except HTTPError as e:
+            if e.code == 429 or e.code >= 500:
+                retry_after = float(e.headers.get("Retry-After", 2 ** attempt))
+                print(f"  Rate limited ({{e.code}}), retrying in {{retry_after}}s...")
+                time.sleep(retry_after)
+            else:
+                raise
+    raise RuntimeError(f"Failed after {{max_retries}} retries: {{url}}")
+
 
 db.execute("CREATE SCHEMA IF NOT EXISTS {target_schema}")
 
@@ -120,25 +144,27 @@ for resource_name, endpoint in RESOURCES.items():
 
     print(f"Fetching Shopify {{resource_name}}...")
     while url:
-        req = Request(url, headers={{"X-Shopify-Access-Token": access_token}})
-        with urlopen(req, timeout=30) as resp:
-            data = json.loads(resp.read())
+        data, resp_headers = _fetch_with_retry(
+            url, {{"X-Shopify-Access-Token": access_token}}
+        )
 
-            # Shopify returns {{ "orders": [...] }} etc.
-            key = resource_name
-            if key == "collections":
-                key = "custom_collections"
-            records = data.get(key, [])
-            all_records.extend(records)
+        # Shopify returns {{ "orders": [...] }} etc.
+        key = resource_name
+        if key == "collections":
+            key = "custom_collections"
+        records = data.get(key, [])
+        all_records.extend(records)
 
-            # Link-header pagination
-            link_header = resp.headers.get("Link", "")
-            url = None
-            if 'rel="next"' in link_header:
-                for part in link_header.split(","):
-                    if 'rel="next"' in part:
-                        url = part.split("<")[1].split(">")[0]
-                        break
+        # Link-header pagination
+        link_header = resp_headers.get("Link", "")
+        url = None
+        if 'rel="next"' in link_header:
+            for part in link_header.split(","):
+                if 'rel="next"' in part:
+                    url = part.split("<")[1].split(">")[0]
+                    break
+        if url:
+            time.sleep(PAGE_DELAY)
 
     if all_records:
         with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:

@@ -9,6 +9,7 @@ from dp.engine.connector import (
     DiscoveredResource,
     ParamSpec,
     register_connector,
+    validate_identifier,
 )
 
 HUBSPOT_OBJECTS = [
@@ -73,8 +74,10 @@ class HubSpotConnector(BaseConnector):
         tables: list[str],
         target_schema: str = "landing",
     ) -> str:
+        validate_identifier(target_schema, "target schema")
+
         api_key_env = config.get("api_key", "")
-        if api_key_env.startswith("${") and api_key_env.endswith("}"):
+        if isinstance(api_key_env, str) and api_key_env.startswith("${") and api_key_env.endswith("}"):
             env_var = api_key_env[2:-1]
             key_line = f'api_key = os.environ.get("{env_var}", "")'
         else:
@@ -98,8 +101,9 @@ Syncs HubSpot CRM data into {target_schema}.hubspot_* tables.
 import json
 import os
 import tempfile
+import time
+from urllib.error import HTTPError
 from urllib.request import Request, urlopen
-from urllib.parse import urlencode
 
 {key_line}
 
@@ -108,6 +112,26 @@ OBJECTS = {{
 }}
 
 BASE = "https://api.hubapi.com"
+
+PAGE_DELAY = 0.15  # HubSpot rate limit: ~100 requests/10 seconds
+
+
+def _fetch_with_retry(url, headers, max_retries=3):
+    """Fetch URL with retry on rate-limit (429) and server errors."""
+    for attempt in range(max_retries + 1):
+        try:
+            req = Request(url, headers=headers)
+            with urlopen(req, timeout=30) as resp:
+                return json.loads(resp.read())
+        except HTTPError as e:
+            if e.code == 429 or e.code >= 500:
+                retry_after = int(e.headers.get("Retry-After", 2 ** attempt))
+                print(f"  Rate limited ({{e.code}}), retrying in {{retry_after}}s...")
+                time.sleep(retry_after)
+            else:
+                raise
+    raise RuntimeError(f"Failed after {{max_retries}} retries: {{url}}")
+
 
 db.execute("CREATE SCHEMA IF NOT EXISTS {target_schema}")
 
@@ -119,9 +143,7 @@ for obj_name, endpoint in OBJECTS.items():
 
     print(f"Fetching HubSpot {{obj_name}}...")
     while url:
-        req = Request(url, headers={{"Authorization": f"Bearer {{api_key}}"}})
-        with urlopen(req, timeout=30) as resp:
-            data = json.loads(resp.read())
+        data = _fetch_with_retry(url, {{"Authorization": f"Bearer {{api_key}}"}})
 
         results = data.get("results", [])
         # Flatten properties into top-level fields
@@ -133,7 +155,11 @@ for obj_name, endpoint in OBJECTS.items():
         # HubSpot pagination
         paging = data.get("paging", {{}})
         next_link = paging.get("next", {{}}).get("link")
-        url = next_link if next_link else None
+        if next_link:
+            url = next_link
+            time.sleep(PAGE_DELAY)
+        else:
+            url = None
 
     if all_records:
         with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:

@@ -10,6 +10,8 @@ import yaml
 
 # Register all connectors
 import dp.connectors  # noqa: F401
+import pytest
+
 from dp.engine.connector import (
     BaseConnector,
     DiscoveredResource,
@@ -20,7 +22,76 @@ from dp.engine.connector import (
     register_connector,
     remove_connector,
     setup_connector,
+    validate_identifier,
 )
+
+
+# ---------------------------------------------------------------------------
+# Identifier validation tests
+# ---------------------------------------------------------------------------
+
+
+def test_validate_identifier_valid():
+    """Valid SQL identifiers should pass."""
+    assert validate_identifier("landing") == "landing"
+    assert validate_identifier("my_table") == "my_table"
+    assert validate_identifier("_private") == "_private"
+    assert validate_identifier("Table123") == "Table123"
+
+
+def test_validate_identifier_invalid():
+    """SQL injection attempts should be rejected."""
+    with pytest.raises(ValueError):
+        validate_identifier("")
+    with pytest.raises(ValueError):
+        validate_identifier("bobby; DROP TABLE--")
+    with pytest.raises(ValueError):
+        validate_identifier("table name")
+    with pytest.raises(ValueError):
+        validate_identifier("123starts_with_digit")
+    with pytest.raises(ValueError):
+        validate_identifier("table'name")
+
+
+def test_setup_rejects_bad_table_names(tmp_path):
+    """setup_connector should sanitize table names with unsafe characters."""
+    project_dir = tmp_path / "proj"
+    project_dir.mkdir()
+    (project_dir / "ingest").mkdir()
+    (project_dir / "project.yml").write_text("name: test\ndatabase:\n  path: w.duckdb\nconnections: {}\n")
+    (project_dir / ".env").write_text("")
+
+    result = setup_connector(
+        project_dir=project_dir,
+        connector_type="webhook",
+        connection_name="test",
+        config={"table_name": "events"},
+        tables=["valid_table", "bad;table--"],
+        target_schema="landing",
+    )
+    # Tables get sanitized: "bad;table--" -> "bad_table"
+    assert result["status"] == "success"
+    assert "bad_table" in result["tables"]
+    assert "valid_table" in result["tables"]
+
+
+def test_setup_rejects_bad_schema(tmp_path):
+    """setup_connector should reject schemas with injection attempts."""
+    project_dir = tmp_path / "proj"
+    project_dir.mkdir()
+    (project_dir / "ingest").mkdir()
+    (project_dir / "project.yml").write_text("name: test\ndatabase:\n  path: w.duckdb\nconnections: {}\n")
+    (project_dir / ".env").write_text("")
+
+    result = setup_connector(
+        project_dir=project_dir,
+        connector_type="webhook",
+        connection_name="test",
+        config={"table_name": "events"},
+        target_schema="landing; DROP TABLE--",
+    )
+    assert result["status"] == "error"
+    assert "Invalid" in result["error"]
 
 
 # ---------------------------------------------------------------------------

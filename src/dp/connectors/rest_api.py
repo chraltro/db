@@ -9,6 +9,7 @@ from dp.engine.connector import (
     DiscoveredResource,
     ParamSpec,
     register_connector,
+    validate_identifier,
 )
 
 
@@ -66,6 +67,10 @@ class RESTAPIConnector(BaseConnector):
         tables: list[str],
         target_schema: str = "landing",
     ) -> str:
+        validate_identifier(target_schema, "target schema")
+        for t in tables:
+            validate_identifier(t, "table name")
+
         url = config.get("url", "")
         method = config.get("method", "GET")
         headers = config.get("headers", "{}")

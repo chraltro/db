@@ -9,6 +9,7 @@ from dp.engine.connector import (
     DiscoveredResource,
     ParamSpec,
     register_connector,
+    validate_identifier,
 )
 
 
@@ -82,19 +83,25 @@ class PostgresConnector(BaseConnector):
         tables: list[str],
         target_schema: str = "landing",
     ) -> str:
+        # Validate all identifiers that will be interpolated into SQL
+        validate_identifier(target_schema, "target schema")
+        for t in tables:
+            validate_identifier(t, "table name")
+
         host = config.get("host", "localhost")
         port = config.get("port", 5432)
         database = config.get("database", "postgres")
         user = config.get("user", "postgres")
         src_schema = config.get("schema", "public")
+        validate_identifier(src_schema, "source schema")
 
         # Password comes from .env via the connector framework
         password_env = config.get("password", "")
-        if password_env.startswith("${") and password_env.endswith("}"):
+        if isinstance(password_env, str) and password_env.startswith("${") and password_env.endswith("}"):
             env_var = password_env[2:-1]
             password_line = f'password = os.environ.get("{env_var}", "")'
         else:
-            password_line = f'password = os.environ.get("POSTGRES_PASSWORD", "")'
+            password_line = 'password = os.environ.get("POSTGRES_PASSWORD", "")'
 
         table_list = ", ".join(f'"{t}"' for t in tables)
 

@@ -138,6 +138,23 @@ def list_connectors() -> list[dict[str, Any]]:
 # ---------------------------------------------------------------------------
 
 
+_IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+
+def validate_identifier(value: str, label: str = "identifier") -> str:
+    """Validate that a value is a safe SQL/Python identifier.
+
+    Raises ``ValueError`` if the value contains unsafe characters.
+    """
+    if not value or not _IDENTIFIER_RE.match(value):
+        raise ValueError(
+            f"Invalid {label}: {value!r}. "
+            "Must start with a letter or underscore and contain only "
+            "letters, digits, and underscores."
+        )
+    return value
+
+
 def _sanitize_name(raw: str) -> str:
     """Turn an arbitrary string into a safe Python/SQL identifier."""
     s = re.sub(r"[^a-zA-Z0-9_]", "_", raw.lower())
@@ -163,6 +180,13 @@ def setup_connector(
     """
     connector = get_connector(connector_type)
 
+    # 0. Validate identifiers before anything touches the filesystem or DB
+    try:
+        validate_identifier(target_schema, "target schema")
+        validate_identifier(_sanitize_name(connection_name), "connection name")
+    except ValueError as e:
+        return {"status": "error", "error": str(e)}
+
     # 1. Test connection
     test_result = connector.test_connection(config)
     if not test_result.get("success"):
@@ -182,7 +206,18 @@ def setup_connector(
             "error": "No tables or resources found to sync",
         }
 
-    # 3. Generate ingest script
+    # 3. Validate all table names are safe identifiers
+    sanitized_tables = []
+    for t in tables:
+        safe = _sanitize_name(t)
+        try:
+            validate_identifier(safe, f"table name derived from '{t}'")
+        except ValueError as e:
+            return {"status": "error", "error": str(e)}
+        sanitized_tables.append(safe)
+    tables = sanitized_tables
+
+    # 4. Generate ingest script
     script_content = connector.generate_script(config, tables, target_schema)
     safe_name = _sanitize_name(connection_name)
     script_filename = f"connector_{safe_name}.py"
@@ -191,7 +226,7 @@ def setup_connector(
     script_path = ingest_dir / script_filename
     script_path.write_text(script_content)
 
-    # 4. Separate secrets from non-secret params
+    # 5. Separate secrets from non-secret params
     secret_params = {}
     yml_params: dict[str, Any] = {"type": connector_type}
     for pspec in connector.params:
@@ -205,14 +240,14 @@ def setup_connector(
         else:
             yml_params[pspec.name] = val
 
-    # 5. Write secrets to .env
+    # 6. Write secrets to .env
     if secret_params:
         from dp.engine.secrets import set_secret
 
         for key, value in secret_params.items():
             set_secret(project_dir, key, value)
 
-    # 6. Update project.yml — add connection and optionally a sync stream
+    # 7. Update project.yml — add connection and optionally a sync stream
     _update_project_yml(
         project_dir,
         connection_name=connection_name,

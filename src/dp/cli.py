@@ -1062,32 +1062,33 @@ def connect(
     test_only: Annotated[bool, typer.Option("--test", help="Only test the connection")] = False,
     discover_only: Annotated[bool, typer.Option("--discover", help="Only discover available tables")] = False,
     project_dir: Annotated[Optional[Path], typer.Option("--project", "-p")] = None,
-    # Common connection params passed as options
-    host: Annotated[Optional[str], typer.Option(help="Host")] = None,
-    port: Annotated[Optional[int], typer.Option(help="Port")] = None,
-    database: Annotated[Optional[str], typer.Option(help="Database name")] = None,
-    user: Annotated[Optional[str], typer.Option(help="Username")] = None,
-    password: Annotated[Optional[str], typer.Option(help="Password")] = None,
-    url: Annotated[Optional[str], typer.Option(help="URL or path")] = None,
-    api_key: Annotated[Optional[str], typer.Option(help="API key")] = None,
-    token: Annotated[Optional[str], typer.Option(help="Access token")] = None,
-    path: Annotated[Optional[str], typer.Option(help="File or bucket path")] = None,
-    store: Annotated[Optional[str], typer.Option(help="Store name (Shopify)")] = None,
-    spreadsheet_id: Annotated[Optional[str], typer.Option(help="Google Sheets ID")] = None,
-    sheet_name: Annotated[Optional[str], typer.Option(help="Sheet/tab name")] = None,
-    table_name: Annotated[Optional[str], typer.Option(help="Target table name")] = None,
-    resources: Annotated[Optional[str], typer.Option(help="Resources to sync (comma-separated)")] = None,
+    config_json: Annotated[Optional[str], typer.Option("--config", "-c", help="JSON string or file path with connector params")] = None,
+    # Convenience shortcuts for the most common params (override --config)
+    host: Annotated[Optional[str], typer.Option(help="Host (shortcut for config)")] = None,
+    port: Annotated[Optional[int], typer.Option(help="Port (shortcut for config)")] = None,
+    database: Annotated[Optional[str], typer.Option(help="Database name (shortcut for config)")] = None,
+    user: Annotated[Optional[str], typer.Option(help="Username (shortcut for config)")] = None,
+    password: Annotated[Optional[str], typer.Option(help="Password (shortcut for config)")] = None,
+    url: Annotated[Optional[str], typer.Option(help="URL (shortcut for config)")] = None,
+    api_key: Annotated[Optional[str], typer.Option(help="API key (shortcut for config)")] = None,
+    token: Annotated[Optional[str], typer.Option(help="Access token (shortcut for config)")] = None,
+    path: Annotated[Optional[str], typer.Option(help="File/bucket path (shortcut for config)")] = None,
+    set: Annotated[Optional[list[str]], typer.Option("--set", help="Set param as key=value (repeatable)")] = None,
 ) -> None:
     """Set up a data connector: test connection, generate ingest script, schedule sync.
+
+    Pass connector parameters via --config (JSON string or file path), --set key=value
+    flags, or convenience shortcuts like --host, --database, --api-key.
 
     Examples:
       dp connect postgres --host localhost --database mydb --user admin --password secret
       dp connect stripe --api-key sk_live_xxx
-      dp connect google-sheets --spreadsheet-id 1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgVE2upms
       dp connect csv --path /data/customers.csv
-      dp connect rest-api --url https://api.example.com/data --api-key xxx
-      dp connect s3-gcs --path s3://my-bucket/data.parquet
+      dp connect postgres --config '{"host":"db.prod","database":"app","user":"ro","password":"s3cret"}'
+      dp connect postgres --config ./postgres.json
+      dp connect hubspot --set api_key=xxx --set objects=contacts,deals
     """
+    import json as json_mod
     import dp.connectors  # noqa: F401 — registers all connectors
     from dp.engine.connector import (
         discover_connector,
@@ -1118,37 +1119,45 @@ def connect(
         console.print(table_out)
         return
 
-    # Build config from CLI flags
+    # Build config: start from --config (JSON string or file), then overlay --set and shortcuts
     config: dict = {}
-    if host is not None:
-        config["host"] = host
-    if port is not None:
-        config["port"] = port
-    if database is not None:
-        config["database"] = database
-    if user is not None:
-        config["user"] = user
-    if password is not None:
-        config["password"] = password
-    if url is not None:
-        config["url"] = url
-    if api_key is not None:
-        config["api_key"] = api_key
-    if token is not None:
-        config["access_token"] = token
-    if path is not None:
-        config["path"] = path
-    if store is not None:
-        config["store"] = store
-    if spreadsheet_id is not None:
-        config["spreadsheet_id"] = spreadsheet_id
-    if sheet_name is not None:
-        config["sheet_name"] = sheet_name
-    if table_name is not None:
-        config["table_name"] = table_name
-    if resources is not None:
-        config["resources"] = resources
-        config["objects"] = resources  # HubSpot uses 'objects'
+    if config_json is not None:
+        # Try as file path first, then as raw JSON
+        config_path = Path(config_json)
+        if config_path.exists():
+            try:
+                config = json_mod.loads(config_path.read_text())
+            except json_mod.JSONDecodeError as e:
+                console.print(f"[red]Invalid JSON in {config_json}: {e}[/red]")
+                raise typer.Exit(1)
+        else:
+            try:
+                config = json_mod.loads(config_json)
+            except json_mod.JSONDecodeError as e:
+                console.print(f"[red]Invalid JSON: {e}[/red]")
+                raise typer.Exit(1)
+        if not isinstance(config, dict):
+            console.print("[red]--config must be a JSON object[/red]")
+            raise typer.Exit(1)
+
+    # --set key=value overrides
+    if set:
+        for item in set:
+            if "=" not in item:
+                console.print(f"[red]Invalid --set format: {item!r} (expected key=value)[/red]")
+                raise typer.Exit(1)
+            k, v = item.split("=", 1)
+            config[k.strip()] = v.strip()
+
+    # Convenience shortcuts override --config and --set
+    _shortcuts = {
+        "host": host, "port": port, "database": database, "user": user,
+        "password": password, "url": url, "api_key": api_key,
+        "access_token": token, "path": path,
+    }
+    for k, v in _shortcuts.items():
+        if v is not None:
+            config[k] = v
 
     # Validate connector exists
     try:
@@ -1175,7 +1184,9 @@ def connect(
             req = "[red]*[/red]" if p.required else " "
             default = f" [dim](default: {p.default})[/dim]" if p.default else ""
             secret = " [yellow](secret)[/yellow]" if p.secret else ""
-            console.print(f"  {req} --{p.name.replace('_', '-')}: {p.description}{default}{secret}")
+            console.print(f"  {req} --set {p.name}=...: {p.description}{default}{secret}")
+        console.print()
+        console.print("[dim]Tip: pass all params at once with --config '{...}' or --config file.json[/dim]")
         raise typer.Exit(1)
 
     connection_name = name or f"{connector_type}_{config.get('database', config.get('store', config.get('table_name', 'default')))}"
@@ -1212,7 +1223,6 @@ def connect(
     console.print(f"[bold]Setting up {connector.display_name} connector...[/bold]")
     console.print()
 
-    # Test
     console.print("  [blue]test[/blue]  Testing connection...")
     table_list = [t.strip() for t in tables.split(",")] if tables else None
 

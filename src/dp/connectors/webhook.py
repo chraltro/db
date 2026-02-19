@@ -9,6 +9,7 @@ from dp.engine.connector import (
     DiscoveredResource,
     ParamSpec,
     register_connector,
+    validate_identifier,
 )
 
 
@@ -46,7 +47,9 @@ class WebhookConnector(BaseConnector):
         tables: list[str],
         target_schema: str = "landing",
     ) -> str:
+        validate_identifier(target_schema, "target schema")
         table_name = tables[0] if tables else config.get("table_name", "webhook_data")
+        validate_identifier(table_name, "table name")
         append = config.get("append", "true").lower() == "true"
 
         return f'''\

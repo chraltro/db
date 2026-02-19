@@ -173,3 +173,12 @@ def test_webhook_endpoint(client, project):
     ).fetchone()[0]
     assert count == 1
     conn.close()
+
+
+def test_webhook_rejects_bad_name(client):
+    """POST /api/webhook/{name} should reject names with injection attempts."""
+    resp = client.post(
+        "/api/webhook/; DROP TABLE--",
+        json={"event": "test"},
+    )
+    assert resp.status_code == 400

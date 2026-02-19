@@ -9,6 +9,7 @@ from dp.engine.connector import (
     DiscoveredResource,
     ParamSpec,
     register_connector,
+    validate_identifier,
 )
 
 
@@ -84,6 +85,10 @@ class CSVConnector(BaseConnector):
         tables: list[str],
         target_schema: str = "landing",
     ) -> str:
+        validate_identifier(target_schema, "target schema")
+        for t in tables:
+            validate_identifier(t, "table name")
+
         path = config.get("path", "")
         fmt = self._detect_format(config)
         table_name = tables[0] if tables else "data"

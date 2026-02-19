@@ -9,6 +9,7 @@ from dp.engine.connector import (
     DiscoveredResource,
     ParamSpec,
     register_connector,
+    validate_identifier,
 )
 
 
@@ -79,17 +80,21 @@ class MySQLConnector(BaseConnector):
         tables: list[str],
         target_schema: str = "landing",
     ) -> str:
+        validate_identifier(target_schema, "target schema")
+        for t in tables:
+            validate_identifier(t, "table name")
+
         host = config.get("host", "localhost")
         port = config.get("port", 3306)
         database = config.get("database", "")
         user = config.get("user", "root")
 
         password_env = config.get("password", "")
-        if password_env.startswith("${") and password_env.endswith("}"):
+        if isinstance(password_env, str) and password_env.startswith("${") and password_env.endswith("}"):
             env_var = password_env[2:-1]
             password_line = f'password = os.environ.get("{env_var}", "")'
         else:
-            password_line = f'password = os.environ.get("MYSQL_PASSWORD", "")'
+            password_line = 'password = os.environ.get("MYSQL_PASSWORD", "")'
 
         table_list = ", ".join(f'"{t}"' for t in tables)
 

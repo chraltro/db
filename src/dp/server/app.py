@@ -1438,6 +1438,7 @@ def setup_connector_endpoint(request: Request, req: ConnectorSetupRequest) -> di
 def sync_connector_endpoint(request: Request, connection_name: str) -> dict:
     """Run sync for a configured connector."""
     _require_permission(request, "execute")
+    _validate_identifier(connection_name, "connection name")
     import dp.connectors  # noqa: F401
     from dp.engine.connector import sync_connector
     result = sync_connector(_get_project_dir(), connection_name)
@@ -1450,6 +1451,7 @@ def sync_connector_endpoint(request: Request, connection_name: str) -> dict:
 def remove_connector_endpoint(request: Request, connection_name: str) -> dict:
     """Remove a configured connector."""
     _require_permission(request, "write")
+    _validate_identifier(connection_name, "connection name")
     import dp.connectors  # noqa: F401
     from dp.engine.connector import remove_connector
     result = remove_connector(_get_project_dir(), connection_name)
@@ -1461,6 +1463,8 @@ def remove_connector_endpoint(request: Request, connection_name: str) -> dict:
 @app.post("/api/webhook/{webhook_name}")
 async def receive_webhook(request: Request, webhook_name: str) -> dict:
     """Receive webhook data and store it in the inbox table."""
+    _validate_identifier(webhook_name, "webhook name")
+
     body = await request.body()
     try:
         payload = json.loads(body)
