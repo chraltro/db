@@ -1505,6 +1505,111 @@ async def receive_webhook(request: Request, webhook_name: str) -> dict:
         conn.close()
 
 
+# --- Overview ---
+
+
+@app.get("/api/overview")
+def get_overview(request: Request) -> dict:
+    """Get an overview of the platform: pipeline health, warehouse stats, recent activity."""
+    _require_permission(request, "read")
+    db_path = _get_db_path()
+
+    result: dict[str, Any] = {
+        "recent_runs": [],
+        "schemas": [],
+        "total_tables": 0,
+        "total_rows": 0,
+        "connectors": 0,
+        "has_data": False,
+        "streams": {},
+    }
+
+    # Streams config
+    config = _get_config()
+    result["streams"] = {
+        name: {"description": s.description, "schedule": s.schedule}
+        for name, s in config.streams.items()
+    }
+
+    # Connectors count
+    try:
+        import dp.connectors  # noqa: F401
+        from dp.engine.connector import list_configured_connectors
+        result["connectors"] = len(list_configured_connectors(_get_project_dir()))
+    except Exception:
+        pass
+
+    if not db_path.exists():
+        return result
+
+    conn = connect(db_path, read_only=True)
+    try:
+        # Recent runs (last 20) — may fail if meta table doesn't exist yet
+        try:
+            rows = conn.execute(
+                """
+                SELECT run_id, run_type, target, status, started_at, duration_ms, rows_affected, error
+                FROM _dp_internal.run_log
+                ORDER BY started_at DESC
+                LIMIT 20
+                """
+            ).fetchall()
+            result["recent_runs"] = [
+                {
+                    "run_id": r[0], "run_type": r[1], "target": r[2], "status": r[3],
+                    "started_at": str(r[4]) if r[4] else None,
+                    "duration_ms": r[5], "rows_affected": r[6], "error": r[7],
+                }
+                for r in rows
+            ]
+        except Exception:
+            pass
+
+        # Schema summary with table counts and row counts
+        try:
+            tables = conn.execute(
+                """
+                SELECT table_schema, table_name, table_type
+                FROM information_schema.tables
+                WHERE table_schema NOT IN ('information_schema', '_dp_internal')
+                ORDER BY table_schema, table_name
+                """
+            ).fetchall()
+
+            schema_map: dict[str, dict] = {}
+            for schema, table_name, table_type in tables:
+                if schema not in schema_map:
+                    schema_map[schema] = {"name": schema, "tables": 0, "views": 0, "total_rows": 0}
+                if table_type == "VIEW":
+                    schema_map[schema]["views"] += 1
+                else:
+                    schema_map[schema]["tables"] += 1
+                    try:
+                        row_count = conn.execute(
+                            f'SELECT COUNT(*) FROM "{schema}"."{table_name}"'
+                        ).fetchone()[0]
+                        schema_map[schema]["total_rows"] += row_count
+                    except Exception:
+                        pass
+
+            SCHEMA_ORDER = ["landing", "bronze", "silver", "gold"]
+            sorted_schemas = sorted(
+                schema_map.values(),
+                key=lambda s: (SCHEMA_ORDER.index(s["name"]) if s["name"] in SCHEMA_ORDER else 100, s["name"]),
+            )
+            result["schemas"] = sorted_schemas
+            result["total_tables"] = sum(s["tables"] + s["views"] for s in sorted_schemas)
+            result["total_rows"] = sum(s["total_rows"] for s in sorted_schemas)
+            result["has_data"] = result["total_tables"] > 0
+        except Exception:
+            pass
+
+    finally:
+        conn.close()
+
+    return result
+
+
 # --- Serve frontend ---
 
 _FRONTEND_DIR = Path(__file__).parent.parent.parent.parent / "frontend" / "dist"

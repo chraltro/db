@@ -117,6 +117,9 @@ export const api = {
   getDocs: () => request("/docs/markdown"),
   getStructuredDocs: () => request("/docs/structured"),
 
+  // Overview
+  getOverview: () => request("/overview"),
+
   // Scheduler
   getScheduler: () => request("/scheduler"),
 

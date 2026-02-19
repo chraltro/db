@@ -9,8 +9,9 @@ import HistoryPanel from "./HistoryPanel";
 import DAGPanel from "./DAGPanel";
 import DocsPanel from "./DocsPanel";
 import NotebookPanel from "./NotebookPanel";
-import ImportPanel from "./ImportPanel";
-import ConnectorsPanel from "./ConnectorsPanel";
+import DataSourcesPanel from "./DataSourcesPanel";
+import OverviewPanel from "./OverviewPanel";
+import RunSummary from "./RunSummary";
 import SettingsPanel from "./SettingsPanel";
 import LoginPage from "./LoginPage";
 import ResizeHandle from "./ResizeHandle";
@@ -40,7 +41,7 @@ const GUIDE_STEPS = [
   {
     id: "tabs",
     title: "Navigation Tabs",
-    description: "Switch between Editor, Query runner, Tables browser, Notebooks, Import wizard, DAG view, Docs, History, and Settings.",
+    description: "The Overview shows pipeline health at a glance. Use Data Sources to connect your data, Query to explore, and Tables to browse.",
     position: "bottom",
   },
   {
@@ -52,18 +53,21 @@ const GUIDE_STEPS = [
   {
     id: "output",
     title: "Output Panel",
-    description: "Execution logs, errors, and results appear here. You can resize this panel by dragging its top edge.",
+    description: "Execution logs, errors, and results appear here. After a pipeline runs, you'll see a summary with links to explore your data.",
     position: "top",
   },
   {
     id: "ready",
     title: "You're Ready!",
-    description: "Start by opening a file from the sidebar, or run a stream to kick off your pipeline. You can replay this guide from Settings.",
+    description: "Start by connecting a data source from the Overview tab, or run a stream to kick off your pipeline. You can replay this guide from Settings.",
     position: "center",
   },
 ];
 
-const TABS = ["Editor", "Query", "Tables", "Notebooks", "Import", "Connectors", "DAG", "Docs", "History", "Settings"];
+// Primary tabs always visible; secondary tabs collapsed under "More"
+const PRIMARY_TABS = ["Overview", "Editor", "Query", "Tables", "Data Sources"];
+const SECONDARY_TABS = ["Notebooks", "DAG", "Docs", "History", "Settings"];
+const ALL_TABS = [...PRIMARY_TABS, ...SECONDARY_TABS];
 
 function ActionDropdown({ label, onClick, options, disabled, primary }) {
   const [open, setOpen] = useState(false);
@@ -241,8 +245,13 @@ export default function App() {
   const [fileLang, setFileLang] = useState("sql");
   const [dirty, setDirty] = useState(false);
   const [output, setOutput] = useState([]);
-  const [activeTab, setActiveTab] = useState("Editor");
+  const [activeTab, setActiveTab] = useState("Overview");
   const [streams, setStreams] = useState({});
+  const [moreOpen, setMoreOpen] = useState(false);
+  const moreRef = useRef(null);
+
+  // Run summary state
+  const [runSummary, setRunSummary] = useState(null);
   const [running, setRunning] = useState(false);
   const [warehouseTables, setWarehouseTables] = useState([]);
   const [selectedTable, setSelectedTable] = useState(null);
@@ -498,13 +507,25 @@ export default function App() {
 
   async function runTransformAll(force = false) {
     setRunning(true);
+    setRunSummary(null);
     addOutput("info", `Running transform (force=${force})...`);
     try {
       const data = await api.runTransform(null, force);
+      const models = [];
       for (const [model, status] of Object.entries(data.results || {})) {
         addOutput(status === "error" ? "error" : "info", `${model}: ${status}`);
+        models.push({ name: model, result: status });
       }
       loadTables();
+
+      setRunSummary({
+        type: "transform",
+        status: models.some((m) => m.result === "error") ? "failed" : "success",
+        models,
+        totalRows: 0,
+        duration: 0,
+        errors: models.filter((m) => m.result === "error").length,
+      });
     } catch (e) {
       addOutput("error", e.message);
     } finally {
@@ -514,14 +535,22 @@ export default function App() {
 
   async function runStream(name, force = false) {
     setRunning(true);
+    setRunSummary(null);
     addOutput("info", `Running pipeline${force ? " (full refresh)" : ""}...`);
     try {
       const data = await api.runStream(name, force);
+      const models = [];
+      let totalRows = 0;
+      let totalDuration = 0;
+      let hasError = false;
+
       for (const step of data.steps || []) {
         addOutput("info", `--- ${step.action} ---`);
         if (step.action === "transform") {
           for (const [model, status] of Object.entries(step.results || {})) {
             addOutput(status === "error" ? "error" : "info", `${model}: ${status}`);
+            models.push({ name: model, result: status });
+            if (status === "error") hasError = true;
           }
         } else {
           for (const r of step.results || []) {
@@ -531,13 +560,36 @@ export default function App() {
             if (r.log_output && r.log_output.trim()) {
               r.log_output.split("\n").filter((l) => l.trim()).forEach((l) => addOutput("log", l.trim()));
             }
+            if (r.rows_affected) totalRows += r.rows_affected;
+            if (r.duration_ms) totalDuration += r.duration_ms;
+            if (r.status === "error") hasError = true;
           }
         }
       }
+
+      const durationS = data.duration_seconds ? data.duration_seconds * 1000 : totalDuration;
       addOutput("info", `Pipeline completed.`);
       loadTables();
+
+      // Show run summary
+      setRunSummary({
+        type: "stream",
+        status: hasError ? "failed" : "success",
+        models,
+        totalRows,
+        duration: Math.round(durationS),
+        errors: models.filter((m) => m.result === "error").length,
+      });
     } catch (e) {
       addOutput("error", e.message);
+      setRunSummary({
+        type: "stream",
+        status: "failed",
+        models: [],
+        totalRows: 0,
+        duration: 0,
+        errors: 1,
+      });
     } finally {
       setRunning(false);
     }
@@ -594,6 +646,21 @@ export default function App() {
 
   if (authRequired) {
     return <LoginPage onLogin={handleLogin} needsSetup={needsSetup} />;
+  }
+
+  // Close "More" dropdown on outside click
+  useEffect(() => {
+    if (!moreOpen) return;
+    const handler = (e) => {
+      if (moreRef.current && !moreRef.current.contains(e.target)) setMoreOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [moreOpen]);
+
+  function navigateToTab(tab) {
+    setActiveTab(tab);
+    setMoreOpen(false);
   }
 
   return (
@@ -665,19 +732,47 @@ export default function App() {
 
         {/* Content */}
         <div style={styles.content}>
-          {/* Tabs */}
+          {/* Tabs — primary tabs + "More" dropdown for secondary */}
           <div style={styles.tabs} data-dp-guide="tabs">
-            {TABS.map((tab) => (
+            {PRIMARY_TABS.map((tab) => (
               <button
                 key={tab}
                 data-dp-tab=""
                 data-dp-active={activeTab === tab ? "true" : "false"}
-                onClick={() => setActiveTab(tab)}
+                onClick={() => navigateToTab(tab)}
                 style={activeTab === tab ? styles.tabActive : styles.tab}
               >
                 {tab}
               </button>
             ))}
+            {/* More dropdown for secondary tabs */}
+            <div ref={moreRef} style={styles.moreWrapper}>
+              <button
+                onClick={() => setMoreOpen(!moreOpen)}
+                style={SECONDARY_TABS.includes(activeTab) ? styles.tabActive : styles.tab}
+              >
+                {SECONDARY_TABS.includes(activeTab) ? activeTab : "More"}
+                <span style={styles.moreArrow}>{"\u25BE"}</span>
+              </button>
+              {moreOpen && (
+                <div style={styles.moreMenu}>
+                  {SECONDARY_TABS.map((tab) => (
+                    <button
+                      key={tab}
+                      onClick={() => navigateToTab(tab)}
+                      style={{
+                        ...styles.moreItem,
+                        ...(activeTab === tab ? { color: "var(--dp-accent)", fontWeight: 600 } : {}),
+                      }}
+                      onMouseEnter={(e) => e.currentTarget.style.background = "var(--dp-btn-bg)"}
+                      onMouseLeave={(e) => e.currentTarget.style.background = "none"}
+                    >
+                      {tab}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
             {activeFile && activeTab === "Editor" && (
               <div style={styles.fileActions}>
                 <span style={styles.fileName}>
@@ -696,6 +791,7 @@ export default function App() {
 
           {/* Panel */}
           <div style={styles.panel} data-dp-guide="editor">
+            {activeTab === "Overview" && <ErrorBoundary name="Overview"><OverviewPanel onNavigate={navigateToTab} /></ErrorBoundary>}
             {activeTab === "Editor" && (
               <ErrorBoundary name="Editor">
                 <Editor
@@ -713,14 +809,22 @@ export default function App() {
             )}
             {activeTab === "Query" && <ErrorBoundary name="Query"><QueryPanel addOutput={addOutput} /></ErrorBoundary>}
             {activeTab === "Tables" && <ErrorBoundary name="Tables"><TablesPanel selectedTable={selectedTable} /></ErrorBoundary>}
+            {activeTab === "Data Sources" && <ErrorBoundary name="Data Sources"><DataSourcesPanel addOutput={addOutput} /></ErrorBoundary>}
             {activeTab === "Notebooks" && <ErrorBoundary name="Notebooks"><NotebookPanel openPath={notebookPath} /></ErrorBoundary>}
-            {activeTab === "Import" && <ErrorBoundary name="Import"><ImportPanel addOutput={addOutput} /></ErrorBoundary>}
-            {activeTab === "Connectors" && <ErrorBoundary name="Connectors"><ConnectorsPanel addOutput={addOutput} /></ErrorBoundary>}
             {activeTab === "DAG" && <ErrorBoundary name="DAG"><DAGPanel onOpenFile={openFile} /></ErrorBoundary>}
             {activeTab === "Docs" && <ErrorBoundary name="Docs"><DocsPanel /></ErrorBoundary>}
             {activeTab === "History" && <ErrorBoundary name="History"><HistoryPanel /></ErrorBoundary>}
             {activeTab === "Settings" && <ErrorBoundary name="Settings"><SettingsPanel onShowGuide={showGuide} /></ErrorBoundary>}
           </div>
+
+          {/* Run summary (post-pipeline feedback) */}
+          {runSummary && (
+            <RunSummary
+              summary={runSummary}
+              onNavigate={navigateToTab}
+              onDismiss={() => setRunSummary(null)}
+            />
+          )}
 
           {/* Output */}
           <ResizeHandle
@@ -763,4 +867,9 @@ const styles = {
   panel: { flex: 1, overflow: "hidden" },
   btn: { padding: "5px 12px", background: "var(--dp-btn-bg)", border: "1px solid var(--dp-btn-border)", borderRadius: "var(--dp-radius-lg)", color: "var(--dp-text)", cursor: "pointer", fontSize: "12px", fontWeight: 500 },
   btnPrimary: { padding: "5px 12px", background: "var(--dp-green)", border: "1px solid var(--dp-green-border)", borderRadius: "var(--dp-radius-lg)", color: "#fff", cursor: "pointer", fontSize: "12px", fontWeight: 500 },
+  // "More" dropdown
+  moreWrapper: { position: "relative" },
+  moreArrow: { marginLeft: "4px", fontSize: "10px" },
+  moreMenu: { position: "absolute", top: "100%", left: 0, marginTop: "2px", background: "var(--dp-bg-secondary)", border: "1px solid var(--dp-border)", borderRadius: "var(--dp-radius)", zIndex: 100, minWidth: "130px", boxShadow: "0 4px 12px rgba(0,0,0,0.3)" },
+  moreItem: { display: "block", width: "100%", padding: "7px 14px", background: "none", border: "none", color: "var(--dp-text)", cursor: "pointer", fontSize: "13px", textAlign: "left", whiteSpace: "nowrap" },
 };

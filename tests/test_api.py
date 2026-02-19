@@ -109,3 +109,25 @@ def test_scheduler_endpoint(client):
     assert resp.status_code == 200
     data = resp.json()
     assert "scheduled_streams" in data
+
+
+def test_overview_endpoint(client):
+    resp = client.get("/api/overview")
+    assert resp.status_code == 200
+    data = resp.json()
+    # Should have all expected keys
+    assert "recent_runs" in data
+    assert "schemas" in data
+    assert "total_tables" in data
+    assert "total_rows" in data
+    assert "connectors" in data
+    assert "has_data" in data
+    assert "streams" in data
+    # The test project has a landing.data table
+    assert data["has_data"] is True
+    assert data["total_tables"] >= 1
+    # Should have a landing schema
+    schema_names = [s["name"] for s in data["schemas"]]
+    assert "landing" in schema_names
+    # Should include streams from project.yml
+    assert "test-stream" in data["streams"]
