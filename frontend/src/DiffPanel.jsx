@@ -18,13 +18,13 @@ export default function DiffPanel({ api, addOutput }) {
         (r) => r.added || r.removed || r.modified || r.is_new || r.error || (r.schema_changes && r.schema_changes.length)
       );
       if (changes.length === 0) {
-        addOutput("Diff complete: no changes detected.");
+        addOutput("info", "Diff complete: no changes detected.");
       } else {
-        addOutput(`Diff complete: ${changes.length} model(s) with changes.`);
+        addOutput("info", `Diff complete: ${changes.length} model(s) with changes.`);
         setHintTrigger("hasDiffChanges", true);
       }
     } catch (err) {
-      addOutput(`Diff failed: ${err.message}`);
+      addOutput("error", `Diff failed: ${err.message}`);
     } finally {
       setLoading(false);
     }
