@@ -297,11 +297,11 @@ export default function App() {
     return () => document.removeEventListener("mousedown", handler);
   }, [moreOpen]);
 
-  // Keyboard shortcuts: Ctrl+1..5 for primary tabs
+  // Keyboard shortcuts: Alt+1..5 for primary tabs
   useEffect(() => {
     function handleKeyDown(e) {
-      if (!e.ctrlKey && !e.metaKey) return;
-      if (e.shiftKey || e.altKey) return;
+      if (!e.altKey) return;
+      if (e.ctrlKey || e.metaKey || e.shiftKey) return;
       const num = parseInt(e.key);
       if (num >= 1 && num <= PRIMARY_TABS.length) {
         e.preventDefault();
