@@ -1006,13 +1006,13 @@ def lint_endpoint(request: Request, fix: bool = False) -> dict:
     from dp.lint.linter import lint
 
     config = _get_config()
-    count, violations = lint(
+    count, violations, fixed = lint(
         _get_project_dir() / "transform",
         fix=fix,
         dialect=config.lint.dialect,
         rules=config.lint.rules or None,
     )
-    return {"count": count, "violations": violations}
+    return {"count": count, "violations": violations, "fixed": fixed}
 
 
 @app.get("/api/lint/config")

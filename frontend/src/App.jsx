@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
+import { createPortal } from "react-dom";
 import { api } from "./api";
 import FileTree from "./FileTree";
 import Editor from "./Editor";
@@ -252,6 +253,8 @@ export default function App() {
   const [streams, setStreams] = useState({});
   const [moreOpen, setMoreOpen] = useState(false);
   const moreRef = useRef(null);
+  const moreBtnRef = useRef(null);
+  const [moreMenuPos, setMoreMenuPos] = useState({ top: 0, left: 0 });
 
   // Run summary state
   const [runSummary, setRunSummary] = useState(null);
@@ -655,23 +658,19 @@ export default function App() {
     addOutput("info", fix ? "Fixing SQL..." : "Linting SQL...");
     try {
       const data = await api.runLint(fix);
-      if (data.count === 0) {
-        addOutput("info", fix ? "All fixable violations resolved." : "No lint violations found.");
+      for (const v of data.violations || []) {
+        const tag = fix && !v.fixable ? " (unfixable)" : "";
+        addOutput("warn", `${v.file}:${v.line}:${v.col} [${v.code}] ${v.description}${tag}`);
+      }
+      if (fix) {
+        const fixed = data.fixed ?? 0;
+        const remaining = data.count;
+        const parts = [];
+        if (fixed > 0) parts.push(`${fixed} fixed`);
+        if (remaining > 0) parts.push(`${remaining} violation(s) remain (unfixable by SQLFluff)`);
+        addOutput("info", parts.length > 0 ? parts.join(", ") + "." : "All fixable violations resolved.");
       } else {
-        for (const v of data.violations || []) {
-          const tag = fix && !v.fixable ? " (unfixable)" : "";
-          addOutput("warn", `${v.file}:${v.line}:${v.col} [${v.code}] ${v.description}${tag}`);
-        }
-        if (fix) {
-          const unfixable = (data.violations || []).filter((v) => !v.fixable).length;
-          const fixed = data.count - unfixable;
-          const parts = [];
-          if (fixed > 0) parts.push(`${fixed} fixed`);
-          if (unfixable > 0) parts.push(`${unfixable} unfixable`);
-          addOutput("info", parts.join(", ") + ".");
-        } else {
-          addOutput("info", `${data.count} violation(s) found.`);
-        }
+        addOutput("info", data.count === 0 ? "No lint violations found." : `${data.count} violation(s) found.`);
       }
       if (fix && activeFile) {
         const d = await api.readFile(activeFile);
@@ -830,14 +829,21 @@ export default function App() {
             {/* More dropdown for secondary tabs */}
             <div ref={moreRef} style={styles.moreWrapper}>
               <button
-                onClick={() => setMoreOpen(!moreOpen)}
+                ref={moreBtnRef}
+                onClick={() => {
+                  if (!moreOpen && moreBtnRef.current) {
+                    const rect = moreBtnRef.current.getBoundingClientRect();
+                    setMoreMenuPos({ top: rect.bottom + 2, left: rect.left });
+                  }
+                  setMoreOpen(!moreOpen);
+                }}
                 style={SECONDARY_TABS.includes(activeTab) ? styles.tabActive : styles.tab}
               >
                 {SECONDARY_TABS.includes(activeTab) ? activeTab : "More"}
                 <span style={styles.moreArrow}>{"\u25BE"}</span>
               </button>
-              {moreOpen && (
-                <div style={styles.moreMenu}>
+              {moreOpen && createPortal(
+                <div style={{ ...styles.moreMenu, position: "fixed", top: moreMenuPos.top, left: moreMenuPos.left }}>
                   {SECONDARY_TABS.map((tab) => (
                     <button
                       key={tab}
@@ -852,7 +858,8 @@ export default function App() {
                       {tab}
                     </button>
                   ))}
-                </div>
+                </div>,
+                document.body
               )}
             </div>
             {activeFile && activeTab === "Editor" && (
@@ -984,7 +991,7 @@ const styles = {
   // "More" dropdown
   moreWrapper: { position: "relative" },
   moreArrow: { marginLeft: "4px", fontSize: "10px" },
-  moreMenu: { position: "absolute", top: "100%", left: 0, marginTop: "2px", background: "var(--dp-bg-secondary)", border: "1px solid var(--dp-border)", borderRadius: "var(--dp-radius)", zIndex: 100, minWidth: "130px", boxShadow: "0 4px 12px rgba(0,0,0,0.3)" },
+  moreMenu: { background: "var(--dp-bg-secondary)", border: "1px solid var(--dp-border)", borderRadius: "var(--dp-radius)", zIndex: 9999, minWidth: "130px", boxShadow: "0 4px 12px rgba(0,0,0,0.3)" },
   moreItem: { display: "block", width: "100%", padding: "7px 14px", background: "none", border: "none", color: "var(--dp-text)", cursor: "pointer", fontSize: "13px", textAlign: "left", whiteSpace: "nowrap" },
   // Breadcrumb for secondary tabs
   breadcrumb: { display: "flex", alignItems: "center", gap: "6px", padding: "6px 16px", fontSize: "12px", borderBottom: "1px solid var(--dp-border)", background: "var(--dp-bg-tertiary)" },

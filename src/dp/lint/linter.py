@@ -15,7 +15,7 @@ def lint(
     fix: bool = False,
     dialect: str = "duckdb",
     rules: list[str] | None = None,
-) -> tuple[int, list[dict]]:
+) -> tuple[int, list[dict], int]:
     """Lint SQL files in the transform directory.
 
     Args:
@@ -25,7 +25,7 @@ def lint(
         rules: Specific rules to check (None = all)
 
     Returns:
-        Tuple of (violation_count, violations_list)
+        Tuple of (violation_count, violations_list, fixed_count)
     """
     # Import here to avoid hard dependency at module level
     from sqlfluff.core import FluffConfig, Linter
@@ -52,6 +52,7 @@ def lint(
     linter = Linter(config=config)
 
     all_violations: list[dict] = []
+    total_fixed = 0
 
     for sql_file in sql_files:
         sql = sql_file.read_text()
@@ -69,6 +70,7 @@ def lint(
         clean_sql = "\n".join(lines[header_count:])
 
         result = linter.lint_string(clean_sql, fix=fix)
+        violations_before = len(result.get_violations())
 
         if fix:
             fixed_sql, changed = result.fix_string()
@@ -78,6 +80,7 @@ def lint(
                 sql_file.write_text("\n".join(header_lines) + "\n" + fixed_sql)
                 # Re-lint to report only remaining (unfixable) violations
                 result = linter.lint_string(fixed_sql)
+                total_fixed += violations_before - len(result.get_violations())
 
         rel_path = sql_file.relative_to(transform_dir.parent)
         for violation in result.get_violations():
@@ -90,7 +93,7 @@ def lint(
                 "fixable": bool(violation.fixable),
             })
 
-    return len(all_violations), all_violations
+    return len(all_violations), all_violations, total_fixed
 
 
 def print_violations(violations: list[dict]) -> None:

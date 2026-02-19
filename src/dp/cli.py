@@ -542,7 +542,7 @@ def lint(
     action = "Fixing" if fix else "Linting"
     console.print(f"[bold]{action} SQL files...[/bold]")
 
-    count, violations = run_lint(
+    count, violations, fixed = run_lint(
         transform_dir,
         fix=fix,
         dialect=config.lint.dialect,
@@ -552,7 +552,12 @@ def lint(
     print_violations(violations)
 
     if fix:
-        console.print(f"[green]Fixed {count} violations.[/green]")
+        if fixed > 0:
+            console.print(f"[green]{fixed} fixed.[/green]")
+        if count > 0:
+            console.print(f"[yellow]{count} violation(s) remain (unfixable by SQLFluff).[/yellow]")
+        if fixed == 0 and count == 0:
+            console.print("[green]All fixable violations resolved.[/green]")
     elif count > 0:
         raise typer.Exit(1)
 
