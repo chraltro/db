@@ -6,13 +6,217 @@ import { api } from "./api";
 
 // Cache for table schema lookups to avoid repeated API calls
 const schemaCache = new Map();
+// Cached table list for completions (populated on first completion request)
+let tablesCache = null;
+let tablesCacheTime = 0;
 
-// Register the SQL hover provider once when Monaco loads
-let hoverRegistered = false;
+async function getTablesCache() {
+  const now = Date.now();
+  if (tablesCache && now - tablesCacheTime < 30_000) return tablesCache;
+  try {
+    tablesCache = await api.listTables();
+    tablesCacheTime = now;
+  } catch {
+    tablesCache = tablesCache || [];
+  }
+  return tablesCache;
+}
+
+async function getColumnsCache(schema, table) {
+  const key = `${schema}.${table}`;
+  let info = schemaCache.get(key);
+  if (info !== undefined) return info;
+  try {
+    info = await api.describeTable(schema, table);
+    schemaCache.set(key, info);
+  } catch {
+    schemaCache.set(key, null);
+    info = null;
+  }
+  return info;
+}
+
+// Register SQL hover + completion providers once when Monaco loads
+let providersRegistered = false;
 loader.init().then((monaco) => {
-  if (hoverRegistered) return;
-  hoverRegistered = true;
+  if (providersRegistered) return;
+  providersRegistered = true;
 
+  // --- Completion provider ---
+
+  // SQL keywords after which a table reference (schema.table) is expected
+  const TABLE_CONTEXTS = /\b(?:FROM|JOIN|INNER\s+JOIN|LEFT\s+(?:OUTER\s+)?JOIN|RIGHT\s+(?:OUTER\s+)?JOIN|FULL\s+(?:OUTER\s+)?JOIN|CROSS\s+JOIN|INTO|UPDATE|TABLE)\s+(\w*)$/i;
+
+  // SQL contexts where column names make sense
+  const COLUMN_CONTEXTS = /\b(?:SELECT|WHERE|AND|OR|ON|USING|GROUP\s+BY|ORDER\s+BY|HAVING|SET|WHEN|THEN|ELSE|CASE|BETWEEN|AS|DISTINCT|NOT|IN|IS|LIKE|ILIKE|LIMIT|OFFSET)\s+(\w*)$/i;
+
+  // Also columns after a comma (continuing a SELECT list, GROUP BY list, etc.)
+  const AFTER_COMMA = /,\s*(\w*)$/;
+
+  // Alias.column — "a." where "a" is an alias for a table
+  const ALIAS_DOT = /\b(\w+)\.\s*(\w*)$/;
+
+  // Extract all schema.table references and their aliases from the full SQL text
+  function extractTableRefs(text) {
+    const refs = [];
+    const pattern = /\b(?:FROM|JOIN)\s+(\w+)\.(\w+)(?:\s+(?:AS\s+)?(\w+))?/gi;
+    let m;
+    while ((m = pattern.exec(text)) !== null) {
+      const schema = m[1], table = m[2], alias = m[3] || null;
+      refs.push({ schema, table, alias });
+    }
+    return refs;
+  }
+
+  monaco.languages.registerCompletionItemProvider("sql", {
+    triggerCharacters: [".", " ", ","],
+    provideCompletionItems: async (model, position) => {
+      const fullText = model.getValue();
+      // All text up to the cursor position
+      const offset = model.getOffsetAt(position);
+      const textBefore = fullText.substring(0, offset);
+
+      const tables = await getTablesCache();
+
+      // 1) After "schema." — always suggest tables in that schema
+      const dotMatch = textBefore.match(ALIAS_DOT);
+      if (dotMatch) {
+        const prefix = dotMatch[1].toLowerCase();
+        const partial = (dotMatch[2] || "").toLowerCase();
+
+        // Check if prefix is a known schema — suggest schema.table completions
+        const schemaMatch = tables.some((t) => t.schema.toLowerCase() === prefix);
+        if (schemaMatch) {
+          const suggestions = [];
+          for (const t of tables) {
+            if (t.schema.toLowerCase() === prefix && t.name.toLowerCase().startsWith(partial)) {
+              suggestions.push({
+                label: `${t.schema}.${t.name}`,
+                kind: monaco.languages.CompletionItemKind.Struct,
+                insertText: t.name,
+                detail: t.type || "table",
+                range: {
+                  startLineNumber: position.lineNumber,
+                  startColumn: position.column - partial.length,
+                  endLineNumber: position.lineNumber,
+                  endColumn: position.column,
+                },
+              });
+            }
+          }
+          return { suggestions };
+        }
+
+        // Check if prefix is a table alias — suggest columns
+        const tableRefs = extractTableRefs(fullText);
+        const aliasRef = tableRefs.find(
+          (r) => (r.alias && r.alias.toLowerCase() === prefix) || (!r.alias && r.table.toLowerCase() === prefix)
+        );
+        if (aliasRef) {
+          const info = await getColumnsCache(aliasRef.schema, aliasRef.table);
+          if (info && info.columns) {
+            return {
+              suggestions: info.columns
+                .filter((c) => c.name.toLowerCase().startsWith(partial))
+                .map((c) => ({
+                  label: c.name,
+                  kind: monaco.languages.CompletionItemKind.Field,
+                  insertText: c.name,
+                  detail: `${aliasRef.schema}.${aliasRef.table} — ${c.type}`,
+                  range: {
+                    startLineNumber: position.lineNumber,
+                    startColumn: position.column - partial.length,
+                    endLineNumber: position.lineNumber,
+                    endColumn: position.column,
+                  },
+                })),
+            };
+          }
+        }
+
+        return { suggestions: [] };
+      }
+
+      // 2) Table context — FROM, JOIN, INTO, etc.
+      const tableCtx = textBefore.match(TABLE_CONTEXTS);
+      if (tableCtx) {
+        const partial = (tableCtx[1] || "").toLowerCase();
+        const suggestions = [];
+        for (const t of tables) {
+          const full = `${t.schema}.${t.name}`;
+          if (
+            t.schema.toLowerCase().startsWith(partial) ||
+            t.name.toLowerCase().startsWith(partial) ||
+            full.toLowerCase().startsWith(partial)
+          ) {
+            suggestions.push({
+              label: full,
+              kind: monaco.languages.CompletionItemKind.Struct,
+              insertText: full,
+              detail: t.type || "table",
+              range: {
+                startLineNumber: position.lineNumber,
+                startColumn: position.column - partial.length,
+                endLineNumber: position.lineNumber,
+                endColumn: position.column,
+              },
+            });
+          }
+        }
+        return { suggestions };
+      }
+
+      // 3) Column context — SELECT, WHERE, ON, GROUP BY, etc. or after comma
+      const colCtx = textBefore.match(COLUMN_CONTEXTS) || textBefore.match(AFTER_COMMA);
+      if (colCtx) {
+        const partial = (colCtx[1] || "").toLowerCase();
+        const tableRefs = extractTableRefs(fullText);
+        if (tableRefs.length === 0) return { suggestions: [] };
+
+        // Fetch columns for all referenced tables
+        const allCols = [];
+        for (const ref of tableRefs) {
+          const info = await getColumnsCache(ref.schema, ref.table);
+          if (info && info.columns) {
+            for (const col of info.columns) {
+              allCols.push({ ...col, source: `${ref.schema}.${ref.table}` });
+            }
+          }
+        }
+
+        // Deduplicate by name (if same column in multiple tables, show source)
+        const seen = new Map();
+        for (const col of allCols) {
+          const key = col.name.toLowerCase();
+          if (seen.has(key)) { seen.get(key).ambiguous = true; }
+          else { seen.set(key, { ...col, ambiguous: false }); }
+        }
+
+        const suggestions = [];
+        for (const [, col] of seen) {
+          if (col.name.toLowerCase().startsWith(partial)) {
+            suggestions.push({
+              label: col.name,
+              kind: monaco.languages.CompletionItemKind.Field,
+              insertText: col.name,
+              detail: `${col.type} — ${col.source}`,
+              range: {
+                startLineNumber: position.lineNumber,
+                startColumn: position.column - partial.length,
+                endLineNumber: position.lineNumber,
+                endColumn: position.column,
+              },
+            });
+          }
+        }
+        return { suggestions };
+      }
+
+      return { suggestions: [] };
+    },
+  });
+
+  // --- Hover provider ---
   monaco.languages.registerHoverProvider("sql", {
     provideHover: async (model, position) => {
       const line = model.getLineContent(position.lineNumber);
@@ -162,6 +366,8 @@ export default function Editor({ content, language, onChange, activeFile, onMoun
         cursorBlinking: "smooth",
         cursorSmoothCaretAnimation: "on",
         fontFamily: "var(--dp-font-mono)",
+        quickSuggestions: true,
+        suggestOnTriggerCharacters: true,
       }}
     />
   );

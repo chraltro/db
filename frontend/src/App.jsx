@@ -386,7 +386,7 @@ export default function App() {
   const loadFiles = useCallback(async () => {
     try {
       const data = await api.listFiles();
-      setFiles(data);
+      setFiles(data.map((f) => typeof f === "string" ? f.replace(/\\/g, "/") : { ...f, path: f.path?.replace(/\\/g, "/") }));
     } catch (e) {
       addOutput("error", `Failed to load files: ${e.message}`);
     }
@@ -422,6 +422,7 @@ export default function App() {
   const [notebookPath, setNotebookPath] = useState(null);
 
   async function openFile(path) {
+    path = path.replace(/\\/g, "/");
     // Open .dpnb files in Notebooks tab
     if (path.endsWith(".dpnb")) {
       setNotebookPath(path);
@@ -505,11 +506,12 @@ export default function App() {
   }
 
   async function createFile(path) {
+    path = path.replace(/\\/g, "/");
     if (!path.trim()) return;
     const defaultContent = path.endsWith(".py")
       ? '# A DuckDB connection is available as `db`\n\n'
       : path.endsWith(".sql")
-      ? '-- config: materialized=table, schema=bronze\n-- depends_on:\n\nSELECT 1\n'
+      ? `-- config: materialized=table\n\nSELECT 1\n`
       : "";
     try {
       await api.saveFile(path, defaultContent);
@@ -522,6 +524,7 @@ export default function App() {
   }
 
   async function deleteFile(path) {
+    path = path.replace(/\\/g, "/");
     if (!confirm(`Delete ${path}?`)) return;
     try {
       await api.deleteFile(path);
@@ -756,8 +759,7 @@ export default function App() {
   function queryTable(schema, table) {
     navigateToTab("Query");
     // Store the query intent for QueryPanel to pick up
-    window.__dp_prefill_query = `SELECT * FROM ${schema}.${table} LIMIT 100`;
-    window.dispatchEvent(new Event("dp_prefill_query"));
+    window.__dp_prefill_query = { sql: `SELECT * FROM ${schema}.${table} LIMIT 1000`, run: true };
   }
 
   // Run a specific transform model from the editor

@@ -133,21 +133,48 @@ export default function QueryPanel({ addOutput }) {
   const [sidebarWidth, onSidebarResize, onSidebarResizeStart] = useResizable("dp_query_sidebar_width", 200, 120, 400);
   const [editorHeight, onEditorResize, onEditorResizeStart] = useResizable("dp_query_editor_height", 120, 60, 500);
 
+  // Autocomplete state
+  const [acItems, setAcItems] = useState([]);
+  const [acIndex, setAcIndex] = useState(0);
+  const [acToken, setAcToken] = useState(""); // the token being completed
+  const colCacheRef = useRef({}); // schema.table -> columns[]
+
   useEffect(() => {
     api.listTables().then(setTables).catch(() => {});
     setHintTrigger("queryPanelOpened", true);
   }, []);
 
-  // Listen for prefill events from TablesPanel "Query this table"
+  // Pick up prefilled query on mount (set by "Query this table" before tab switch)
+  const prefillHandled = useRef(false);
   useEffect(() => {
-    function handlePrefill() {
-      if (window.__dp_prefill_query) {
-        setSql(window.__dp_prefill_query);
-        delete window.__dp_prefill_query;
-      }
+    if (prefillHandled.current) return;
+    const pf = window.__dp_prefill_query;
+    if (!pf) return;
+    prefillHandled.current = true;
+    delete window.__dp_prefill_query;
+    const query = typeof pf === "string" ? pf : pf.sql;
+    const autoRun = typeof pf === "object" && pf.run;
+    setSql(query);
+    if (autoRun) {
+      // Run after state settles
+      setTimeout(async () => {
+        setQueryRunning(true);
+        setError(null);
+        try {
+          const data = await api.runQuery(query);
+          setResults(data);
+          const newHistory = [{ sql: query.trim(), ts: new Date().toISOString() }, ...getHistory().filter((h) => h.sql !== query.trim())];
+          setHistory(newHistory);
+          saveHistory(newHistory);
+          addOutput("info", `Query: ${data.rows.length} rows (${data.columns.length} cols)`);
+        } catch (e) {
+          setError(e.message);
+          addOutput("error", `Query error: ${e.message}`);
+        } finally {
+          setQueryRunning(false);
+        }
+      }, 0);
     }
-    window.addEventListener("dp_prefill_query", handlePrefill);
-    return () => window.removeEventListener("dp_prefill_query", handlePrefill);
   }, []);
 
   // Close history dropdown on outside click
@@ -190,6 +217,17 @@ export default function QueryPanel({ addOutput }) {
   }
 
   function handleKeyDown(e) {
+    // Autocomplete navigation
+    if (acItems.length > 0) {
+      if (e.key === "ArrowDown") { e.preventDefault(); setAcIndex((i) => Math.min(i + 1, acItems.length - 1)); return; }
+      if (e.key === "ArrowUp")   { e.preventDefault(); setAcIndex((i) => Math.max(i - 1, 0)); return; }
+      if (e.key === "Tab" || (e.key === "Enter" && !e.ctrlKey && !e.metaKey)) {
+        e.preventDefault();
+        applyCompletion(acItems[acIndex]);
+        return;
+      }
+      if (e.key === "Escape") { setAcItems([]); return; }
+    }
     if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
       e.preventDefault();
       runQuery();
@@ -197,6 +235,82 @@ export default function QueryPanel({ addOutput }) {
     if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === "F") {
       e.preventDefault();
       formatQuery();
+    }
+  }
+
+  function applyCompletion(item) {
+    const ta = textareaRef.current;
+    if (!ta) return;
+    const cursor = ta.selectionStart;
+    const before = sql.substring(0, cursor - acToken.length);
+    const after = sql.substring(cursor);
+    const insert = item.insert;
+    const newSql = before + insert + after;
+    setSql(newSql);
+    setAcItems([]);
+    const newCursor = before.length + insert.length;
+    setTimeout(() => { ta.focus(); ta.selectionStart = ta.selectionEnd = newCursor; }, 0);
+  }
+
+  async function computeAutocomplete(value, cursor) {
+    if (cursor == null) cursor = value.length;
+    const beforeCursor = value.substring(0, cursor);
+
+    // Extract the token being typed: word chars and dots, immediately before cursor
+    const tokenMatch = beforeCursor.match(/[\w.]+$/);
+    const token = tokenMatch ? tokenMatch[0] : "";
+
+    if (token.length < 1) { setAcItems([]); return; }
+
+    const dotIdx = token.indexOf(".");
+
+    if (dotIdx !== -1) {
+      // "schema.partial" — suggest schema.table matches AND columns for exact schema.table
+      const schema = token.substring(0, dotIdx).toLowerCase();
+      const partial = token.substring(dotIdx + 1).toLowerCase();
+
+      // schema.table completions
+      const tableMatches = tables
+        .filter((t) => t.schema.toLowerCase() === schema && t.name.toLowerCase().startsWith(partial))
+        .slice(0, 6)
+        .map((t) => ({ label: `${t.schema}.${t.name}`, insert: `${t.schema}.${t.name}`, kind: "table" }));
+
+      // column completions — only when schema.table is an exact match
+      const exactTable = tables.find((t) => t.schema.toLowerCase() === schema && t.name.toLowerCase() === partial);
+      let colMatches = [];
+      if (exactTable) {
+        const key = `${exactTable.schema}.${exactTable.name}`;
+        let cols = colCacheRef.current[key];
+        if (!cols) {
+          try {
+            const info = await api.describeTable(exactTable.schema, exactTable.name);
+            cols = info.columns || [];
+            colCacheRef.current[key] = cols;
+          } catch { cols = []; }
+        }
+        colMatches = cols.slice(0, 8).map((c) => ({
+          label: `${c.name}  ${c.type}`, insert: c.name, kind: "column",
+        }));
+      }
+
+      const items = [...tableMatches, ...colMatches];
+      setAcToken(token);
+      setAcItems(items);
+      setAcIndex(0);
+    } else {
+      // Plain token — match schema names and table names
+      const lower = token.toLowerCase();
+      const matches = tables
+        .filter((t) =>
+          t.schema.toLowerCase().startsWith(lower) ||
+          t.name.toLowerCase().startsWith(lower) ||
+          `${t.schema}.${t.name}`.toLowerCase().startsWith(lower)
+        )
+        .slice(0, 8)
+        .map((t) => ({ label: `${t.schema}.${t.name}`, insert: `${t.schema}.${t.name}`, kind: "table" }));
+      setAcToken(token);
+      setAcItems(matches);
+      setAcIndex(0);
     }
   }
 
@@ -304,13 +418,33 @@ export default function QueryPanel({ addOutput }) {
             <textarea
               ref={textareaRef}
               value={sql}
-              onChange={(e) => setSql(e.target.value)}
+              onChange={(e) => { const v = e.target.value; const cur = e.target.selectionStart; setSql(v); computeAutocomplete(v, cur); }}
               onKeyDown={handleKeyDown}
-              placeholder="Write SQL here... (Ctrl+Enter to run)"
-              style={{ ...st.textarea, height: "100%", resize: "none" }}
+              onBlur={() => setTimeout(() => setAcItems([]), 150)}
+              placeholder="Write SQL here..."
+              style={{ ...st.textarea, height: "calc(100% - 22px)", resize: "none" }}
               spellCheck={false}
             />
+            <div style={st.shortcutHint}>
+              <span style={st.shortcutKey}>Ctrl+Enter</span> run &nbsp;·&nbsp;
+              <span style={st.shortcutKey}>Ctrl+Shift+F</span> format &nbsp;·&nbsp;
+              <span style={st.shortcutKey}>Tab</span> autocomplete
+            </div>
           </div>
+          {acItems.length > 0 && (
+            <div style={st.acDropdown}>
+              {acItems.map((item, i) => (
+                <div
+                  key={i}
+                  onMouseDown={(e) => { e.preventDefault(); applyCompletion(item); }}
+                  style={i === acIndex ? st.acItemActive : st.acItem}
+                >
+                  <span style={st.acKind}>{item.kind === "column" ? "col" : "tbl"}</span>
+                  <span style={st.acLabel}>{item.label}</span>
+                </div>
+              ))}
+            </div>
+          )}
           <ResizeHandle direction="vertical" onResize={onEditorResize} onResizeStart={onEditorResizeStart} />
 
           {/* Starter suggestions when textarea is empty */}
@@ -390,7 +524,14 @@ const st = {
   viewBtnActive: { padding: "3px 10px", background: "var(--dp-bg-secondary)", border: "none", color: "var(--dp-text)", cursor: "pointer", fontSize: "11px", fontWeight: 600 },
 
   editorWrapper: { flexShrink: 0 },
-  textarea: { width: "100%", height: "100%", padding: "10px 12px", background: "var(--dp-bg)", border: "none", color: "var(--dp-text)", fontFamily: "var(--dp-font-mono)", fontSize: "13px", resize: "none", outline: "none", boxSizing: "border-box", lineHeight: 1.5 },
+  textarea: { width: "100%", height: "100%", padding: "10px 12px", background: "var(--dp-bg)", border: "none", color: "var(--dp-text)", fontFamily: "var(--dp-font-mono)", fontSize: "13px", resize: "none", outline: "none", boxSizing: "border-box", lineHeight: 1.5, display: "block" },
+  shortcutHint: { height: "22px", display: "flex", alignItems: "center", padding: "0 10px", gap: "2px", fontSize: "10px", color: "var(--dp-text-dim)", background: "var(--dp-bg)", borderTop: "1px solid var(--dp-border)" },
+  shortcutKey: { background: "var(--dp-btn-bg)", border: "1px solid var(--dp-btn-border)", borderRadius: "3px", padding: "0 4px", fontSize: "10px", fontFamily: "var(--dp-font-mono)", color: "var(--dp-text-secondary)" },
+  acDropdown: { maxHeight: "180px", overflow: "auto", background: "var(--dp-bg-secondary)", borderBottom: "1px solid var(--dp-border)", flexShrink: 0 },
+  acItem: { display: "flex", alignItems: "center", gap: "8px", padding: "5px 10px", cursor: "pointer", fontSize: "12px" },
+  acItemActive: { display: "flex", alignItems: "center", gap: "8px", padding: "5px 10px", cursor: "pointer", fontSize: "12px", background: "var(--dp-btn-bg)" },
+  acKind: { fontSize: "9px", fontFamily: "var(--dp-font-mono)", color: "var(--dp-text-dim)", background: "var(--dp-bg-tertiary)", border: "1px solid var(--dp-border)", borderRadius: "3px", padding: "0 4px", flexShrink: 0, width: "22px", textAlign: "center" },
+  acLabel: { fontFamily: "var(--dp-font-mono)", color: "var(--dp-text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
 
   suggestions: { display: "flex", alignItems: "center", gap: "6px", padding: "8px 12px", flexWrap: "wrap", borderBottom: "1px solid var(--dp-border)" },
   suggestLabel: { fontSize: "11px", color: "var(--dp-text-dim)", fontWeight: 500 },

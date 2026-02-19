@@ -81,7 +81,8 @@ def _get_config_cached():
 
 # --- Model discovery cache ---
 
-_model_cache: dict[str, Any] = {"models": None, "mtime_map": None, "transform_dir": None}
+_MODEL_CACHE_VERSION = 2  # Bump to invalidate cached models after code changes
+_model_cache: dict[str, Any] = {"models": None, "mtime_map": None, "transform_dir": None, "version": None}
 
 
 def _discover_models_cached(transform_dir: Path):
@@ -98,6 +99,7 @@ def _discover_models_cached(transform_dir: Path):
         _model_cache["models"] is not None
         and _model_cache["transform_dir"] == str(transform_dir)
         and _model_cache["mtime_map"] == current_mtimes
+        and _model_cache["version"] == _MODEL_CACHE_VERSION
     ):
         return _model_cache["models"]
 
@@ -105,6 +107,7 @@ def _discover_models_cached(transform_dir: Path):
     _model_cache["models"] = models
     _model_cache["mtime_map"] = current_mtimes
     _model_cache["transform_dir"] = str(transform_dir)
+    _model_cache["version"] = _MODEL_CACHE_VERSION
     return models
 
 

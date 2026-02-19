@@ -25,8 +25,11 @@ console = Console()
 CONFIG_PATTERN = re.compile(r"^--\s*config:\s*(.+)$", re.MULTILINE)
 # -- depends_on: bronze.customers, bronze.orders
 DEPENDS_PATTERN = re.compile(r"^--\s*depends_on:\s*(.+)$", re.MULTILINE)
-# Matches schema.table references in SQL body (FROM/JOIN clauses etc.)
-SQL_TABLE_REF_PATTERN = re.compile(r"\b([a-zA-Z_]\w*)\.([a-zA-Z_]\w*)\b")
+# Matches schema.table after FROM / JOIN keywords
+SQL_FROM_REF_PATTERN = re.compile(
+    r"\b(?:FROM|JOIN)\s+([a-zA-Z_]\w*)\.([a-zA-Z_]\w*)\b",
+    re.IGNORECASE,
+)
 # -- description: Human-readable model description
 DESCRIPTION_PATTERN = re.compile(r"^--\s*description:\s*(.+)$", re.MULTILINE)
 # -- col: column_name: Column description
@@ -86,14 +89,19 @@ def _parse_depends(sql: str) -> list[str]:
 _SKIP_SCHEMAS = {"information_schema", "_dp_internal", "pg_catalog", "sys"}
 
 
-def _infer_depends(query: str, own_schema: str) -> list[str]:
-    """Infer upstream table dependencies by scanning schema.table refs in the SQL body."""
+def _infer_depends(query: str, own_full_name: str) -> list[str]:
+    """Infer upstream table dependencies from FROM/JOIN clauses in the SQL body."""
     refs = set()
-    for match in SQL_TABLE_REF_PATTERN.finditer(query):
+    # Strip SQL line comments before scanning to avoid matching commented-out refs
+    clean = re.sub(r"--[^\n]*", "", query)
+    for match in SQL_FROM_REF_PATTERN.finditer(clean):
         schema, table = match.group(1).lower(), match.group(2).lower()
         if schema in _SKIP_SCHEMAS:
             continue
-        refs.add(f"{schema}.{table}")
+        ref = f"{schema}.{table}"
+        if ref == own_full_name:
+            continue
+        refs.add(ref)
     return sorted(refs)
 
 
@@ -148,7 +156,8 @@ def discover_models(transform_dir: Path) -> list[SQLModel]:
         if not depends:
             folder_schema_tmp = sql_file.relative_to(transform_dir).parent.name or "public"
             own_schema_tmp = config.get("schema", folder_schema_tmp)
-            depends = _infer_depends(query, own_schema_tmp)
+            own_name_tmp = sql_file.stem
+            depends = _infer_depends(query, f"{own_schema_tmp}.{own_name_tmp}")
 
         # Schema from folder name (convention) or config override
         rel = sql_file.relative_to(transform_dir)

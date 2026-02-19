@@ -289,6 +289,7 @@ export default function DAGPanel({ onOpenFile }) {
           <span style={styles.legendSep}>|</span>
           <span style={styles.legendItem}>↑ = imported file</span>
           <span style={styles.legendItem}>I = ingest</span>
+          <span style={styles.legendItem}>S = source</span>
           <span style={styles.legendItem}>V = view</span>
           <span style={styles.legendItem}>T = table</span>
         </div>

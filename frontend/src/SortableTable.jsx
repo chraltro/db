@@ -136,7 +136,7 @@ export default function SortableTable({ columns, rows, columnTypes }) {
         {sortedRows.map((row, i) => (
           <tr key={i}>
             {row.map((val, j) => (
-              <td key={j} style={styles.td}>
+              <td key={j} style={styles.td} title={val === null ? "" : String(val)}>
                 {val === null ? <span style={styles.null}>NULL</span> : String(val)}
               </td>
             ))}
@@ -153,6 +153,6 @@ const styles = {
   thInner: { display: "flex", alignItems: "center", gap: "6px", width: "100%" },
   typeSymbol: { fontSize: "9px", fontWeight: 500, opacity: 0.8 },
   sortIcon: { fontSize: "8px", lineHeight: 1, marginLeft: "auto", flexShrink: 0 },
-  td: { padding: "4px 12px", borderBottom: "1px solid var(--dp-border)", color: "var(--dp-text)" },
+  td: { padding: "4px 12px", borderBottom: "1px solid var(--dp-border)", color: "var(--dp-text)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "300px" },
   null: { color: "var(--dp-text-dim)", fontStyle: "italic", fontSize: "11px" },
 };
