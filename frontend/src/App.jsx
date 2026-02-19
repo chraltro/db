@@ -18,6 +18,7 @@ import SettingsPanel from "./SettingsPanel";
 import LoginPage from "./LoginPage";
 import ResizeHandle from "./ResizeHandle";
 import useResizable from "./useResizable";
+import SortableTable from "./SortableTable";
 import GuideTour from "./GuideTour";
 import ErrorBoundary from "./ErrorBoundary";
 import Hint from "./Hint";
@@ -248,6 +249,10 @@ export default function App() {
   const [fileContent, setFileContent] = useState("");
   const [fileLang, setFileLang] = useState("sql");
   const [dirty, setDirty] = useState(false);
+  const [preview, setPreview] = useState(null); // { columns, rows } | null
+  const [previewError, setPreviewError] = useState(null);
+  const [previewRunning, setPreviewRunning] = useState(false);
+  const [previewHeight, onPreviewResize, onPreviewResizeStart] = useResizable("dp_editor_preview_height", 200, 80, 600);
   const [output, setOutput] = useState([]);
   const [activeTab, setActiveTab] = useState("Overview");
   const [streams, setStreams] = useState({});
@@ -432,6 +437,8 @@ export default function App() {
       setFileContent(data.content);
       setFileLang(data.language);
       setDirty(false);
+      setPreview(null);
+      setPreviewError(null);
       setActiveTab("Editor");
     } catch (e) {
       addOutput("error", `Failed to open: ${e.message}`);
@@ -689,7 +696,7 @@ export default function App() {
     if (!activeFile || !activeFile.endsWith(".sql")) return;
     addOutput("info", `Formatting ${activeFile}...`);
     try {
-      const data = await api.lintFile(activeFile, true);
+      const data = await api.lintFile(activeFile, true, fileContent);
       for (const v of data.violations || []) {
         addOutput("warn", `${activeFile}:${v.line}:${v.col} [${v.code}] ${v.description} (unfixable)`);
       }
@@ -699,6 +706,30 @@ export default function App() {
       if (data.content != null) setFileContent(data.content);
     } catch (e) {
       addOutput("error", e.message);
+    }
+  }
+
+  async function previewCurrentFile() {
+    if (!activeFile || !activeFile.endsWith(".sql")) return;
+    // Strip -- config: / -- depends_on: header lines before running
+    const lines = fileContent.split("\n");
+    let start = 0;
+    for (const line of lines) {
+      const s = line.trim();
+      if (s.startsWith("-- config:") || s.startsWith("-- depends_on:") || s === "") { start++; } else break;
+    }
+    const sql = lines.slice(start).join("\n").trim();
+    if (!sql) return;
+    setPreviewRunning(true);
+    setPreviewError(null);
+    try {
+      const data = await api.runQuery(sql);
+      setPreview(data);
+    } catch (e) {
+      setPreviewError(e.message);
+      setPreview(null);
+    } finally {
+      setPreviewRunning(false);
     }
   }
 
@@ -930,18 +961,42 @@ export default function App() {
             )}
             {activeTab === "Editor" && (
               <ErrorBoundary name="Editor">
-                <Editor
-                  content={fileContent}
-                  language={fileLang}
-                  onChange={(val) => {
-                    setFileContent(val);
-                    setDirty(true);
-                  }}
-                  activeFile={activeFile}
-                  onMount={(editor) => { editorRef.current = editor; }}
-                  goToLine={goToLine}
-                  onFormat={activeFile?.endsWith(".sql") ? formatCurrentFile : undefined}
-                />
+                <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+                  <div style={{ flex: 1, overflow: "hidden", minHeight: 0 }}>
+                    <Editor
+                      content={fileContent}
+                      language={fileLang}
+                      onChange={(val) => {
+                        setFileContent(val);
+                        setDirty(true);
+                      }}
+                      activeFile={activeFile}
+                      onMount={(editor) => { editorRef.current = editor; }}
+                      goToLine={goToLine}
+                      onFormat={activeFile?.endsWith(".sql") ? formatCurrentFile : undefined}
+                      onPreview={activeFile?.endsWith(".sql") ? previewCurrentFile : undefined}
+                    />
+                  </div>
+                  {(preview || previewError || previewRunning) && (
+                    <>
+                      <ResizeHandle direction="vertical" onResize={(d) => onPreviewResize(-d)} onResizeStart={onPreviewResizeStart} />
+                      <div style={{ height: previewHeight, flexShrink: 0, borderTop: "1px solid var(--dp-border)", display: "flex", flexDirection: "column", overflow: "hidden" }}>
+                        <div style={{ padding: "4px 12px", fontSize: "11px", color: "var(--dp-text-secondary)", borderBottom: "1px solid var(--dp-border)", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
+                          <span>
+                            {previewRunning ? "Running…" : previewError ? "Error" : `${preview.rows.length} row${preview.rows.length !== 1 ? "s" : ""}, ${preview.columns.length} col${preview.columns.length !== 1 ? "s" : ""}`}
+                          </span>
+                          <button onClick={() => { setPreview(null); setPreviewError(null); }} style={{ background: "none", border: "none", color: "var(--dp-text-dim)", cursor: "pointer", fontSize: "14px", lineHeight: 1 }}>×</button>
+                        </div>
+                        <div style={{ flex: 1, overflow: "auto" }}>
+                          {previewError
+                            ? <div style={{ padding: "8px 12px", color: "var(--dp-red)", fontFamily: "var(--dp-font-mono)", fontSize: "12px", whiteSpace: "pre-wrap" }}>{previewError}</div>
+                            : preview && <SortableTable columns={preview.columns} rows={preview.rows} />
+                          }
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </div>
               </ErrorBoundary>
             )}
             {activeTab === "Query" && <ErrorBoundary name="Query"><QueryPanel addOutput={addOutput} /></ErrorBoundary>}

@@ -1018,6 +1018,7 @@ def lint_endpoint(request: Request, fix: bool = False) -> dict:
 class LintFileRequest(BaseModel):
     path: str = Field(..., max_length=1000)
     fix: bool = False
+    content: str | None = Field(None, max_length=1_000_000)
 
 
 @app.post("/api/lint/file")
@@ -1032,8 +1033,8 @@ def lint_file_endpoint(request: Request, req: LintFileRequest) -> dict:
     # Security: must be inside project dir
     if not str(file_path).startswith(str(project_dir.resolve())):
         raise HTTPException(status_code=400, detail="Path outside project directory")
-    if not file_path.exists() or not file_path.suffix == ".sql":
-        raise HTTPException(status_code=400, detail="File not found or not a SQL file")
+    if file_path.suffix != ".sql":
+        raise HTTPException(status_code=400, detail="Not a SQL file")
 
     count, violations, fixed, new_content = lint_file(
         file_path,
@@ -1041,6 +1042,7 @@ def lint_file_endpoint(request: Request, req: LintFileRequest) -> dict:
         fix=req.fix,
         dialect=config.lint.dialect,
         rules=config.lint.rules or None,
+        content=req.content,
     )
     return {"count": count, "violations": violations, "fixed": fixed, "content": new_content}
 
@@ -1129,10 +1131,11 @@ def _scan_import_sources(project_dir: Path) -> dict[str, str]:
         result = conn.execute("""
             SELECT DISTINCT ON (target) target, log_output
             FROM _dp_internal.run_log
-            WHERE run_type = 'import' AND status = 'success' AND log_output IS NOT NULL
+            WHERE run_type = 'import' AND status = 'success'
             ORDER BY target, started_at DESC
         """).fetchall()
-        return {row[0]: row[1] for row in result}
+        # Fall back to the table name itself if source filename wasn't recorded
+        return {row[0]: row[1] if row[1] else row[0].split(".")[-1] for row in result}
     except Exception:
         return {}
     finally:

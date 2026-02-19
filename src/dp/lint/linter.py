@@ -102,8 +102,12 @@ def lint_file(
     fix: bool = False,
     dialect: str = "duckdb",
     rules: list[str] | None = None,
+    content: str | None = None,
 ) -> tuple[int, list[dict], int, str]:
     """Lint (and optionally fix) a single SQL file.
+
+    If content is provided, lint that instead of reading from disk.
+    When fix=True and content is provided, the fixed content is written to disk.
 
     Returns:
         Tuple of (violation_count, violations_list, fixed_count, file_content)
@@ -124,7 +128,7 @@ def lint_file(
         config = FluffConfig.from_kwargs(**config_kwargs)
     linter = Linter(config=config)
 
-    sql = sql_file.read_text()
+    sql = content if content is not None else sql_file.read_text()
     lines = sql.split("\n")
     header_count = 0
     for line in lines:

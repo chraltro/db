@@ -104,8 +104,8 @@ export const api = {
   // Lint
   runLint: (fix = false) =>
     request(`/lint?fix=${fix}`, { method: "POST" }),
-  lintFile: (path, fix = false) =>
-    request("/lint/file", { method: "POST", body: JSON.stringify({ path, fix }) }),
+  lintFile: (path, fix = false, content = null) =>
+    request("/lint/file", { method: "POST", body: JSON.stringify({ path, fix, content }) }),
   getLintConfig: () => request("/lint/config"),
   saveLintConfig: (content) =>
     request("/lint/config", { method: "PUT", body: JSON.stringify({ content }) }),

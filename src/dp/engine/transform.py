@@ -25,6 +25,8 @@ console = Console()
 CONFIG_PATTERN = re.compile(r"^--\s*config:\s*(.+)$", re.MULTILINE)
 # -- depends_on: bronze.customers, bronze.orders
 DEPENDS_PATTERN = re.compile(r"^--\s*depends_on:\s*(.+)$", re.MULTILINE)
+# Matches schema.table references in SQL body (FROM/JOIN clauses etc.)
+SQL_TABLE_REF_PATTERN = re.compile(r"\b([a-zA-Z_]\w*)\.([a-zA-Z_]\w*)\b")
 # -- description: Human-readable model description
 DESCRIPTION_PATTERN = re.compile(r"^--\s*description:\s*(.+)$", re.MULTILINE)
 # -- col: column_name: Column description
@@ -80,6 +82,21 @@ def _parse_depends(sql: str) -> list[str]:
     return [dep.strip() for dep in match.group(1).split(",") if dep.strip()]
 
 
+# Schemas that are never real upstream dependencies
+_SKIP_SCHEMAS = {"information_schema", "_dp_internal", "pg_catalog", "sys"}
+
+
+def _infer_depends(query: str, own_schema: str) -> list[str]:
+    """Infer upstream table dependencies by scanning schema.table refs in the SQL body."""
+    refs = set()
+    for match in SQL_TABLE_REF_PATTERN.finditer(query):
+        schema, table = match.group(1).lower(), match.group(2).lower()
+        if schema in _SKIP_SCHEMAS:
+            continue
+        refs.add(f"{schema}.{table}")
+    return sorted(refs)
+
+
 def _parse_description(sql: str) -> str:
     """Parse -- description: text from SQL header."""
     match = DESCRIPTION_PATTERN.search(sql)
@@ -128,6 +145,10 @@ def discover_models(transform_dir: Path) -> list[SQLModel]:
         description = _parse_description(sql)
         column_docs = _parse_column_docs(sql)
         query = _strip_config_comments(sql)
+        if not depends:
+            folder_schema_tmp = sql_file.relative_to(transform_dir).parent.name or "public"
+            own_schema_tmp = config.get("schema", folder_schema_tmp)
+            depends = _infer_depends(query, own_schema_tmp)
 
         # Schema from folder name (convention) or config override
         rel = sql_file.relative_to(transform_dir)

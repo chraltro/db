@@ -76,13 +76,15 @@ loader.init().then((monaco) => {
   });
 });
 
-export default function Editor({ content, language, onChange, activeFile, onMount, goToLine, onFormat }) {
+export default function Editor({ content, language, onChange, activeFile, onMount, goToLine, onFormat, onPreview }) {
   const { themeId } = useTheme();
   const currentTheme = getTheme(themeId);
   const monacoTheme = currentTheme.dark ? "vs-dark" : "vs";
   const editorRef = useRef(null);
   const onFormatRef = useRef(onFormat);
   onFormatRef.current = onFormat;
+  const onPreviewRef = useRef(onPreview);
+  onPreviewRef.current = onPreview;
 
   function handleEditorMount(editor, monaco) {
     editorRef.current = editor;
@@ -94,9 +96,16 @@ export default function Editor({ content, language, onChange, activeFile, onMoun
       keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyF],
       precondition: null,
       keybindingContext: null,
-      run: () => {
-        if (onFormatRef.current) onFormatRef.current();
-      },
+      run: () => { if (onFormatRef.current) onFormatRef.current(); },
+    });
+
+    editor.addAction({
+      id: "dp-preview-sql",
+      label: "Preview SQL results",
+      keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter],
+      precondition: null,
+      keybindingContext: null,
+      run: () => { if (onPreviewRef.current) onPreviewRef.current(); },
     });
   }
 
