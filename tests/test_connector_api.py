@@ -175,6 +175,37 @@ def test_webhook_endpoint(client, project):
     conn.close()
 
 
+def test_regenerate_connector(client, project):
+    """POST /api/connectors/regenerate/{name} should rewrite the ingest script."""
+    csv_file = project / "regen.csv"
+    csv_file.write_text("a,b\n1,2\n")
+
+    # Set up a connector first
+    client.post("/api/connectors/setup", json={
+        "connector_type": "csv",
+        "connection_name": "regen_api",
+        "config": {"path": str(csv_file)},
+        "target_schema": "landing",
+    })
+
+    script_path = project / "ingest" / "connector_regen_api.py"
+    assert script_path.exists()
+
+    # Regenerate
+    resp = client.post("/api/connectors/regenerate/regen_api", json={})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["status"] == "success"
+    assert data["connector_type"] == "csv"
+    assert script_path.exists()
+
+
+def test_regenerate_nonexistent(client):
+    """POST /api/connectors/regenerate/{name} should return 400 for unknown."""
+    resp = client.post("/api/connectors/regenerate/nonexistent", json={})
+    assert resp.status_code == 400
+
+
 def test_webhook_rejects_bad_name(client):
     """POST /api/webhook/{name} should reject names with injection attempts."""
     resp = client.post(

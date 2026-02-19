@@ -314,6 +314,98 @@ def sync_connector(
         conn.close()
 
 
+def regenerate_connector(
+    project_dir: Path,
+    connection_name: str,
+    config_overrides: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Re-generate the ingest script for an existing connector.
+
+    Reads the current config from project.yml, applies any overrides,
+    and rewrites the ingest script.  Useful after connector code is
+    updated or when config values change.
+    """
+    from dp.config import load_project
+
+    project_config = load_project(project_dir)
+
+    # Find the connection in project.yml
+    conn_config = project_config.connections.get(connection_name)
+    if conn_config is None:
+        return {"status": "error", "error": f"Connection '{connection_name}' not found in project.yml"}
+
+    connector_type = conn_config.type
+    try:
+        connector = get_connector(connector_type)
+    except ValueError as e:
+        return {"status": "error", "error": str(e)}
+
+    # Build config from stored params, overlaying overrides
+    config: dict[str, Any] = dict(conn_config.params)
+    config.pop("type", None)
+    if config_overrides:
+        config.update(config_overrides)
+
+    # Resolve env-var references (${VAR} → look up in .env)
+    from dp.engine.secrets import load_env
+
+    env_vars = load_env(project_dir)
+    for key, val in list(config.items()):
+        if isinstance(val, str) and val.startswith("${") and val.endswith("}"):
+            env_key = val[2:-1]
+            resolved = env_vars.get(env_key)
+            if resolved:
+                config[key] = resolved
+
+    # Discover resources for regeneration
+    try:
+        discovered = connector.discover(config)
+        tables = [r.name for r in discovered]
+    except Exception:
+        tables = []
+
+    if not tables:
+        # Fallback: extract tables from existing script if possible
+        tables = []
+
+    # Determine target schema from existing stream or default
+    target_schema = "landing"
+    safe_name = _sanitize_name(connection_name)
+
+    # Validate
+    try:
+        validate_identifier(target_schema, "target schema")
+    except ValueError as e:
+        return {"status": "error", "error": str(e)}
+
+    # Sanitize tables
+    if tables:
+        sanitized = []
+        for t in tables:
+            safe = _sanitize_name(t)
+            try:
+                validate_identifier(safe, f"table name derived from '{t}'")
+            except ValueError as e:
+                return {"status": "error", "error": str(e)}
+            sanitized.append(safe)
+        tables = sanitized
+
+    # Generate new script
+    script_content = connector.generate_script(config, tables, target_schema)
+    script_filename = f"connector_{safe_name}.py"
+    script_path = project_dir / "ingest" / script_filename
+    script_path.parent.mkdir(parents=True, exist_ok=True)
+    script_path.write_text(script_content)
+
+    return {
+        "status": "success",
+        "connection_name": connection_name,
+        "connector_type": connector_type,
+        "script_path": str(script_path.relative_to(project_dir)),
+        "tables": tables,
+    }
+
+
 def remove_connector(
     project_dir: Path,
     connection_name: str,

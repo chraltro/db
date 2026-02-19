@@ -19,6 +19,7 @@ from dp.engine.connector import (
     get_connector,
     list_configured_connectors,
     list_connectors,
+    regenerate_connector,
     register_connector,
     remove_connector,
     setup_connector,
@@ -677,3 +678,75 @@ def test_full_csv_pipeline(tmp_path):
     assert abs(total - 425.75) < 0.01
 
     conn.close()
+
+
+# ---------------------------------------------------------------------------
+# Regeneration tests
+# ---------------------------------------------------------------------------
+
+
+def test_regenerate_connector(tmp_path):
+    """regenerate_connector should rewrite the ingest script."""
+    project_dir = _scaffold_project(tmp_path)
+
+    # Create a CSV file and set up the connector
+    csv_file = project_dir / "data.csv"
+    csv_file.write_text("id,name\n1,Alice\n")
+
+    result = setup_connector(
+        project_dir=project_dir,
+        connector_type="csv",
+        connection_name="regen_test",
+        config={"path": str(csv_file)},
+        target_schema="landing",
+    )
+    assert result["status"] == "success"
+
+    script_path = project_dir / "ingest" / "connector_regen_test.py"
+    original_content = script_path.read_text()
+    original_mtime = script_path.stat().st_mtime
+
+    # Regenerate
+    import time
+    time.sleep(0.05)  # ensure mtime differs
+    regen_result = regenerate_connector(project_dir, "regen_test")
+    assert regen_result["status"] == "success"
+    assert regen_result["connector_type"] == "csv"
+    assert script_path.exists()
+
+    # Script was rewritten (mtime changed)
+    new_mtime = script_path.stat().st_mtime
+    assert new_mtime > original_mtime
+
+
+def test_regenerate_nonexistent_connector(tmp_path):
+    """regenerate_connector should return error for unknown connection."""
+    project_dir = _scaffold_project(tmp_path)
+
+    result = regenerate_connector(project_dir, "nonexistent")
+    assert result["status"] == "error"
+    assert "not found" in result["error"]
+
+
+def test_regenerate_preserves_config(tmp_path):
+    """regenerate_connector should use config from project.yml."""
+    project_dir = _scaffold_project(tmp_path)
+
+    csv_file = project_dir / "data.csv"
+    csv_file.write_text("x,y\n1,2\n")
+
+    setup_connector(
+        project_dir=project_dir,
+        connector_type="csv",
+        connection_name="cfg_test",
+        config={"path": str(csv_file)},
+        target_schema="landing",
+    )
+
+    # Regenerate
+    regen_result = regenerate_connector(project_dir, "cfg_test")
+    assert regen_result["status"] == "success"
+
+    # Script should still reference the CSV path
+    script_content = (project_dir / "ingest" / "connector_cfg_test.py").read_text()
+    assert str(csv_file) in script_content

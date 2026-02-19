@@ -1354,6 +1354,27 @@ def connectors_remove(
     console.print(f"[green]Connector '{connection_name}' removed.[/green]")
 
 
+@connectors_app.command("regenerate")
+def connectors_regenerate(
+    connection_name: Annotated[str, typer.Argument(help="Connection name to regenerate")],
+    project_dir: Annotated[Optional[Path], typer.Option("--project", "-p")] = None,
+) -> None:
+    """Regenerate the ingest script for a connector from current config."""
+    import dp.connectors  # noqa: F401
+    from dp.engine.connector import regenerate_connector
+
+    project_dir = _resolve_project(project_dir)
+    result = regenerate_connector(project_dir, connection_name)
+
+    if result["status"] == "error":
+        console.print(f"[red]{result.get('error')}[/red]")
+        raise typer.Exit(1)
+
+    console.print(f"[green]Regenerated script: {result['script_path']}[/green]")
+    if result.get("tables"):
+        console.print(f"Tables: {', '.join(result['tables'])}")
+
+
 @connectors_app.command("available")
 def connectors_available() -> None:
     """List all available connector types."""

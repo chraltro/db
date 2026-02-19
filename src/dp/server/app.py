@@ -1434,6 +1434,19 @@ def setup_connector_endpoint(request: Request, req: ConnectorSetupRequest) -> di
         raise HTTPException(400, str(e))
 
 
+@app.post("/api/connectors/regenerate/{connection_name}")
+def regenerate_connector_endpoint(request: Request, connection_name: str, body: dict = {}) -> dict:
+    """Regenerate the ingest script for an existing connector."""
+    _require_permission(request, "execute")
+    _validate_identifier(connection_name, "connection name")
+    import dp.connectors  # noqa: F401
+    from dp.engine.connector import regenerate_connector
+    result = regenerate_connector(_get_project_dir(), connection_name, body or None)
+    if result["status"] == "error":
+        raise HTTPException(400, result.get("error", "Regeneration failed"))
+    return result
+
+
 @app.post("/api/connectors/sync/{connection_name}")
 def sync_connector_endpoint(request: Request, connection_name: str) -> dict:
     """Run sync for a configured connector."""
