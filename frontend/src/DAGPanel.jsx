@@ -9,6 +9,7 @@ const SCHEMA_COLORS = {
   gold: "#e3b341",
   source: "#484f58",
   ingest: "#58a6ff",
+  import: "#bc8cff",
 };
 
 const NODE_W = 160;
@@ -195,7 +196,7 @@ export default function DAGPanel({ onOpenFile }) {
       ctx.fillText(n.label, pos.x + NODE_W / 2, pos.y + NODE_H / 2, NODE_W - 20);
 
       // Type badge
-      const badge = n.type === "ingest" ? "I" : n.type === "source" ? "S" : n.type === "table" ? "T" : "V";
+      const badge = n.type === "ingest" ? "I" : n.type === "import" ? "↑" : n.type === "source" ? "S" : n.type === "table" ? "T" : "V";
       ctx.fillStyle = color;
       ctx.font = `bold 9px ${monoFamily}`;
       ctx.textAlign = "right";
@@ -262,6 +263,10 @@ export default function DAGPanel({ onOpenFile }) {
         <span style={styles.headerTitle}>Model Lineage</span>
         <div style={styles.legend}>
           <span style={styles.legendItem}>
+            <span style={{ ...styles.legendDot, background: SCHEMA_COLORS.import }} />
+            imported
+          </span>
+          <span style={styles.legendItem}>
             <span style={{ ...styles.legendDot, background: SCHEMA_COLORS.ingest }} />
             ingest
           </span>
@@ -282,6 +287,7 @@ export default function DAGPanel({ onOpenFile }) {
             gold
           </span>
           <span style={styles.legendSep}>|</span>
+          <span style={styles.legendItem}>↑ = imported file</span>
           <span style={styles.legendItem}>I = ingest</span>
           <span style={styles.legendItem}>V = view</span>
           <span style={styles.legendItem}>T = table</span>

@@ -1015,6 +1015,36 @@ def lint_endpoint(request: Request, fix: bool = False) -> dict:
     return {"count": count, "violations": violations, "fixed": fixed}
 
 
+class LintFileRequest(BaseModel):
+    path: str = Field(..., max_length=1000)
+    fix: bool = False
+
+
+@app.post("/api/lint/file")
+def lint_file_endpoint(request: Request, req: LintFileRequest) -> dict:
+    """Run SQLFluff on a single SQL file."""
+    _require_permission(request, "execute")
+    from dp.lint.linter import lint_file
+
+    project_dir = _get_project_dir()
+    config = _get_config()
+    file_path = (project_dir / req.path).resolve()
+    # Security: must be inside project dir
+    if not str(file_path).startswith(str(project_dir.resolve())):
+        raise HTTPException(status_code=400, detail="Path outside project directory")
+    if not file_path.exists() or not file_path.suffix == ".sql":
+        raise HTTPException(status_code=400, detail="File not found or not a SQL file")
+
+    count, violations, fixed, new_content = lint_file(
+        file_path,
+        project_dir=project_dir,
+        fix=req.fix,
+        dialect=config.lint.dialect,
+        rules=config.lint.rules or None,
+    )
+    return {"count": count, "violations": violations, "fixed": fixed, "content": new_content}
+
+
 @app.get("/api/lint/config")
 def get_lint_config(request: Request) -> dict:
     """Get the .sqlfluff config file contents."""
@@ -1088,6 +1118,27 @@ def _scan_ingest_targets(project_dir: Path) -> dict[str, list[str]]:
     return targets
 
 
+def _scan_import_sources(project_dir: Path) -> dict[str, str]:
+    """Query run_log for the most recent successful import per table.
+
+    Returns a mapping of fully-qualified table name -> source filename (e.g. "customers.csv").
+    """
+    db_path = _get_db_path()
+    conn = connect(db_path)
+    try:
+        result = conn.execute("""
+            SELECT DISTINCT ON (target) target, log_output
+            FROM _dp_internal.run_log
+            WHERE run_type = 'import' AND status = 'success' AND log_output IS NOT NULL
+            ORDER BY target, started_at DESC
+        """).fetchall()
+        return {row[0]: row[1] for row in result}
+    except Exception:
+        return {}
+    finally:
+        conn.close()
+
+
 @app.get("/api/dag")
 def get_dag(request: Request) -> dict:
     """Get the model DAG for visualization."""
@@ -1102,6 +1153,7 @@ def get_dag(request: Request) -> dict:
     model_set = {m.full_name for m in models}
 
     ingest_targets = _scan_ingest_targets(project_dir)
+    import_sources = _scan_import_sources(project_dir)
 
     external_deps: set[str] = set()
     for m in models:
@@ -1124,6 +1176,23 @@ def get_dag(request: Request) -> dict:
                     "path": script_path,
                 })
             edges.append({"source": script_id, "target": dep})
+
+    # Add import nodes for tables loaded via the importer wizard
+    added_imports: set[str] = set()
+    for dep in sorted(external_deps):
+        if dep in import_sources and dep not in ingest_targets:
+            source_file = import_sources[dep]
+            import_id = f"import:{dep}"
+            if import_id not in added_imports:
+                added_imports.add(import_id)
+                nodes.append({
+                    "id": import_id,
+                    "label": source_file,
+                    "schema": "import",
+                    "type": "import",
+                    "source_file": source_file,
+                })
+            edges.append({"source": import_id, "target": dep})
 
     for dep in sorted(external_deps):
         schema = dep.split(".")[0] if "." in dep else "source"

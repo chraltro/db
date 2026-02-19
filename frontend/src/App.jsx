@@ -254,6 +254,7 @@ export default function App() {
   const [moreOpen, setMoreOpen] = useState(false);
   const moreRef = useRef(null);
   const moreBtnRef = useRef(null);
+  const moreMenuRef = useRef(null);
   const [moreMenuPos, setMoreMenuPos] = useState({ top: 0, left: 0 });
 
   // Run summary state
@@ -308,7 +309,10 @@ export default function App() {
   useEffect(() => {
     if (!moreOpen) return;
     const handler = (e) => {
-      if (moreRef.current && !moreRef.current.contains(e.target)) setMoreOpen(false);
+      if (
+        moreRef.current && !moreRef.current.contains(e.target) &&
+        moreMenuRef.current && !moreMenuRef.current.contains(e.target)
+      ) setMoreOpen(false);
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
@@ -503,8 +507,6 @@ export default function App() {
     try {
       await api.saveFile(path, defaultContent);
       addOutput("info", `Created ${path}`);
-      setShowNewFile(false);
-      setNewFilePath("");
       await loadFiles();
       openFile(path);
     } catch (e) {
@@ -683,6 +685,23 @@ export default function App() {
     }
   }
 
+  async function formatCurrentFile() {
+    if (!activeFile || !activeFile.endsWith(".sql")) return;
+    addOutput("info", `Formatting ${activeFile}...`);
+    try {
+      const data = await api.lintFile(activeFile, true);
+      for (const v of data.violations || []) {
+        addOutput("warn", `${activeFile}:${v.line}:${v.col} [${v.code}] ${v.description} (unfixable)`);
+      }
+      const fixed = data.fixed ?? 0;
+      if (fixed > 0) addOutput("info", `${fixed} issue(s) fixed.`);
+      else if (data.count === 0) addOutput("info", "No violations found.");
+      if (data.content != null) setFileContent(data.content);
+    } catch (e) {
+      addOutput("error", e.message);
+    }
+  }
+
   function handleSelectTable(schema, name) {
     setSelectedTable(`${schema}.${name}`);
     setActiveTab("Tables");
@@ -843,7 +862,7 @@ export default function App() {
                 <span style={styles.moreArrow}>{"\u25BE"}</span>
               </button>
               {moreOpen && createPortal(
-                <div style={{ ...styles.moreMenu, position: "fixed", top: moreMenuPos.top, left: moreMenuPos.left }}>
+                <div ref={moreMenuRef} style={{ ...styles.moreMenu, position: "fixed", top: moreMenuPos.top, left: moreMenuPos.left }}>
                   {SECONDARY_TABS.map((tab) => (
                     <button
                       key={tab}
@@ -921,6 +940,7 @@ export default function App() {
                   activeFile={activeFile}
                   onMount={(editor) => { editorRef.current = editor; }}
                   goToLine={goToLine}
+                  onFormat={activeFile?.endsWith(".sql") ? formatCurrentFile : undefined}
                 />
               </ErrorBoundary>
             )}
@@ -931,7 +951,7 @@ export default function App() {
             {activeTab === "DAG" && <ErrorBoundary name="DAG"><DAGPanel onOpenFile={openFile} /></ErrorBoundary>}
             {activeTab === "Diff" && <ErrorBoundary name="Diff"><DiffPanel api={api} addOutput={addOutput} /></ErrorBoundary>}
             {activeTab === "Docs" && <ErrorBoundary name="Docs"><DocsPanel /></ErrorBoundary>}
-            {activeTab === "History" && <ErrorBoundary name="History"><HistoryPanel /></ErrorBoundary>}
+            {activeTab === "History" && <ErrorBoundary name="History"><HistoryPanel onOpenFile={openFile} /></ErrorBoundary>}
             {activeTab === "Settings" && <ErrorBoundary name="Settings"><SettingsPanel onShowGuide={showGuide} /></ErrorBoundary>}
           </div>
 

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { api } from "./api";
 
-export default function HistoryPanel() {
+export default function HistoryPanel({ onOpenFile }) {
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -50,7 +50,19 @@ export default function HistoryPanel() {
                   <td style={styles.td}>
                     <span style={styles.typeBadge}>{row.run_type}</span>
                   </td>
-                  <td style={{ ...styles.td, fontFamily: "var(--dp-font-mono)", fontWeight: 500 }}>{row.target}</td>
+                  <td style={{ ...styles.td, fontFamily: "var(--dp-font-mono)", fontWeight: 500 }}>
+                    {onOpenFile && row.target ? (
+                      <span
+                        style={styles.fileLink}
+                        onClick={() => onOpenFile(row.target, 1, 1)}
+                        onMouseEnter={(e) => { e.currentTarget.style.color = "var(--dp-accent)"; e.currentTarget.style.textDecoration = "underline"; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.color = ""; e.currentTarget.style.textDecoration = ""; }}
+                        title={`Open ${row.target}`}
+                      >
+                        {row.target}
+                      </span>
+                    ) : row.target}
+                  </td>
                   <td style={styles.td}>
                     <span style={{
                       ...styles.statusBadge,
@@ -95,4 +107,5 @@ const styles = {
   td: { padding: "5px 12px", borderBottom: "1px solid var(--dp-border)", color: "var(--dp-text)", fontSize: "12px" },
   typeBadge: { background: "var(--dp-btn-bg)", padding: "2px 8px", borderRadius: "var(--dp-radius)", fontSize: "11px", fontWeight: 500, textTransform: "capitalize" },
   statusBadge: { padding: "2px 8px", borderRadius: "var(--dp-radius)", fontSize: "11px", fontWeight: 600 },
+  fileLink: { cursor: "pointer", transition: "color 0.15s" },
 };

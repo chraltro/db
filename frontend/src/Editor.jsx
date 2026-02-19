@@ -76,15 +76,28 @@ loader.init().then((monaco) => {
   });
 });
 
-export default function Editor({ content, language, onChange, activeFile, onMount, goToLine }) {
+export default function Editor({ content, language, onChange, activeFile, onMount, goToLine, onFormat }) {
   const { themeId } = useTheme();
   const currentTheme = getTheme(themeId);
   const monacoTheme = currentTheme.dark ? "vs-dark" : "vs";
   const editorRef = useRef(null);
+  const onFormatRef = useRef(onFormat);
+  onFormatRef.current = onFormat;
 
-  function handleEditorMount(editor) {
+  function handleEditorMount(editor, monaco) {
     editorRef.current = editor;
     if (onMount) onMount(editor);
+
+    editor.addAction({
+      id: "dp-format-sql",
+      label: "Format SQL (dp lint --fix)",
+      keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyF],
+      precondition: null,
+      keybindingContext: null,
+      run: () => {
+        if (onFormatRef.current) onFormatRef.current();
+      },
+    });
   }
 
   useEffect(() => {
@@ -124,7 +137,7 @@ export default function Editor({ content, language, onChange, activeFile, onMoun
       value={content}
       onChange={(val) => onChange(val || "")}
       theme={monacoTheme}
-      onMount={handleEditorMount}
+      onMount={(editor, monaco) => handleEditorMount(editor, monaco)}
       options={{
         minimap: { enabled: false },
         hover: { above: false },

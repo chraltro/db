@@ -96,6 +96,81 @@ def lint(
     return len(all_violations), all_violations, total_fixed
 
 
+def lint_file(
+    sql_file: Path,
+    project_dir: Path,
+    fix: bool = False,
+    dialect: str = "duckdb",
+    rules: list[str] | None = None,
+) -> tuple[int, list[dict], int, str]:
+    """Lint (and optionally fix) a single SQL file.
+
+    Returns:
+        Tuple of (violation_count, violations_list, fixed_count, file_content)
+        file_content is the (possibly fixed) SQL content.
+    """
+    from sqlfluff.core import FluffConfig, Linter
+
+    sqlfluff_file = project_dir / ".sqlfluff"
+    if sqlfluff_file.exists():
+        overrides: dict = {}
+        if rules:
+            overrides["rules"] = ",".join(rules)
+        config = FluffConfig.from_path(path=str(project_dir), overrides=overrides or None)
+    else:
+        config_kwargs: dict = {"dialect": dialect}
+        if rules:
+            config_kwargs["rules"] = rules
+        config = FluffConfig.from_kwargs(**config_kwargs)
+    linter = Linter(config=config)
+
+    sql = sql_file.read_text()
+    lines = sql.split("\n")
+    header_count = 0
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith("-- config:") or stripped.startswith("-- depends_on:") or stripped == "":
+            header_count += 1
+        else:
+            break
+    clean_sql = "\n".join(lines[header_count:])
+
+    result = linter.lint_string(clean_sql, fix=fix)
+    violations_before = len(result.get_violations())
+    total_fixed = 0
+    final_content = sql
+
+    if fix:
+        fixed_sql, changed = result.fix_string()
+        if changed:
+            header_lines = lines[:header_count]
+            final_content = "\n".join(header_lines) + "\n" + fixed_sql
+            sql_file.write_text(final_content)
+            result = linter.lint_string(fixed_sql)
+            total_fixed = violations_before - len(result.get_violations())
+        else:
+            final_content = sql
+
+    transform_dir = project_dir / "transform"
+    try:
+        rel_path = sql_file.relative_to(transform_dir.parent)
+    except ValueError:
+        rel_path = sql_file
+
+    all_violations: list[dict] = []
+    for violation in result.get_violations():
+        all_violations.append({
+            "file": str(rel_path),
+            "line": violation.line_no + header_count,
+            "col": violation.line_pos,
+            "code": violation.rule_code(),
+            "description": violation.desc(),
+            "fixable": bool(violation.fixable),
+        })
+
+    return len(all_violations), all_violations, total_fixed, final_content
+
+
 def print_violations(violations: list[dict]) -> None:
     """Pretty-print lint violations."""
     if not violations:

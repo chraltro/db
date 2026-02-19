@@ -171,7 +171,7 @@ def import_file(
         row_count = db_conn.execute(f"SELECT COUNT(*) FROM {full_name}").fetchone()[0]
         duration_ms = int((time.perf_counter() - start) * 1000)
 
-        log_run(db_conn, "import", full_name, "success", duration_ms, rows_affected=row_count)
+        log_run(db_conn, "import", full_name, "success", duration_ms, rows_affected=row_count, log_output=path.name)
 
         return {
             "status": "success",
@@ -181,7 +181,7 @@ def import_file(
         }
     except Exception as e:
         duration_ms = int((time.perf_counter() - start) * 1000)
-        log_run(db_conn, "import", full_name, "error", duration_ms, error=str(e))
+        log_run(db_conn, "import", full_name, "error", duration_ms, error=str(e), log_output=path.name)
         return {"status": "error", "table": full_name, "error": str(e)}
 
 

@@ -3,6 +3,8 @@ import { format as formatSQL } from "sql-formatter";
 import { api } from "./api";
 import SortableTable from "./SortableTable";
 import { useHintTriggerFn } from "./HintSystem";
+import ResizeHandle from "./ResizeHandle";
+import useResizable from "./useResizable";
 
 const MAX_HISTORY = 50;
 
@@ -100,7 +102,7 @@ function SchemaSidebar({ tables, onInsert }) {
 }
 
 const sbSt = {
-  container: { width: "200px", borderRight: "1px solid var(--dp-border)", overflow: "auto", flexShrink: 0, background: "var(--dp-bg-tertiary)", fontSize: "12px", flex: 1 },
+  container: { width: "100%", height: "100%", overflow: "auto", background: "var(--dp-bg-tertiary)", fontSize: "12px" },
   header: { padding: "8px 10px", fontWeight: 600, fontSize: "11px", color: "var(--dp-text-secondary)", textTransform: "uppercase", letterSpacing: "0.3px", borderBottom: "1px solid var(--dp-border)" },
   list: { padding: "4px 0" },
   empty: { padding: "16px 10px", color: "var(--dp-text-dim)", fontSize: "12px", textAlign: "center" },
@@ -128,6 +130,8 @@ export default function QueryPanel({ addOutput }) {
   const textareaRef = useRef(null);
   const historyRef = useRef(null);
   const setHintTrigger = useHintTriggerFn();
+  const [sidebarWidth, onSidebarResize, onSidebarResizeStart] = useResizable("dp_query_sidebar_width", 200, 120, 400);
+  const [editorHeight, onEditorResize, onEditorResizeStart] = useResizable("dp_query_editor_height", 120, 60, 500);
 
   useEffect(() => {
     api.listTables().then(setTables).catch(() => {});
@@ -244,9 +248,10 @@ export default function QueryPanel({ addOutput }) {
     <div style={st.container}>
       <div style={st.main}>
         {/* Schema sidebar */}
-        <div data-dp-hint="query-sidebar" style={{ display: "flex", flexDirection: "column", alignSelf: "stretch" }}>
+        <div data-dp-hint="query-sidebar" style={{ display: "flex", flexDirection: "column", width: sidebarWidth, flexShrink: 0 }}>
           <SchemaSidebar tables={tables} onInsert={insertAtCursor} />
         </div>
+        <ResizeHandle direction="horizontal" onResize={onSidebarResize} onResizeStart={onSidebarResizeStart} />
 
         {/* Query area */}
         <div style={st.queryArea}>
@@ -295,17 +300,18 @@ export default function QueryPanel({ addOutput }) {
           </div>
 
           {/* SQL textarea */}
-          <div style={st.editorWrapper}>
+          <div style={{ ...st.editorWrapper, height: editorHeight }}>
             <textarea
               ref={textareaRef}
               value={sql}
               onChange={(e) => setSql(e.target.value)}
               onKeyDown={handleKeyDown}
               placeholder="Write SQL here... (Ctrl+Enter to run)"
-              style={st.textarea}
+              style={{ ...st.textarea, height: "100%", resize: "none" }}
               spellCheck={false}
             />
           </div>
+          <ResizeHandle direction="vertical" onResize={onEditorResize} onResizeStart={onEditorResizeStart} />
 
           {/* Starter suggestions when textarea is empty */}
           {!sql.trim() && suggestions.length > 0 && (
@@ -383,8 +389,8 @@ const st = {
   viewBtn: { padding: "3px 10px", background: "var(--dp-btn-bg)", border: "none", color: "var(--dp-text-secondary)", cursor: "pointer", fontSize: "11px", fontWeight: 500 },
   viewBtnActive: { padding: "3px 10px", background: "var(--dp-bg-secondary)", border: "none", color: "var(--dp-text)", cursor: "pointer", fontSize: "11px", fontWeight: 600 },
 
-  editorWrapper: { flexShrink: 0, borderBottom: "1px solid var(--dp-border)" },
-  textarea: { width: "100%", height: "120px", padding: "10px 12px", background: "var(--dp-bg)", border: "none", color: "var(--dp-text)", fontFamily: "var(--dp-font-mono)", fontSize: "13px", resize: "vertical", outline: "none", boxSizing: "border-box", lineHeight: 1.5 },
+  editorWrapper: { flexShrink: 0 },
+  textarea: { width: "100%", height: "100%", padding: "10px 12px", background: "var(--dp-bg)", border: "none", color: "var(--dp-text)", fontFamily: "var(--dp-font-mono)", fontSize: "13px", resize: "none", outline: "none", boxSizing: "border-box", lineHeight: 1.5 },
 
   suggestions: { display: "flex", alignItems: "center", gap: "6px", padding: "8px 12px", flexWrap: "wrap", borderBottom: "1px solid var(--dp-border)" },
   suggestLabel: { fontSize: "11px", color: "var(--dp-text-dim)", fontWeight: 500 },
