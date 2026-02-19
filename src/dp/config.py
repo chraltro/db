@@ -56,6 +56,7 @@ class ProjectConfig:
     streams: dict[str, StreamConfig] = field(default_factory=dict)
     lint: LintConfig = field(default_factory=LintConfig)
     project_dir: Path = field(default_factory=Path.cwd)
+    _raw: dict[str, Any] = field(default_factory=dict)
 
 
 def _expand_env_vars(value: Any) -> Any:
@@ -136,6 +137,7 @@ def load_project(project_dir: Path | None = None) -> ProjectConfig:
         streams=streams,
         lint=lint,
         project_dir=project_dir,
+        _raw=raw,
     )
 
 
