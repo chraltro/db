@@ -175,6 +175,8 @@ def stream(
     project_dir: Annotated[Optional[Path], typer.Option("--project", "-p")] = None,
 ) -> None:
     """Run a full stream: ingest -> transform -> export as defined in project.yml."""
+    import time as _time
+
     from dp.config import load_project
     from dp.engine.database import connect
     from dp.engine.runner import run_scripts_in_dir
@@ -193,50 +195,92 @@ def stream(
     console.print(f"[bold]Stream: {name}[/bold]")
     if stream_config.description:
         console.print(f"  {stream_config.description}")
+    if stream_config.retries:
+        console.print(f"  [dim]retries: {stream_config.retries}, delay: {stream_config.retry_delay}s[/dim]")
     console.print()
+
+    def _run_step(step, conn_):
+        """Run a single step. Returns True on success."""
+        if step.action == "ingest":
+            console.print("[bold]Ingest:[/bold]")
+            results = run_scripts_in_dir(conn_, project_dir / "ingest", "ingest", step.targets)
+            if any(r["status"] == "error" for r in results):
+                return False
+        elif step.action == "transform":
+            console.print("[bold]Transform:[/bold]")
+            results = run_transform(
+                conn_,
+                project_dir / "transform",
+                targets=step.targets if step.targets != ["all"] else None,
+                force=force,
+            )
+            if any(s == "error" for s in results.values()):
+                return False
+        elif step.action == "export":
+            console.print("[bold]Export:[/bold]")
+            results = run_scripts_in_dir(conn_, project_dir / "export", "export", step.targets)
+            if any(r["status"] == "error" for r in results):
+                return False
+        console.print()
+        return True
 
     db_path = project_dir / config.database.path
     conn = connect(db_path)
     has_error = False
+    start = _time.perf_counter()
 
     try:
         for step in stream_config.steps:
-            if step.action == "ingest":
-                console.print("[bold]Ingest:[/bold]")
-                results = run_scripts_in_dir(conn, project_dir / "ingest", "ingest", step.targets)
-                if any(r["status"] == "error" for r in results):
-                    has_error = True
-                    break
-                console.print()
+            success = _run_step(step, conn)
+            if not success and stream_config.retries > 0:
+                for attempt in range(1, stream_config.retries + 1):
+                    console.print(
+                        f"[yellow]Retrying {step.action} (attempt {attempt}/{stream_config.retries}) "
+                        f"after {stream_config.retry_delay}s...[/yellow]"
+                    )
+                    _time.sleep(stream_config.retry_delay)
+                    success = _run_step(step, conn)
+                    if success:
+                        break
+            if not success:
+                has_error = True
+                break
 
-            elif step.action == "transform":
-                console.print("[bold]Transform:[/bold]")
-                results = run_transform(
-                    conn,
-                    project_dir / "transform",
-                    targets=step.targets if step.targets != ["all"] else None,
-                    force=force,
-                )
-                if any(s == "error" for s in results.values()):
-                    has_error = True
-                    break
-                console.print()
+        duration_s = round(_time.perf_counter() - start, 1)
+        if has_error:
+            console.print(f"[red]Stream failed after {duration_s}s.[/red]")
+        else:
+            console.print(f"[green]Stream completed successfully in {duration_s}s.[/green]")
 
-            elif step.action == "export":
-                console.print("[bold]Export:[/bold]")
-                results = run_scripts_in_dir(conn, project_dir / "export", "export", step.targets)
-                if any(r["status"] == "error" for r in results):
-                    has_error = True
-                    break
-                console.print()
+        # Webhook notification
+        if stream_config.webhook_url:
+            _send_webhook(stream_config.webhook_url, name, "failed" if has_error else "success", duration_s)
 
         if has_error:
-            console.print("[red]Stream failed.[/red]")
             raise typer.Exit(1)
-        else:
-            console.print("[green]Stream completed successfully.[/green]")
     finally:
         conn.close()
+
+
+def _send_webhook(url: str, stream_name: str, status: str, duration_s: float) -> None:
+    """Send a POST webhook notification for stream completion."""
+    import json
+    from datetime import datetime
+    from urllib.request import Request, urlopen
+
+    payload = json.dumps({
+        "stream": stream_name,
+        "status": status,
+        "duration_seconds": duration_s,
+        "timestamp": datetime.now().isoformat(),
+    }).encode()
+
+    try:
+        req = Request(url, data=payload, headers={"Content-Type": "application/json"})
+        urlopen(req, timeout=10)
+        console.print(f"[dim]Webhook sent to {url}[/dim]")
+    except Exception as e:
+        console.print(f"[yellow]Webhook failed: {e}[/yellow]")
 
 
 # --- lint ---
@@ -532,8 +576,10 @@ def serve(
     """Start the web UI server."""
     import uvicorn
 
+    from dp import setup_logging
     from dp.engine.scheduler import FileWatcher, SchedulerThread
 
+    setup_logging()
     project_dir = _resolve_project(project_dir)
 
     import dp.server.app as server_app
@@ -714,6 +760,170 @@ def users_delete(
             raise typer.Exit(1)
     finally:
         conn.close()
+
+
+# --- backup ---
+
+
+@app.command()
+def backup(
+    output: Annotated[Optional[Path], typer.Option("--output", "-o", help="Backup file path")] = None,
+    project_dir: Annotated[Optional[Path], typer.Option("--project", "-p")] = None,
+) -> None:
+    """Create a backup of the warehouse database."""
+    import shutil
+
+    project_dir = _resolve_project(project_dir)
+    from dp.config import load_project
+
+    config = load_project(project_dir)
+    db_path = project_dir / config.database.path
+
+    if not db_path.exists():
+        console.print("[red]No warehouse database found. Nothing to backup.[/red]")
+        raise typer.Exit(1)
+
+    # Default backup path: warehouse.duckdb.backup
+    if output is None:
+        from datetime import datetime
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        output = project_dir / f"{config.database.path}.backup_{ts}"
+
+    # Ensure WAL is flushed by checkpointing via a temporary connection
+    from dp.engine.database import connect
+    try:
+        conn = connect(db_path)
+        conn.execute("CHECKPOINT")
+        conn.close()
+    except Exception:
+        pass  # proceed with copy even if checkpoint fails
+
+    shutil.copy2(str(db_path), str(output))
+    size_mb = output.stat().st_size / (1024 * 1024)
+    console.print(f"[green]Backup created: {output} ({size_mb:.1f} MB)[/green]")
+
+
+@app.command()
+def restore(
+    backup_path: Annotated[Path, typer.Argument(help="Path to the backup file")],
+    project_dir: Annotated[Optional[Path], typer.Option("--project", "-p")] = None,
+) -> None:
+    """Restore the warehouse database from a backup."""
+    import shutil
+
+    project_dir = _resolve_project(project_dir)
+    from dp.config import load_project
+
+    config = load_project(project_dir)
+    db_path = project_dir / config.database.path
+
+    if not backup_path.exists():
+        console.print(f"[red]Backup file not found: {backup_path}[/red]")
+        raise typer.Exit(1)
+
+    if db_path.exists():
+        console.print(f"[yellow]Overwriting existing database: {db_path}[/yellow]")
+
+    shutil.copy2(str(backup_path), str(db_path))
+    # Remove WAL file if present (stale WAL from old db)
+    wal_path = Path(str(db_path) + ".wal")
+    if wal_path.exists():
+        wal_path.unlink()
+
+    size_mb = db_path.stat().st_size / (1024 * 1024)
+    console.print(f"[green]Database restored from {backup_path} ({size_mb:.1f} MB)[/green]")
+
+
+# --- validate ---
+
+
+@app.command()
+def validate(
+    project_dir: Annotated[Optional[Path], typer.Option("--project", "-p")] = None,
+) -> None:
+    """Validate project structure, config, and SQL model dependencies."""
+    from dp.config import load_project
+    from dp.engine.transform import build_dag, discover_models
+
+    project_dir = _resolve_project(project_dir)
+    errors: list[str] = []
+    warnings: list[str] = []
+
+    # 1. Validate project.yml
+    try:
+        config = load_project(project_dir)
+        console.print("[green]project.yml[/green] parsed successfully")
+    except Exception as e:
+        console.print(f"[red]project.yml[/red] failed to parse: {e}")
+        raise typer.Exit(1)
+
+    # 2. Check required directories exist
+    for d in ("transform",):
+        if not (project_dir / d).exists():
+            warnings.append(f"Directory '{d}/' not found")
+
+    # 3. Validate streams reference valid actions
+    for name, stream in config.streams.items():
+        for step in stream.steps:
+            if step.action not in ("ingest", "transform", "export"):
+                errors.append(f"Stream '{name}': unknown action '{step.action}'")
+
+    # 4. Discover and validate SQL models
+    transform_dir = project_dir / "transform"
+    models = discover_models(transform_dir)
+    model_names = {m.full_name for m in models}
+
+    # Check for duplicate model names
+    seen: dict[str, str] = {}
+    for m in models:
+        if m.full_name in seen:
+            errors.append(f"Duplicate model: {m.full_name} (in {m.path} and {seen[m.full_name]})")
+        seen[m.full_name] = str(m.path)
+
+    # Check depends_on references
+    for m in models:
+        for dep in m.depends_on:
+            # External deps (landing.*) are fine — only flag deps that look like
+            # they should be models but aren't
+            if dep in model_names:
+                continue
+            schema = dep.split(".")[0] if "." in dep else ""
+            if schema in ("bronze", "silver", "gold"):
+                warnings.append(f"Model {m.full_name}: depends on '{dep}' which is not a known model")
+
+    # 5. Check for circular dependencies
+    try:
+        build_dag(models)
+        console.print(f"[green]DAG[/green] {len(models)} models, no circular dependencies")
+    except Exception as e:
+        errors.append(f"Circular dependency detected: {e}")
+
+    # 6. Check .env variables referenced in config
+    config_text = (project_dir / "project.yml").read_text() if (project_dir / "project.yml").exists() else ""
+    import re
+    env_refs = set(re.findall(r"\$\{(\w+)\}", config_text))
+    if env_refs:
+        import os
+        missing = [v for v in env_refs if not os.environ.get(v)]
+        if missing:
+            for v in missing:
+                warnings.append(f"Environment variable ${{{v}}} referenced in project.yml but not set")
+
+    # Report
+    if warnings:
+        console.print()
+        for w in warnings:
+            console.print(f"  [yellow]warn[/yellow]  {w}")
+    if errors:
+        console.print()
+        for e in errors:
+            console.print(f"  [red]error[/red] {e}")
+        console.print()
+        console.print(f"[red]Validation failed: {len(errors)} error(s), {len(warnings)} warning(s)[/red]")
+        raise typer.Exit(1)
+    else:
+        console.print()
+        console.print(f"[green]Validation passed ({len(warnings)} warning(s))[/green]")
 
 
 # --- context ---

@@ -8,13 +8,20 @@ Roles: admin (full), editor (run + query), viewer (read-only).
 from __future__ import annotations
 
 import hashlib
+import logging
 import os
 import secrets
+from datetime import timedelta
 from pathlib import Path
 
 import duckdb
 
 from dp.engine.database import connect
+
+logger = logging.getLogger("dp.auth")
+
+# Default token lifetime: 30 days
+TOKEN_LIFETIME = timedelta(days=30)
 
 
 def _hash_password(password: str, salt: bytes | None = None) -> tuple[str, str]:
@@ -99,21 +106,25 @@ def authenticate(conn: duckdb.DuckDBPyConnection, username: str, password: str) 
     if not _verify_password(password, row[0], row[1]):
         return None
 
-    # Generate token
+    # Generate token with expiration
     token = secrets.token_urlsafe(32)
     conn.execute(
-        "INSERT INTO _dp_internal.tokens (token, username) VALUES (?, ?)",
-        [token, username],
+        "INSERT INTO _dp_internal.tokens (token, username, expires_at) VALUES (?, ?, current_timestamp + ?)",
+        [token, username, TOKEN_LIFETIME],
     )
     conn.execute(
         "UPDATE _dp_internal.users SET last_login = current_timestamp WHERE username = ?",
         [username],
     )
+    logger.info("User '%s' authenticated successfully", username)
     return token
 
 
 def validate_token(conn: duckdb.DuckDBPyConnection, token: str) -> dict | None:
-    """Validate a token and return user info, or None."""
+    """Validate a token and return user info, or None.
+
+    Rejects expired tokens (where expires_at is set and in the past).
+    """
     ensure_auth_tables(conn)
     row = conn.execute(
         """
@@ -121,10 +132,15 @@ def validate_token(conn: duckdb.DuckDBPyConnection, token: str) -> dict | None:
         FROM _dp_internal.tokens t
         JOIN _dp_internal.users u ON t.username = u.username
         WHERE t.token = ?
+          AND (t.expires_at IS NULL OR t.expires_at > current_timestamp)
         """,
         [token],
     ).fetchone()
     if not row:
+        # Clean up expired tokens opportunistically
+        conn.execute(
+            "DELETE FROM _dp_internal.tokens WHERE expires_at IS NOT NULL AND expires_at <= current_timestamp"
+        )
         return None
     return {"username": row[0], "role": row[1], "display_name": row[2]}
 

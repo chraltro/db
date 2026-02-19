@@ -3,18 +3,23 @@
 from __future__ import annotations
 
 import json
+import logging
+import re
+import time
 from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from dp.config import load_project
 from dp.engine.database import connect, ensure_meta_table
 from dp.engine.runner import run_script
 from dp.engine.transform import build_dag, discover_models, run_transform
+
+logger = logging.getLogger("dp.server")
 
 # Set by CLI before starting uvicorn
 PROJECT_DIR: Path = Path.cwd()
@@ -24,10 +29,83 @@ app = FastAPI(title="dp", version="0.2.0")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        "http://localhost:3000",
+        "http://localhost:5173",
+        "http://127.0.0.1:3000",
+        "http://127.0.0.1:5173",
+    ],
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+# --- Identifier validation ---
+
+_IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+
+def _validate_identifier(value: str, label: str = "identifier") -> str:
+    """Validate that a value is a safe SQL identifier (no injection)."""
+    if not _IDENTIFIER_RE.match(value):
+        raise HTTPException(400, f"Invalid {label}: {value!r}")
+    return value
+
+
+# --- Config cache ---
+
+_config_cache: dict[str, Any] = {"config": None, "mtime": 0.0, "path": None}
+
+
+def _get_config_cached():
+    """Load project config with file-mtime-based caching."""
+    config_path = _get_project_dir() / "project.yml"
+    try:
+        mtime = config_path.stat().st_mtime
+    except FileNotFoundError:
+        return load_project(_get_project_dir())
+
+    if (
+        _config_cache["config"] is not None
+        and _config_cache["path"] == str(config_path)
+        and _config_cache["mtime"] == mtime
+    ):
+        return _config_cache["config"]
+
+    config = load_project(_get_project_dir())
+    _config_cache["config"] = config
+    _config_cache["mtime"] = mtime
+    _config_cache["path"] = str(config_path)
+    return config
+
+
+# --- Model discovery cache ---
+
+_model_cache: dict[str, Any] = {"models": None, "mtime_map": None, "transform_dir": None}
+
+
+def _discover_models_cached(transform_dir: Path):
+    """Discover models with file-mtime-based caching."""
+    if not transform_dir.exists():
+        return []
+
+    # Build a map of file -> mtime for all SQL files
+    current_mtimes = {}
+    for sql_file in sorted(transform_dir.rglob("*.sql")):
+        current_mtimes[str(sql_file)] = sql_file.stat().st_mtime
+
+    if (
+        _model_cache["models"] is not None
+        and _model_cache["transform_dir"] == str(transform_dir)
+        and _model_cache["mtime_map"] == current_mtimes
+    ):
+        return _model_cache["models"]
+
+    models = discover_models(transform_dir)
+    _model_cache["models"] = models
+    _model_cache["mtime_map"] = current_mtimes
+    _model_cache["transform_dir"] = str(transform_dir)
+    return models
 
 
 def _get_project_dir() -> Path:
@@ -35,7 +113,7 @@ def _get_project_dir() -> Path:
 
 
 def _get_config():
-    return load_project(_get_project_dir())
+    return _get_config_cached()
 
 
 def _get_db_path() -> Path:
@@ -79,30 +157,52 @@ def _require_permission(request: Request, permission: str) -> dict:
     return user
 
 
+# --- Rate limiting ---
+
+_login_attempts: dict[str, list[float]] = {}
+_RATE_LIMIT_WINDOW = 60.0  # seconds
+_RATE_LIMIT_MAX = 5  # max attempts per window
+
+
+def _check_rate_limit(key: str) -> None:
+    """Enforce rate limiting. Raises 429 if too many attempts."""
+    now = time.time()
+    attempts = _login_attempts.get(key, [])
+    # Prune old attempts outside the window
+    attempts = [t for t in attempts if now - t < _RATE_LIMIT_WINDOW]
+    if len(attempts) >= _RATE_LIMIT_MAX:
+        logger.warning("Rate limit exceeded for %s", key)
+        raise HTTPException(429, "Too many login attempts. Try again later.")
+    attempts.append(now)
+    _login_attempts[key] = attempts
+
+
 # --- Auth endpoints ---
 
 
 class LoginRequest(BaseModel):
-    username: str
-    password: str
+    username: str = Field(..., min_length=1, max_length=100)
+    password: str = Field(..., min_length=1, max_length=500)
 
 
 class CreateUserRequest(BaseModel):
-    username: str
-    password: str
-    role: str = "viewer"
-    display_name: str | None = None
+    username: str = Field(..., min_length=1, max_length=100, pattern=r"^[a-zA-Z0-9_.-]+$")
+    password: str = Field(..., min_length=4, max_length=500)
+    role: str = Field(default="viewer", pattern=r"^(admin|editor|viewer)$")
+    display_name: str | None = Field(default=None, max_length=200)
 
 
 class UpdateUserRequest(BaseModel):
-    role: str | None = None
-    password: str | None = None
-    display_name: str | None = None
+    role: str | None = Field(default=None, pattern=r"^(admin|editor|viewer)$")
+    password: str | None = Field(default=None, min_length=4, max_length=500)
+    display_name: str | None = Field(default=None, max_length=200)
 
 
 @app.post("/api/auth/login")
-def login(req: LoginRequest) -> dict:
-    """Authenticate and get a token."""
+def login(request: Request, req: LoginRequest) -> dict:
+    """Authenticate and get a token (rate-limited)."""
+    client_ip = request.client.host if request.client else "unknown"
+    _check_rate_limit(f"login:{client_ip}")
     from dp.engine.auth import authenticate
     db_path = _get_db_path()
     conn = connect(db_path)
@@ -228,8 +328,8 @@ def list_secrets(request: Request) -> list[dict]:
 
 
 class SetSecretRequest(BaseModel):
-    key: str
-    value: str
+    key: str = Field(..., min_length=1, max_length=200, pattern=r"^[A-Za-z_][A-Za-z0-9_]*$")
+    value: str = Field(..., max_length=10_000)
 
 
 @app.post("/api/secrets")
@@ -305,7 +405,7 @@ def read_file(request: Request, file_path: str) -> dict:
 
 
 class SaveFileRequest(BaseModel):
-    content: str
+    content: str = Field(..., max_length=5_000_000)
 
 
 @app.put("/api/files/{file_path:path}")
@@ -364,7 +464,7 @@ def list_models(request: Request) -> list[dict]:
     """List all SQL transformation models."""
     _require_permission(request, "read")
     transform_dir = _get_project_dir() / "transform"
-    models = discover_models(transform_dir)
+    models = _discover_models_cached(transform_dir)
     return [
         {
             "name": m.name,
@@ -380,7 +480,7 @@ def list_models(request: Request) -> list[dict]:
 
 
 class TransformRequest(BaseModel):
-    targets: list[str] | None = None
+    targets: list[str] | None = Field(default=None, max_length=500)
     force: bool = False
 
 
@@ -388,6 +488,7 @@ class TransformRequest(BaseModel):
 def run_transform_endpoint(request: Request, req: TransformRequest) -> dict:
     """Run the SQL transformation pipeline."""
     _require_permission(request, "execute")
+    logger.info("Transform requested: targets=%s force=%s", req.targets, req.force)
     db_path = _get_db_path()
     conn = connect(db_path)
     try:
@@ -406,13 +507,14 @@ def run_transform_endpoint(request: Request, req: TransformRequest) -> dict:
 
 
 class RunScriptRequest(BaseModel):
-    script_path: str
+    script_path: str = Field(..., min_length=1, max_length=500)
 
 
 @app.post("/api/run")
 def run_script_endpoint(request: Request, req: RunScriptRequest) -> dict:
     """Run an ingest or export script."""
     _require_permission(request, "execute")
+    logger.info("Script run requested: %s", req.script_path)
     script_path = _get_project_dir() / req.script_path
     if not script_path.exists():
         raise HTTPException(404, f"Script not found: {req.script_path}")
@@ -435,8 +537,9 @@ def run_script_endpoint(request: Request, req: RunScriptRequest) -> dict:
 
 @app.post("/api/stream/{stream_name}")
 def run_stream_endpoint(request: Request, stream_name: str, force: bool = False) -> dict:
-    """Run a full stream."""
+    """Run a full stream with retry support."""
     _require_permission(request, "execute")
+    logger.info("Stream run requested: %s (force=%s)", stream_name, force)
     config = _get_config()
     if stream_name not in config.streams:
         raise HTTPException(404, f"Stream '{stream_name}' not found")
@@ -445,53 +548,130 @@ def run_stream_endpoint(request: Request, stream_name: str, force: bool = False)
     db_path = _get_db_path()
     conn = connect(db_path)
     step_results = []
-    try:
-        from dp.engine.runner import run_scripts_in_dir
+    has_error = False
+    start = time.perf_counter()
 
+    def _run_step(step):
+        from dp.engine.runner import run_scripts_in_dir
+        if step.action == "ingest":
+            results = run_scripts_in_dir(conn, _get_project_dir() / "ingest", "ingest", step.targets)
+            return {"action": "ingest", "results": results, "error": any(r["status"] == "error" for r in results)}
+        elif step.action == "transform":
+            results = run_transform(
+                conn, _get_project_dir() / "transform",
+                targets=step.targets if step.targets != ["all"] else None, force=force,
+            )
+            return {"action": "transform", "results": results, "error": any(s == "error" for s in results.values())}
+        elif step.action == "export":
+            results = run_scripts_in_dir(conn, _get_project_dir() / "export", "export", step.targets)
+            return {"action": "export", "results": results, "error": any(r["status"] == "error" for r in results)}
+        return {"action": step.action, "results": {}, "error": False}
+
+    try:
+        import time as _time
         for step in stream_config.steps:
-            if step.action == "ingest":
-                results = run_scripts_in_dir(conn, _get_project_dir() / "ingest", "ingest", step.targets)
-                step_results.append({"action": "ingest", "results": results})
-            elif step.action == "transform":
-                results = run_transform(
-                    conn,
-                    _get_project_dir() / "transform",
-                    targets=step.targets if step.targets != ["all"] else None,
-                    force=force,
-                )
-                step_results.append({"action": "transform", "results": results})
-            elif step.action == "export":
-                results = run_scripts_in_dir(conn, _get_project_dir() / "export", "export", step.targets)
-                step_results.append({"action": "export", "results": results})
-        return {"stream": stream_name, "steps": step_results}
+            result = _run_step(step)
+            if result["error"] and stream_config.retries > 0:
+                for attempt in range(1, stream_config.retries + 1):
+                    logger.info("Retrying %s step (attempt %d/%d)", step.action, attempt, stream_config.retries)
+                    _time.sleep(stream_config.retry_delay)
+                    result = _run_step(step)
+                    if not result["error"]:
+                        break
+            step_results.append({"action": result["action"], "results": result["results"]})
+            if result["error"]:
+                has_error = True
+                break
+
+        duration_s = round(time.perf_counter() - start, 1)
+        status = "failed" if has_error else "success"
+
+        # Webhook notification
+        if stream_config.webhook_url:
+            _send_webhook_notification(stream_config.webhook_url, stream_name, status, duration_s)
+
+        return {"stream": stream_name, "steps": step_results, "status": status, "duration_seconds": duration_s}
     finally:
         conn.close()
+
+
+def _send_webhook_notification(url: str, stream_name: str, status: str, duration_s: float) -> None:
+    """Send a POST webhook notification for stream completion."""
+    from datetime import datetime
+    from urllib.request import Request, urlopen
+
+    payload = json.dumps({
+        "stream": stream_name,
+        "status": status,
+        "duration_seconds": duration_s,
+        "timestamp": datetime.now().isoformat(),
+    }).encode()
+
+    try:
+        req = Request(url, data=payload, headers={"Content-Type": "application/json"})
+        urlopen(req, timeout=10)
+        logger.info("Webhook sent to %s for stream %s", url, stream_name)
+    except Exception as e:
+        logger.warning("Webhook failed for stream %s: %s", stream_name, e)
 
 
 # --- Query ---
 
 
 class QueryRequest(BaseModel):
-    sql: str
-    limit: int = 1000
+    sql: str = Field(..., min_length=1, max_length=100_000)
+    limit: int = Field(default=1000, gt=0, le=50_000)
+    offset: int = Field(default=0, ge=0)
+
+
+_QUERY_TIMEOUT_SECONDS = 30
 
 
 @app.post("/api/query")
 def run_query(request: Request, req: QueryRequest) -> dict:
-    """Run an ad-hoc SQL query."""
+    """Run an ad-hoc SQL query with a timeout."""
     _require_permission(request, "read")
     db_path = _get_db_path()
     conn = connect(db_path, read_only=True)
     try:
-        result = conn.execute(req.sql)
-        columns = [desc[0] for desc in result.description]
-        rows = result.fetchmany(req.limit)
-        return {
-            "columns": columns,
-            "rows": [[_serialize(v) for v in row] for row in rows],
-            "truncated": len(rows) == req.limit,
-        }
+        import threading
+
+        query_result: dict = {}
+        query_error: list[Exception] = []
+
+        def _exec_query():
+            try:
+                if req.offset > 0:
+                    wrapped = f"SELECT * FROM ({req.sql}) AS _q OFFSET {req.offset} LIMIT {req.limit}"
+                    result = conn.execute(wrapped)
+                else:
+                    result = conn.execute(req.sql)
+                columns = [desc[0] for desc in result.description]
+                rows = result.fetchmany(req.limit)
+                query_result["data"] = {
+                    "columns": columns,
+                    "rows": [[_serialize(v) for v in row] for row in rows],
+                    "truncated": len(rows) == req.limit,
+                    "offset": req.offset,
+                    "limit": req.limit,
+                }
+            except Exception as e:
+                query_error.append(e)
+
+        thread = threading.Thread(target=_exec_query, daemon=True)
+        thread.start()
+        thread.join(timeout=_QUERY_TIMEOUT_SECONDS)
+
+        if thread.is_alive():
+            conn.interrupt()
+            raise HTTPException(408, f"Query timed out after {_QUERY_TIMEOUT_SECONDS}s")
+        if query_error:
+            raise query_error[0]
+        return query_result["data"]
+    except HTTPException:
+        raise
     except Exception as e:
+        logger.warning("Query failed: %s", e)
         raise HTTPException(400, str(e))
     finally:
         conn.close()
@@ -518,15 +698,27 @@ def list_tables(request: Request, schema: str | None = None) -> list[dict]:
         return []
     conn = connect(db_path, read_only=True)
     try:
-        sql = """
-            SELECT table_schema, table_name, table_type
-            FROM information_schema.tables
-            WHERE table_schema NOT IN ('information_schema', '_dp_internal')
-        """
         if schema:
-            sql += f" AND table_schema = '{schema}'"
-        sql += " ORDER BY table_schema, table_name"
-        rows = conn.execute(sql).fetchall()
+            _validate_identifier(schema, "schema")
+            rows = conn.execute(
+                """
+                SELECT table_schema, table_name, table_type
+                FROM information_schema.tables
+                WHERE table_schema NOT IN ('information_schema', '_dp_internal')
+                  AND table_schema = ?
+                ORDER BY table_schema, table_name
+                """,
+                [schema],
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                """
+                SELECT table_schema, table_name, table_type
+                FROM information_schema.tables
+                WHERE table_schema NOT IN ('information_schema', '_dp_internal')
+                ORDER BY table_schema, table_name
+                """
+            ).fetchall()
         return [{"schema": r[0], "name": r[1], "type": r[2]} for r in rows]
     finally:
         conn.close()
@@ -536,6 +728,8 @@ def list_tables(request: Request, schema: str | None = None) -> list[dict]:
 def describe_table(request: Request, schema: str, table: str) -> dict:
     """Get column info for a table."""
     _require_permission(request, "read")
+    _validate_identifier(schema, "schema")
+    _validate_identifier(table, "table")
     db_path = _get_db_path()
     conn = connect(db_path, read_only=True)
     try:
@@ -558,13 +752,24 @@ def describe_table(request: Request, schema: str, table: str) -> dict:
 
 
 @app.get("/api/tables/{schema}/{table}/sample")
-def sample_table(request: Request, schema: str, table: str, limit: int = 100) -> dict:
-    """Get sample rows from a table."""
+def sample_table(
+    request: Request,
+    schema: str,
+    table: str,
+    limit: int = 100,
+    offset: int = 0,
+) -> dict:
+    """Get sample rows from a table with pagination."""
     _require_permission(request, "read")
+    _validate_identifier(schema, "schema")
+    _validate_identifier(table, "table")
+    limit = max(1, min(limit, 10_000))
+    offset = max(0, offset)
     db_path = _get_db_path()
     conn = connect(db_path, read_only=True)
     try:
-        result = conn.execute(f"SELECT * FROM {schema}.{table} LIMIT {limit}")
+        quoted = f'"{schema}"."{table}"'
+        result = conn.execute(f"SELECT * FROM {quoted} LIMIT {limit} OFFSET {offset}")
         columns = [desc[0] for desc in result.description]
         rows = result.fetchall()
         return {
@@ -572,8 +777,77 @@ def sample_table(request: Request, schema: str, table: str, limit: int = 100) ->
             "table": table,
             "columns": columns,
             "rows": [[_serialize(v) for v in row] for row in rows],
+            "limit": limit,
+            "offset": offset,
         }
     except Exception as e:
+        logger.warning("Sample query failed for %s.%s: %s", schema, table, e)
+        raise HTTPException(400, str(e))
+    finally:
+        conn.close()
+
+
+@app.get("/api/tables/{schema}/{table}/profile")
+def profile_table(request: Request, schema: str, table: str) -> dict:
+    """Get column-level statistics for a table."""
+    _require_permission(request, "read")
+    _validate_identifier(schema, "schema")
+    _validate_identifier(table, "table")
+    db_path = _get_db_path()
+    conn = connect(db_path, read_only=True)
+    try:
+        quoted = f'"{schema}"."{table}"'
+        # Get row count
+        row_count = conn.execute(f"SELECT COUNT(*) FROM {quoted}").fetchone()[0]
+        # Get column info
+        cols = conn.execute(
+            "SELECT column_name, data_type FROM information_schema.columns "
+            "WHERE table_schema = ? AND table_name = ? ORDER BY ordinal_position",
+            [schema, table],
+        ).fetchall()
+
+        profiles = []
+        for col_name, col_type in cols:
+            qcol = f'"{col_name}"'
+            stats: dict = {"name": col_name, "type": col_type}
+
+            # Null count and distinct count for all types
+            basic = conn.execute(
+                f"SELECT COUNT(*) - COUNT({qcol}), COUNT(DISTINCT {qcol}) FROM {quoted}"
+            ).fetchone()
+            stats["null_count"] = basic[0]
+            stats["distinct_count"] = basic[1]
+
+            # Numeric stats
+            is_numeric = any(t in col_type.upper() for t in (
+                "INT", "FLOAT", "DOUBLE", "DECIMAL", "NUMERIC", "BIGINT", "SMALLINT", "TINYINT", "HUGEINT",
+            ))
+            if is_numeric:
+                num = conn.execute(
+                    f"SELECT MIN({qcol}), MAX({qcol}), AVG({qcol}::DOUBLE) FROM {quoted}"
+                ).fetchone()
+                stats["min"] = _serialize(num[0])
+                stats["max"] = _serialize(num[1])
+                stats["avg"] = round(num[2], 4) if num[2] is not None else None
+            else:
+                # For non-numeric: min/max of string representation
+                minmax = conn.execute(
+                    f"SELECT MIN({qcol}::VARCHAR), MAX({qcol}::VARCHAR) FROM {quoted}"
+                ).fetchone()
+                stats["min"] = minmax[0]
+                stats["max"] = minmax[1]
+
+            # Sample values (up to 5 distinct)
+            samples = conn.execute(
+                f"SELECT DISTINCT {qcol}::VARCHAR FROM {quoted} WHERE {qcol} IS NOT NULL LIMIT 5"
+            ).fetchall()
+            stats["sample_values"] = [s[0] for s in samples]
+
+            profiles.append(stats)
+
+        return {"schema": schema, "table": table, "row_count": row_count, "columns": profiles}
+    except Exception as e:
+        logger.warning("Profile failed for %s.%s: %s", schema, table, e)
         raise HTTPException(400, str(e))
     finally:
         conn.close()
@@ -666,7 +940,7 @@ def get_lint_config(request: Request) -> dict:
 
 
 class LintConfigRequest(BaseModel):
-    content: str
+    content: str = Field(..., max_length=100_000)
 
 
 @app.put("/api/lint/config")
@@ -734,7 +1008,7 @@ def get_dag(request: Request) -> dict:
     _require_permission(request, "read")
     project_dir = _get_project_dir()
     transform_dir = project_dir / "transform"
-    models = discover_models(transform_dir)
+    models = _discover_models_cached(transform_dir)
     ordered = build_dag(models)
 
     nodes = []
@@ -843,13 +1117,23 @@ def get_scheduler_status(request: Request) -> dict:
 
 
 class NotebookCellRequest(BaseModel):
-    source: str
-    cell_id: str | None = None
+    source: str = Field(..., max_length=1_000_000)
+    cell_id: str | None = Field(default=None, max_length=200)
     reset: bool = False
 
 
-# Per-notebook namespace store for persistent cell execution
+# Per-notebook namespace store for persistent cell execution.
+# Bounded to prevent unbounded memory growth — evicts oldest entries.
+_NOTEBOOK_NS_MAX = 50
 _notebook_namespaces: dict[str, dict] = {}
+
+
+def _notebook_ns_set(name: str, ns: dict) -> None:
+    """Store a notebook namespace, evicting oldest if at capacity."""
+    _notebook_namespaces[name] = ns
+    while len(_notebook_namespaces) > _NOTEBOOK_NS_MAX:
+        oldest = next(iter(_notebook_namespaces))
+        del _notebook_namespaces[oldest]
 
 
 class SaveNotebookRequest(BaseModel):
@@ -961,7 +1245,7 @@ def run_cell_endpoint(request: Request, name: str, req: NotebookCellRequest) -> 
     conn = connect(db_path)
     try:
         result = execute_cell(conn, req.source, namespace)
-        _notebook_namespaces[name] = result["namespace"]
+        _notebook_ns_set(name, result["namespace"])
         return {"outputs": result["outputs"], "duration_ms": result["duration_ms"]}
     finally:
         conn.close()
@@ -971,22 +1255,22 @@ def run_cell_endpoint(request: Request, name: str, req: NotebookCellRequest) -> 
 
 
 class ImportFileRequest(BaseModel):
-    file_path: str
-    target_schema: str = "landing"
-    target_table: str | None = None
+    file_path: str = Field(..., min_length=1, max_length=1000)
+    target_schema: str = Field(default="landing", min_length=1, max_length=100)
+    target_table: str | None = Field(default=None, max_length=100)
 
 
 class TestConnectionRequest(BaseModel):
-    connection_type: str
+    connection_type: str = Field(..., min_length=1, max_length=50)
     params: dict
 
 
 class ImportFromConnectionRequest(BaseModel):
-    connection_type: str
+    connection_type: str = Field(..., min_length=1, max_length=50)
     params: dict
-    source_table: str
-    target_schema: str = "landing"
-    target_table: str | None = None
+    source_table: str = Field(..., min_length=1, max_length=500)
+    target_schema: str = Field(default="landing", min_length=1, max_length=100)
+    target_table: str | None = Field(default=None, max_length=100)
 
 
 @app.post("/api/import/preview-file")
@@ -1068,10 +1352,19 @@ async def upload_file(request: Request) -> dict:
 _FRONTEND_DIR = Path(__file__).parent.parent.parent.parent / "frontend" / "dist"
 
 
+# Reserved paths that should NOT be caught by the SPA catch-all.
+# This allows FastAPI's auto-generated /docs and /redoc to work.
+_RESERVED_PATHS = {"docs", "redoc", "openapi.json"}
+
+
 @app.get("/", response_class=HTMLResponse)
 @app.get("/{path:path}", response_class=HTMLResponse)
 def serve_frontend(path: str = "") -> HTMLResponse:
-    """Serve the frontend SPA."""
+    """Serve the frontend SPA (skips /docs, /redoc, /openapi.json)."""
+    # Let FastAPI handle its own OpenAPI routes
+    if path in _RESERVED_PATHS:
+        raise HTTPException(404, "Not found")
+
     file_path = _FRONTEND_DIR / path
     if file_path.is_file():
         content_type = {
