@@ -161,6 +161,34 @@ export const api = {
       body: JSON.stringify({ connection_type, params, source_table, target_schema, target_table }),
     }),
 
+  // Connectors
+  listAvailableConnectors: () => request("/connectors/available"),
+  listConfiguredConnectors: () => request("/connectors"),
+  testConnector: (connector_type, config) =>
+    request("/connectors/test", {
+      method: "POST",
+      body: JSON.stringify({ connector_type, config }),
+    }),
+  discoverConnector: (connector_type, config) =>
+    request("/connectors/discover", {
+      method: "POST",
+      body: JSON.stringify({ connector_type, config }),
+    }),
+  setupConnector: (connector_type, connection_name, config, tables, target_schema, schedule) =>
+    request("/connectors/setup", {
+      method: "POST",
+      body: JSON.stringify({ connector_type, connection_name, config, tables, target_schema, schedule }),
+    }),
+  regenerateConnector: (connection_name, config) =>
+    request(`/connectors/regenerate/${connection_name}`, {
+      method: "POST",
+      body: JSON.stringify(config || {}),
+    }),
+  syncConnector: (connection_name) =>
+    request(`/connectors/sync/${connection_name}`, { method: "POST" }),
+  removeConnector: (connection_name) =>
+    request(`/connectors/${connection_name}`, { method: "DELETE" }),
+
   // Upload
   uploadFile: async (file) => {
     const formData = new FormData();

@@ -10,6 +10,7 @@ import DAGPanel from "./DAGPanel";
 import DocsPanel from "./DocsPanel";
 import NotebookPanel from "./NotebookPanel";
 import ImportPanel from "./ImportPanel";
+import ConnectorsPanel from "./ConnectorsPanel";
 import SettingsPanel from "./SettingsPanel";
 import LoginPage from "./LoginPage";
 import ResizeHandle from "./ResizeHandle";
@@ -62,7 +63,7 @@ const GUIDE_STEPS = [
   },
 ];
 
-const TABS = ["Editor", "Query", "Tables", "Notebooks", "Import", "DAG", "Docs", "History", "Settings"];
+const TABS = ["Editor", "Query", "Tables", "Notebooks", "Import", "Connectors", "DAG", "Docs", "History", "Settings"];
 
 function ActionDropdown({ label, onClick, options, disabled, primary }) {
   const [open, setOpen] = useState(false);
@@ -714,6 +715,7 @@ export default function App() {
             {activeTab === "Tables" && <ErrorBoundary name="Tables"><TablesPanel selectedTable={selectedTable} /></ErrorBoundary>}
             {activeTab === "Notebooks" && <ErrorBoundary name="Notebooks"><NotebookPanel openPath={notebookPath} /></ErrorBoundary>}
             {activeTab === "Import" && <ErrorBoundary name="Import"><ImportPanel addOutput={addOutput} /></ErrorBoundary>}
+            {activeTab === "Connectors" && <ErrorBoundary name="Connectors"><ConnectorsPanel addOutput={addOutput} /></ErrorBoundary>}
             {activeTab === "DAG" && <ErrorBoundary name="DAG"><DAGPanel onOpenFile={openFile} /></ErrorBoundary>}
             {activeTab === "Docs" && <ErrorBoundary name="Docs"><DocsPanel /></ErrorBoundary>}
             {activeTab === "History" && <ErrorBoundary name="History"><HistoryPanel /></ErrorBoundary>}
