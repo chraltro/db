@@ -19,6 +19,8 @@ import ResizeHandle from "./ResizeHandle";
 import useResizable from "./useResizable";
 import GuideTour from "./GuideTour";
 import ErrorBoundary from "./ErrorBoundary";
+import Hint from "./Hint";
+import { useHintTriggerFn } from "./HintSystem";
 
 const GUIDE_STEPS = [
   {
@@ -274,6 +276,15 @@ export default function App() {
   // Guide state
   const [guideOpen, setGuideOpen] = useState(() => !localStorage.getItem("dp_guide_completed"));
 
+  // Hint system triggers
+  const setHintTrigger = useHintTriggerFn();
+  const tabSwitchCountRef = useRef(0);
+
+  // Keep warehouseHasTables hint flag in sync
+  useEffect(() => {
+    setHintTrigger("warehouseHasTables", warehouseTables.length > 0);
+  }, [warehouseTables, setHintTrigger]);
+
   function handleGuideComplete() {
     setGuideOpen(false);
     localStorage.setItem("dp_guide_completed", "true");
@@ -286,6 +297,8 @@ export default function App() {
   function navigateToTab(tab) {
     setActiveTab(tab);
     setMoreOpen(false);
+    tabSwitchCountRef.current += 1;
+    setHintTrigger("tabSwitchCount", tabSwitchCountRef.current);
   }
 
   // Close "More" dropdown on outside click
@@ -471,6 +484,7 @@ export default function App() {
       await api.saveFile(activeFile, fileContent);
       setDirty(false);
       addOutput("info", `Saved ${activeFile}`);
+      setHintTrigger("firstFileEdited", true);
     } catch (e) {
       addOutput("error", `Failed to save: ${e.message}`);
     }
@@ -549,14 +563,19 @@ export default function App() {
       }
       loadTables();
 
-      setRunSummary({
+      const transformSummary = {
         type: "transform",
         status: models.some((m) => m.result === "error") ? "failed" : "success",
         models,
         totalRows: 0,
         duration: 0,
         errors: models.filter((m) => m.result === "error").length,
-      });
+      };
+      setRunSummary(transformSummary);
+      if (transformSummary.status === "success") {
+        setHintTrigger("pipelineJustCompleted", true);
+        setHintTrigger("pipelineRanThisSession", true);
+      }
     } catch (e) {
       addOutput("error", e.message);
     } finally {
@@ -603,14 +622,19 @@ export default function App() {
       loadTables();
 
       // Show run summary
-      setRunSummary({
+      const streamSummary = {
         type: "stream",
         status: hasError ? "failed" : "success",
         models,
         totalRows,
         duration: Math.round(durationS),
         errors: models.filter((m) => m.result === "error").length,
-      });
+      };
+      setRunSummary(streamSummary);
+      if (!hasError) {
+        setHintTrigger("pipelineJustCompleted", true);
+        setHintTrigger("pipelineRanThisSession", true);
+      }
     } catch (e) {
       addOutput("error", e.message);
       setRunSummary({
@@ -790,7 +814,7 @@ export default function App() {
         {/* Content */}
         <div style={styles.content}>
           {/* Tabs — primary tabs + "More" dropdown for secondary */}
-          <div style={styles.tabs} data-dp-guide="tabs">
+          <div style={styles.tabs} data-dp-guide="tabs" data-dp-hint="tab-bar">
             {PRIMARY_TABS.map((tab, i) => (
               <button
                 key={tab}
@@ -832,7 +856,7 @@ export default function App() {
               )}
             </div>
             {activeFile && activeTab === "Editor" && (
-              <div style={styles.fileActions}>
+              <div style={styles.fileActions} data-dp-hint="editor-toolbar">
                 <span style={styles.fileName}>
                   {activeFile}
                   {dirty && <span style={styles.modifiedDot}> *</span>}
@@ -906,11 +930,13 @@ export default function App() {
 
           {/* Run summary (post-pipeline feedback) */}
           {runSummary && (
-            <RunSummary
-              summary={runSummary}
-              onNavigate={navigateToTab}
-              onDismiss={() => setRunSummary(null)}
-            />
+            <div data-dp-hint="run-summary">
+              <RunSummary
+                summary={runSummary}
+                onNavigate={navigateToTab}
+                onDismiss={() => setRunSummary(null)}
+              />
+            </div>
           )}
 
           {/* Output */}
@@ -925,6 +951,7 @@ export default function App() {
         </div>
       </div>
 
+      <Hint onNavigate={navigateToTab} />
       <GuideTour steps={GUIDE_STEPS} onComplete={handleGuideComplete} isOpen={guideOpen} />
     </div>
   );

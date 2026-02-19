@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { api } from "./api";
 import { useTheme } from "./ThemeProvider";
 import { THEMES, getThemeIds, getTheme } from "./themes";
+import { useHintSettings } from "./HintSystem";
 
 function ThemeSection() {
   const { themeId, setThemeId } = useTheme();
@@ -262,6 +263,30 @@ function LintConfigSection() {
   );
 }
 
+function HintsSection() {
+  const { resetHints, totalHints, dismissedCount } = useHintSettings();
+  const [justReset, setJustReset] = useState(false);
+
+  function handleReset() {
+    resetHints();
+    setJustReset(true);
+    setTimeout(() => setJustReset(false), 2000);
+  }
+
+  return (
+    <div style={sec.section}>
+      <h3 style={sec.heading}>Contextual Hints</h3>
+      <p style={sec.desc}>
+        Hints appear as you use the interface to highlight features at the right moment.
+        {" "}{dismissedCount} of {totalHints} hints dismissed.
+      </p>
+      <button onClick={handleReset} style={sec.addBtn}>
+        {justReset ? "Reset!" : "Reset all hints"}
+      </button>
+    </div>
+  );
+}
+
 function GuideSection({ onShowGuide }) {
   return (
     <div style={sec.section}>
@@ -278,6 +303,7 @@ export default function SettingsPanel({ onShowGuide }) {
       <div style={sec.header}>Settings</div>
       <div style={sec.content}>
         {onShowGuide && <GuideSection onShowGuide={onShowGuide} />}
+        <HintsSection />
         <ThemeSection />
         <LintConfigSection />
         <SecretsSection />

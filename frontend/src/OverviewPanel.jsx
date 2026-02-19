@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { api } from "./api";
+import { useHintTriggerFn } from "./HintSystem";
 
 function timeAgo(dateStr) {
   if (!dateStr) return "";
@@ -27,6 +28,7 @@ export default function OverviewPanel({ onNavigate, onRunStream, streams }) {
   const [loading, setLoading] = useState(true);
   const [runningDemo, setRunningDemo] = useState(false);
   const [gitStatus, setGitStatus] = useState(null);
+  const setHintTrigger = useHintTriggerFn();
 
   useEffect(() => {
     load();
@@ -38,6 +40,11 @@ export default function OverviewPanel({ onNavigate, onRunStream, streams }) {
     try {
       const overview = await api.getOverview();
       setData(overview);
+      // Set hint trigger if warehouse has data but no runs
+      const runs = overview.recent_runs || [];
+      if (runs.length === 0 && overview.has_data) {
+        setHintTrigger("overviewNoRuns", true);
+      }
     } catch (e) {
       console.error("Failed to load overview:", e);
     } finally {
@@ -49,6 +56,10 @@ export default function OverviewPanel({ onNavigate, onRunStream, streams }) {
     try {
       const gs = await api.getGitStatus();
       setGitStatus(gs);
+      if (gs && gs.is_git_repo) {
+        setHintTrigger("gitDetected", true);
+        if (gs.dirty) setHintTrigger("gitDirty", true);
+      }
     } catch (e) {
       // Git status not critical
     }
@@ -122,7 +133,7 @@ export default function OverviewPanel({ onNavigate, onRunStream, streams }) {
 
         {/* Git status */}
         {gitStatus && gitStatus.is_git_repo && (
-          <div style={{ ...st.card, marginBottom: 16, padding: "10px 16px", display: "flex", alignItems: "center", gap: 12, fontSize: 12 }}>
+          <div data-dp-hint="git-status" style={{ ...st.card, marginBottom: 16, padding: "10px 16px", display: "flex", alignItems: "center", gap: 12, fontSize: 12 }}>
             <span style={{ fontWeight: 600, color: "var(--dp-text-secondary)" }}>git</span>
             <span style={{ fontFamily: "var(--dp-font-mono)", color: "var(--dp-accent)" }}>{gitStatus.branch}</span>
             <span style={{ color: gitStatus.dirty ? "var(--dp-yellow, #eab308)" : "var(--dp-green)", fontWeight: 500 }}>
@@ -140,7 +151,7 @@ export default function OverviewPanel({ onNavigate, onRunStream, streams }) {
           {/* Left column */}
           <div style={st.column}>
             {/* Pipeline health */}
-            <div style={st.card}>
+            <div style={st.card} data-dp-hint="pipeline-health">
               <div style={st.cardHeader}>
                 <span style={st.cardTitle}>Pipeline Health</span>
                 {lastRun && (

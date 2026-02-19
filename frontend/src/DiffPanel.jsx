@@ -1,10 +1,12 @@
 import React, { useState } from "react";
 import SortableTable from "./SortableTable";
+import { useHintTriggerFn } from "./HintSystem";
 
 export default function DiffPanel({ api, addOutput }) {
   const [results, setResults] = useState(null);
   const [loading, setLoading] = useState(false);
   const [expandedModel, setExpandedModel] = useState(null);
+  const setHintTrigger = useHintTriggerFn();
 
   const runDiff = async () => {
     setLoading(true);
@@ -19,6 +21,7 @@ export default function DiffPanel({ api, addOutput }) {
         addOutput("Diff complete: no changes detected.");
       } else {
         addOutput(`Diff complete: ${changes.length} model(s) with changes.`);
+        setHintTrigger("hasDiffChanges", true);
       }
     } catch (err) {
       addOutput(`Diff failed: ${err.message}`);
@@ -64,7 +67,7 @@ export default function DiffPanel({ api, addOutput }) {
       </p>
 
       {results && (
-        <div>
+        <div data-dp-hint="diff-results">
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
             <thead>
               <tr style={{ borderBottom: "2px solid var(--border)", textAlign: "left" }}>

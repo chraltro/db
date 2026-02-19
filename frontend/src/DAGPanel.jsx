@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { api } from "./api";
+import { useHintTriggerFn } from "./HintSystem";
 
 const SCHEMA_COLORS = {
   landing: "#8b949e",
@@ -85,9 +86,11 @@ export default function DAGPanel({ onOpenFile }) {
   const canvasRef = useRef(null);
   const [dag, setDag] = useState(null);
   const [hovered, setHovered] = useState(null);
+  const setHintTrigger = useHintTriggerFn();
 
   useEffect(() => {
     api.getDAG().then(setDag).catch(() => {});
+    setHintTrigger("dagOpened", true);
   }, []);
 
   const draw = useCallback(() => {
@@ -284,7 +287,7 @@ export default function DAGPanel({ onOpenFile }) {
           <span style={styles.legendItem}>T = table</span>
         </div>
       </div>
-      <div style={styles.canvasWrap}>
+      <div style={styles.canvasWrap} data-dp-hint="dag-canvas">
         <canvas
           ref={canvasRef}
           onMouseMove={handleMouseMove}

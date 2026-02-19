@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { api } from "./api";
+import { useHintTriggerFn } from "./HintSystem";
 
 function _timeAgo(dateStr) {
   if (!dateStr) return "";
@@ -22,6 +23,7 @@ export default function DataSourcesPanel({ addOutput }) {
   const [configured, setConfigured] = useState([]);
   const [available, setAvailable] = useState([]);
   const [loading, setLoading] = useState(true);
+  const setHintTrigger = useHintTriggerFn();
 
   // File import state
   const [filePath, setFilePath] = useState("");
@@ -76,10 +78,16 @@ export default function DataSourcesPanel({ addOutput }) {
       setConfigured(conf);
       // Index health by target
       const hMap = {};
+      let hasStale = false;
+      const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
       for (const h of healthData) {
         hMap[h.target] = h;
+        if (h.started_at && new Date(h.started_at).getTime() < sevenDaysAgo) {
+          hasStale = true;
+        }
       }
       setHealth(hMap);
+      if (hasStale) setHintTrigger("connectorStale", true);
     } finally {
       setLoading(false);
     }
@@ -224,6 +232,7 @@ export default function DataSourcesPanel({ addOutput }) {
         connTargetSchema, schedule || null,
       );
       addOutput("info", `Connector "${result.connection_name}" set up — ${result.tables.length} tables, script: ${result.script_path}`);
+      setHintTrigger("firstConnectorDone", true);
       await loadData();
       setView("home");
     } catch (e) {
@@ -717,8 +726,8 @@ export default function DataSourcesPanel({ addOutput }) {
           </div>
         </div>
         {configured.length > 0 && (
-          <div style={st.configuredSection}>
-            <div style={st.configuredHeader}>Active Connectors</div>
+          <div style={st.configuredSection} data-dp-hint="connector-list">
+            <div style={st.configuredHeader} data-dp-hint="connector-health">Active Connectors</div>
             {configured.map((c) => {
               const scriptKey = `ingest/${c.name}.py`;
               const h = health[scriptKey];
