@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
+import { format as formatSQL } from "sql-formatter";
 import { api } from "./api";
 import SortableTable from "./SortableTable";
 import { useHintTriggerFn } from "./HintSystem";
@@ -99,7 +100,7 @@ function SchemaSidebar({ tables, onInsert }) {
 }
 
 const sbSt = {
-  container: { width: "200px", borderRight: "1px solid var(--dp-border)", overflow: "auto", flexShrink: 0, background: "var(--dp-bg-tertiary)", fontSize: "12px" },
+  container: { width: "200px", borderRight: "1px solid var(--dp-border)", overflow: "auto", flexShrink: 0, background: "var(--dp-bg-tertiary)", fontSize: "12px", flex: 1 },
   header: { padding: "8px 10px", fontWeight: 600, fontSize: "11px", color: "var(--dp-text-secondary)", textTransform: "uppercase", letterSpacing: "0.3px", borderBottom: "1px solid var(--dp-border)" },
   list: { padding: "4px 0" },
   empty: { padding: "16px 10px", color: "var(--dp-text-dim)", fontSize: "12px", textAlign: "center" },
@@ -174,10 +175,24 @@ export default function QueryPanel({ addOutput }) {
     }
   }
 
+  function formatQuery() {
+    if (!sql.trim()) return;
+    try {
+      const formatted = formatSQL(sql, { language: "sql", keywordCase: "upper", indentStyle: "standard" });
+      setSql(formatted);
+    } catch {
+      // leave as-is if formatter fails
+    }
+  }
+
   function handleKeyDown(e) {
     if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
       e.preventDefault();
       runQuery();
+    }
+    if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === "F") {
+      e.preventDefault();
+      formatQuery();
     }
   }
 
@@ -229,7 +244,7 @@ export default function QueryPanel({ addOutput }) {
     <div style={st.container}>
       <div style={st.main}>
         {/* Schema sidebar */}
-        <div data-dp-hint="query-sidebar">
+        <div data-dp-hint="query-sidebar" style={{ display: "flex", flexDirection: "column", alignSelf: "stretch" }}>
           <SchemaSidebar tables={tables} onInsert={insertAtCursor} />
         </div>
 
@@ -239,6 +254,9 @@ export default function QueryPanel({ addOutput }) {
           <div style={st.toolbar}>
             <button onClick={runQuery} disabled={queryRunning || !sql.trim()} style={st.runBtn}>
               {queryRunning ? "Running..." : "Run"} <span style={st.shortcut}>Ctrl+Enter</span>
+            </button>
+            <button onClick={formatQuery} disabled={!sql.trim()} style={st.fmtBtn} title="Format SQL (Ctrl+Shift+F)">
+              Format <span style={st.shortcut}>Ctrl+Shift+F</span>
             </button>
 
             {/* History dropdown */}
@@ -350,6 +368,7 @@ const st = {
     gap: "6px",
   },
   shortcut: { fontSize: "10px", opacity: 0.7 },
+  fmtBtn: { padding: "5px 10px", background: "var(--dp-btn-bg)", border: "1px solid var(--dp-btn-border)", borderRadius: "var(--dp-radius-lg)", color: "var(--dp-text-secondary)", cursor: "pointer", fontSize: "12px", fontWeight: 500, display: "flex", alignItems: "center", gap: "6px" },
 
   historyWrapper: { position: "relative" },
   historyBtn: { background: "var(--dp-btn-bg)", border: "1px solid var(--dp-btn-border)", borderRadius: "var(--dp-radius-lg)", color: "var(--dp-text-secondary)", cursor: "pointer", padding: "4px 8px", fontSize: "14px", display: "flex", alignItems: "center", gap: "4px" },
