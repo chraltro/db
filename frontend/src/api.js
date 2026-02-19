@@ -120,6 +120,9 @@ export const api = {
   // Overview
   getOverview: () => request("/overview"),
 
+  // Connector health (last sync status from run_log)
+  getConnectorHealth: () => request("/connectors/health"),
+
   // Scheduler
   getScheduler: () => request("/scheduler"),
 

@@ -1,453 +1,376 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { api } from "./api";
 import SortableTable from "./SortableTable";
 
-const CHART_TYPES = ["bar", "line", "pie", "scatter"];
-const COLORS = ["#58a6ff", "#3fb950", "#d29922", "#f85149", "#bc8cff", "#79c0ff", "#56d364", "#e3b341"];
-
-function getCV(prop) {
-  return getComputedStyle(document.documentElement).getPropertyValue(prop).trim();
-}
-
-function getFont() {
-  return getCV("--dp-font-mono") || "monospace";
-}
-
-function drawBar(ctx, data, labels, w, h, seriesColors) {
-  const padding = { top: 20, right: 20, bottom: 40, left: 60 };
-  const plotW = w - padding.left - padding.right;
-  const plotH = h - padding.top - padding.bottom;
-  const allValues = data.flat();
-  const maxVal = Math.max(...allValues, 0) || 1;
-  const barGroupWidth = plotW / labels.length;
-  const barWidth = Math.min(barGroupWidth * 0.7 / data.length, 60);
-  const font = getFont();
-
-  ctx.strokeStyle = getCV("--dp-border-light");
-  ctx.fillStyle = getCV("--dp-text-secondary");
-  ctx.font = `11px ${font}`;
-  ctx.textAlign = "right";
-  for (let i = 0; i <= 5; i++) {
-    const y = padding.top + plotH - (plotH * i / 5);
-    const val = (maxVal * i / 5).toFixed(maxVal > 10 ? 0 : 1);
-    ctx.globalAlpha = 0.3;
-    ctx.beginPath();
-    ctx.moveTo(padding.left, y);
-    ctx.lineTo(w - padding.right, y);
-    ctx.stroke();
-    ctx.globalAlpha = 1;
-    ctx.fillText(val, padding.left - 8, y + 4);
-  }
-
-  data.forEach((series, si) => {
-    ctx.fillStyle = seriesColors[si % seriesColors.length];
-    series.forEach((val, i) => {
-      const x = padding.left + i * barGroupWidth + (barGroupWidth - barWidth * data.length) / 2 + si * barWidth;
-      const barH = (val / maxVal) * plotH;
-      const r = Math.min(3, barWidth / 4);
-      const bx = x;
-      const by = padding.top + plotH - barH;
-      ctx.beginPath();
-      ctx.roundRect(bx, by, barWidth - 1, barH, [r, r, 0, 0]);
-      ctx.fill();
-    });
-  });
-
-  ctx.fillStyle = getCV("--dp-text-secondary");
-  ctx.font = `11px ${font}`;
-  ctx.textAlign = "center";
-  labels.forEach((label, i) => {
-    const x = padding.left + i * barGroupWidth + barGroupWidth / 2;
-    const text = String(label).length > 10 ? String(label).slice(0, 10) + ".." : String(label);
-    ctx.fillText(text, x, h - padding.bottom + 16);
-  });
-}
-
-function drawLine(ctx, data, labels, w, h, seriesColors) {
-  const padding = { top: 20, right: 20, bottom: 40, left: 60 };
-  const plotW = w - padding.left - padding.right;
-  const plotH = h - padding.top - padding.bottom;
-  const allValues = data.flat();
-  const maxVal = Math.max(...allValues, 0) || 1;
-  const minVal = Math.min(...allValues, 0);
-  const range = maxVal - minVal || 1;
-  const font = getFont();
-
-  ctx.strokeStyle = getCV("--dp-border-light");
-  ctx.fillStyle = getCV("--dp-text-secondary");
-  ctx.font = `11px ${font}`;
-  ctx.textAlign = "right";
-  for (let i = 0; i <= 5; i++) {
-    const y = padding.top + plotH - (plotH * i / 5);
-    const val = (minVal + range * i / 5).toFixed(range > 10 ? 0 : 1);
-    ctx.globalAlpha = 0.3;
-    ctx.beginPath();
-    ctx.moveTo(padding.left, y);
-    ctx.lineTo(w - padding.right, y);
-    ctx.stroke();
-    ctx.globalAlpha = 1;
-    ctx.fillText(val, padding.left - 8, y + 4);
-  }
-
-  data.forEach((series, si) => {
-    ctx.strokeStyle = seriesColors[si % seriesColors.length];
-    ctx.lineWidth = 2;
-    ctx.lineJoin = "round";
-    ctx.lineCap = "round";
-    ctx.beginPath();
-    series.forEach((val, i) => {
-      const x = padding.left + (i / Math.max(series.length - 1, 1)) * plotW;
-      const y = padding.top + plotH - ((val - minVal) / range) * plotH;
-      if (i === 0) ctx.moveTo(x, y);
-      else ctx.lineTo(x, y);
-    });
-    ctx.stroke();
-
-    ctx.fillStyle = seriesColors[si % seriesColors.length];
-    series.forEach((val, i) => {
-      const x = padding.left + (i / Math.max(series.length - 1, 1)) * plotW;
-      const y = padding.top + plotH - ((val - minVal) / range) * plotH;
-      ctx.beginPath();
-      ctx.arc(x, y, 3, 0, Math.PI * 2);
-      ctx.fill();
-    });
-  });
-
-  ctx.fillStyle = getCV("--dp-text-secondary");
-  ctx.font = `11px ${font}`;
-  ctx.textAlign = "center";
-  const step = Math.max(1, Math.floor(labels.length / 10));
-  labels.forEach((label, i) => {
-    if (i % step !== 0 && i !== labels.length - 1) return;
-    const x = padding.left + (i / Math.max(labels.length - 1, 1)) * plotW;
-    const text = String(label).length > 8 ? String(label).slice(0, 8) + ".." : String(label);
-    ctx.fillText(text, x, h - padding.bottom + 16);
-  });
-}
-
-function drawPie(ctx, values, labels, w, h, seriesColors) {
-  const cx = w / 2;
-  const cy = h / 2 - 10;
-  const r = Math.min(cx, cy) - 40;
-  const total = values.reduce((a, b) => a + b, 0) || 1;
-  let startAngle = -Math.PI / 2;
-  const font = getFont();
-
-  values.forEach((val, i) => {
-    const sliceAngle = (val / total) * Math.PI * 2;
-    ctx.fillStyle = seriesColors[i % seriesColors.length];
-    ctx.beginPath();
-    ctx.moveTo(cx, cy);
-    ctx.arc(cx, cy, r, startAngle, startAngle + sliceAngle);
-    ctx.closePath();
-    ctx.fill();
-
-    if (sliceAngle > 0.2) {
-      const midAngle = startAngle + sliceAngle / 2;
-      const lx = cx + (r * 0.65) * Math.cos(midAngle);
-      const ly = cy + (r * 0.65) * Math.sin(midAngle);
-      ctx.fillStyle = "#fff";
-      ctx.font = `bold 11px ${font}`;
-      ctx.textAlign = "center";
-      const pct = ((val / total) * 100).toFixed(1) + "%";
-      ctx.fillText(pct, lx, ly + 4);
-    }
-    startAngle += sliceAngle;
-  });
-
-  ctx.font = `11px ${font}`;
-  ctx.textAlign = "left";
-  const legendY = h - 20;
-  let legendX = 10;
-  labels.forEach((label, i) => {
-    ctx.fillStyle = seriesColors[i % seriesColors.length];
-    ctx.beginPath();
-    ctx.roundRect(legendX, legendY - 8, 10, 10, 2);
-    ctx.fill();
-    ctx.fillStyle = getCV("--dp-text-secondary");
-    const text = String(label).slice(0, 12);
-    ctx.fillText(text, legendX + 14, legendY);
-    legendX += ctx.measureText(text).width + 24;
-  });
-}
-
-function drawScatter(ctx, xData, yData, w, h, color) {
-  const padding = { top: 20, right: 20, bottom: 40, left: 60 };
-  const plotW = w - padding.left - padding.right;
-  const plotH = h - padding.top - padding.bottom;
-  const xMin = Math.min(...xData); const xMax = Math.max(...xData);
-  const yMin = Math.min(...yData); const yMax = Math.max(...yData);
-  const xRange = xMax - xMin || 1; const yRange = yMax - yMin || 1;
-
-  ctx.strokeStyle = getCV("--dp-border-light");
-  for (let i = 0; i <= 5; i++) {
-    const y = padding.top + plotH - (plotH * i / 5);
-    ctx.globalAlpha = 0.3;
-    ctx.beginPath();
-    ctx.moveTo(padding.left, y);
-    ctx.lineTo(w - padding.right, y);
-    ctx.stroke();
-  }
-  ctx.globalAlpha = 1;
-
-  ctx.fillStyle = color;
-  xData.forEach((xv, i) => {
-    const x = padding.left + ((xv - xMin) / xRange) * plotW;
-    const y = padding.top + plotH - ((yData[i] - yMin) / yRange) * plotH;
-    ctx.globalAlpha = 0.7;
-    ctx.beginPath();
-    ctx.arc(x, y, 4, 0, Math.PI * 2);
-    ctx.fill();
-  });
-  ctx.globalAlpha = 1;
-}
-
-function ChartView({ results, chartType, setChartType, labelCol, setLabelCol, valueCols, setValueCols }) {
-  const canvasRef = useRef(null);
-
-  useEffect(() => {
-    if (!results || !canvasRef.current) return;
-    const canvas = canvasRef.current;
-    const ctx = canvas.getContext("2d");
-    const w = canvas.parentElement.clientWidth;
-    const h = 360;
-
-    const dpr = window.devicePixelRatio || 1;
-    canvas.width = w * dpr;
-    canvas.height = h * dpr;
-    canvas.style.width = w + "px";
-    canvas.style.height = h + "px";
-    ctx.scale(dpr, dpr);
-    ctx.clearRect(0, 0, w, h);
-
-    const labels = results.rows.map((r) => r[labelCol] ?? "");
-    const dataSeries = valueCols.map((ci) =>
-      results.rows.map((r) => parseFloat(r[ci]) || 0)
-    );
-
-    if (chartType === "bar") {
-      drawBar(ctx, dataSeries, labels, w, h, COLORS);
-    } else if (chartType === "line") {
-      drawLine(ctx, dataSeries, labels, w, h, COLORS);
-    } else if (chartType === "pie") {
-      drawPie(ctx, dataSeries[0] || [], labels, w, h, COLORS);
-    } else if (chartType === "scatter" && dataSeries.length >= 1) {
-      const xData = results.rows.map((r) => parseFloat(r[labelCol]) || 0);
-      drawScatter(ctx, xData, dataSeries[0], w, h, COLORS[0]);
-    }
-  }, [results, chartType, labelCol, valueCols]);
-
-  return (
-    <div>
-      <div style={styles.chartControls}>
-        <div style={styles.controlGroup}>
-          <label style={styles.controlLabel}>Chart</label>
-          <select value={chartType} onChange={(e) => setChartType(e.target.value)} style={styles.controlSelect}>
-            {CHART_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
-          </select>
-        </div>
-        <div style={styles.controlGroup}>
-          <label style={styles.controlLabel}>Label / X</label>
-          <select value={labelCol} onChange={(e) => setLabelCol(parseInt(e.target.value))} style={styles.controlSelect}>
-            {results.columns.map((c, i) => <option key={i} value={i}>{c}</option>)}
-          </select>
-        </div>
-        <div style={styles.controlGroup}>
-          <label style={styles.controlLabel}>Value / Y</label>
-          <select value={valueCols[0]} onChange={(e) => setValueCols([parseInt(e.target.value)])} style={styles.controlSelect}>
-            {results.columns.map((c, i) => <option key={i} value={i}>{c}</option>)}
-          </select>
-        </div>
-      </div>
-      <div style={styles.chartArea}>
-        <canvas ref={canvasRef} style={{ width: "100%", display: "block" }} />
-      </div>
-    </div>
-  );
-}
-
-const HISTORY_KEY = "dp_query_history";
 const MAX_HISTORY = 50;
 
-function loadHistory() {
+function getHistory() {
   try {
-    return JSON.parse(localStorage.getItem(HISTORY_KEY)) || [];
-  } catch {
-    return [];
+    return JSON.parse(localStorage.getItem("dp_query_history") || "[]");
+  } catch { return []; }
+}
+
+function saveHistory(h) {
+  localStorage.setItem("dp_query_history", JSON.stringify(h.slice(0, MAX_HISTORY)));
+}
+
+/**
+ * Schema sidebar — lists schemas/tables. Click table name to insert
+ * `schema.table` at cursor. Expand to see columns.
+ */
+function SchemaSidebar({ tables, onInsert }) {
+  const [expanded, setExpanded] = useState({});
+
+  const schemas = {};
+  for (const t of tables) {
+    if (!schemas[t.schema]) schemas[t.schema] = [];
+    schemas[t.schema].push(t);
   }
-}
+  const SCHEMA_ORDER = ["landing", "bronze", "silver", "gold"];
+  const schemaNames = Object.keys(schemas).sort((a, b) => {
+    const ai = SCHEMA_ORDER.indexOf(a);
+    const bi = SCHEMA_ORDER.indexOf(b);
+    if (ai !== -1 && bi !== -1) return ai - bi;
+    if (ai !== -1) return -1;
+    if (bi !== -1) return 1;
+    return a.localeCompare(b);
+  });
 
-function saveToHistory(sql) {
-  const trimmed = sql.trim();
-  if (!trimmed) return;
-  const history = loadHistory().filter((h) => h.sql !== trimmed);
-  history.unshift({ sql: trimmed, ts: new Date().toLocaleString() });
-  if (history.length > MAX_HISTORY) history.length = MAX_HISTORY;
-  localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
-  return history;
-}
-
-export default function QueryPanel({ addOutput }) {
-  const [sql, setSql] = useState("SELECT 1 AS hello");
-  const [results, setResults] = useState(null);
-  const [running, setRunning] = useState(false);
-  const [error, setError] = useState(null);
-  const [viewMode, setViewMode] = useState("table"); // "table" or "chart"
-  const [chartType, setChartType] = useState("bar");
-  const [labelCol, setLabelCol] = useState(0);
-  const [valueCols, setValueCols] = useState([1]);
-  const [history, setHistory] = useState(loadHistory);
-  const [showHistory, setShowHistory] = useState(false);
-
-  async function runQuery() {
-    setRunning(true);
-    setError(null);
+  async function toggleExpand(key) {
+    if (expanded[key]) {
+      setExpanded((prev) => ({ ...prev, [key]: null }));
+      return;
+    }
+    const [schema, table] = key.split(".");
     try {
-      const data = await api.runQuery(sql, viewMode === "chart" ? 5000 : undefined);
-      setResults(data);
-      setHistory(saveToHistory(sql));
-      if (data.columns.length >= 2) {
-        setLabelCol(0);
-        setValueCols([1]);
-      }
-      addOutput("info", `Query returned ${data.rows.length} rows`);
-    } catch (e) {
-      setError(e.message);
-      setHistory(saveToHistory(sql));
-      addOutput("error", `Query error: ${e.message}`);
-    } finally {
-      setRunning(false);
+      const info = await api.describeTable(schema, table);
+      setExpanded((prev) => ({ ...prev, [key]: info.columns || [] }));
+    } catch {
+      setExpanded((prev) => ({ ...prev, [key]: [] }));
     }
   }
 
+  if (tables.length === 0) {
+    return <div style={sbSt.empty}>No tables in warehouse</div>;
+  }
+
   return (
-    <div style={styles.container}>
-      <div style={styles.inputArea}>
-        <textarea
-          value={sql}
-          onChange={(e) => setSql(e.target.value)}
-          style={styles.textarea}
-          placeholder="Enter SQL query..."
-          onKeyDown={(e) => {
-            if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
-              e.preventDefault();
-              runQuery();
-            }
-          }}
-        />
-        <div style={styles.runCol}>
-          <button onClick={runQuery} disabled={running} style={styles.runBtn}>
-            {running ? "Running..." : "Run"}
-          </button>
-          <span style={styles.hint}>Ctrl+Enter</span>
-        </div>
-      </div>
-      <div style={styles.historyBar}>
-        <button
-          onClick={() => setShowHistory((v) => !v)}
-          style={styles.historyToggle}
-        >
-          History {history.length > 0 ? `(${history.length})` : ""}
-          <span style={{ marginLeft: "4px", fontSize: "9px" }}>{showHistory ? "\u25B2" : "\u25BC"}</span>
-        </button>
-        {showHistory && history.length > 0 && (
-          <button
-            onClick={() => { localStorage.removeItem(HISTORY_KEY); setHistory([]); }}
-            style={styles.clearHistory}
-          >
-            Clear
-          </button>
-        )}
-      </div>
-      {showHistory && (
-        <div style={styles.historyList}>
-          {history.length === 0 && (
-            <div style={styles.historyEmpty}>No queries yet. Run a query to see it here.</div>
-          )}
-          {history.map((h, i) => (
-            <div
-              key={i}
-              onClick={() => { setSql(h.sql); setShowHistory(false); }}
-              style={styles.historyItem}
-            >
-              <pre style={styles.historySQL}>{h.sql}</pre>
-              <span style={styles.historyTs}>{h.ts}</span>
+    <div style={sbSt.container}>
+      <div style={sbSt.header}>Tables</div>
+      <div style={sbSt.list}>
+        {schemaNames.map((schema) => (
+          <div key={schema}>
+            <div style={sbSt.schemaRow}>
+              <span style={sbSt.schemaName}>{schema}</span>
+              <span style={sbSt.schemaCount}>{schemas[schema].length}</span>
             </div>
-          ))}
-        </div>
-      )}
-      {error && <div style={styles.error}>{error}</div>}
-      {results && (
-        <>
-          <div style={styles.viewToggle}>
-            <div style={styles.resultsMeta}>
-              {results.rows.length} row{results.rows.length !== 1 ? "s" : ""} returned
-              {results.truncated && <span style={styles.truncatedMeta}> (truncated)</span>}
-            </div>
-            <div style={styles.toggleBtns}>
-              <button
-                onClick={() => setViewMode("table")}
-                style={viewMode === "table" ? styles.toggleActive : styles.toggleBtn}
-              >
-                Table
-              </button>
-              <button
-                onClick={() => setViewMode("chart")}
-                style={viewMode === "chart" ? styles.toggleActive : styles.toggleBtn}
-              >
-                Chart
-              </button>
-            </div>
+            {schemas[schema].map((t) => {
+              const key = `${t.schema}.${t.name}`;
+              const cols = expanded[key];
+              return (
+                <div key={key}>
+                  <div style={sbSt.tableRow}>
+                    <button onClick={() => toggleExpand(key)} style={sbSt.expandBtn}>
+                      {cols ? "\u25BE" : "\u25B8"}
+                    </button>
+                    <button onClick={() => onInsert(key)} style={sbSt.tableName} title={`Insert ${key}`}>
+                      {t.name}
+                    </button>
+                  </div>
+                  {cols && cols.length > 0 && (
+                    <div style={sbSt.colList}>
+                      {cols.map((c) => (
+                        <div key={c.name} style={sbSt.colItem} onClick={() => onInsert(c.name)} title={`Insert ${c.name}`}>
+                          <span style={sbSt.colName}>{c.name}</span>
+                          <span style={sbSt.colType}>{c.type}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
-          {viewMode === "table" ? (
-            <div style={styles.tableWrap}>
-              <SortableTable columns={results.columns} rows={results.rows} />
-            </div>
-          ) : (
-            <div style={styles.tableWrap}>
-              <ChartView
-                results={results}
-                chartType={chartType}
-                setChartType={setChartType}
-                labelCol={labelCol}
-                setLabelCol={setLabelCol}
-                valueCols={valueCols}
-                setValueCols={setValueCols}
-              />
-            </div>
-          )}
-        </>
-      )}
+        ))}
+      </div>
     </div>
   );
 }
 
-const styles = {
+const sbSt = {
+  container: { width: "200px", borderRight: "1px solid var(--dp-border)", overflow: "auto", flexShrink: 0, background: "var(--dp-bg-tertiary)", fontSize: "12px" },
+  header: { padding: "8px 10px", fontWeight: 600, fontSize: "11px", color: "var(--dp-text-secondary)", textTransform: "uppercase", letterSpacing: "0.3px", borderBottom: "1px solid var(--dp-border)" },
+  list: { padding: "4px 0" },
+  empty: { padding: "16px 10px", color: "var(--dp-text-dim)", fontSize: "12px", textAlign: "center" },
+  schemaRow: { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "5px 10px 2px", marginTop: "4px" },
+  schemaName: { fontWeight: 600, color: "var(--dp-accent)", fontSize: "11px", textTransform: "uppercase", letterSpacing: "0.3px" },
+  schemaCount: { fontSize: "10px", color: "var(--dp-text-dim)" },
+  tableRow: { display: "flex", alignItems: "center", padding: "2px 6px 2px 8px" },
+  expandBtn: { background: "none", border: "none", color: "var(--dp-text-dim)", cursor: "pointer", fontSize: "10px", padding: "2px 4px", width: "18px" },
+  tableName: { background: "none", border: "none", color: "var(--dp-text)", cursor: "pointer", fontSize: "12px", fontFamily: "var(--dp-font-mono)", padding: "2px 4px", textAlign: "left", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
+  colList: { paddingLeft: "30px", paddingBottom: "2px" },
+  colItem: { display: "flex", justifyContent: "space-between", gap: "6px", padding: "1px 8px", cursor: "pointer", borderRadius: "var(--dp-radius)" },
+  colName: { fontFamily: "var(--dp-font-mono)", color: "var(--dp-text-secondary)", fontSize: "11px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
+  colType: { color: "var(--dp-text-dim)", fontSize: "10px", flexShrink: 0 },
+};
+
+export default function QueryPanel({ addOutput }) {
+  const [sql, setSql] = useState("");
+  const [results, setResults] = useState(null);
+  const [queryRunning, setQueryRunning] = useState(false);
+  const [error, setError] = useState(null);
+  const [history, setHistory] = useState(getHistory);
+  const [tables, setTables] = useState([]);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [viewMode, setViewMode] = useState("table");
+  const textareaRef = useRef(null);
+  const historyRef = useRef(null);
+
+  useEffect(() => {
+    api.listTables().then(setTables).catch(() => {});
+  }, []);
+
+  // Listen for prefill events from TablesPanel "Query this table"
+  useEffect(() => {
+    function handlePrefill() {
+      if (window.__dp_prefill_query) {
+        setSql(window.__dp_prefill_query);
+        delete window.__dp_prefill_query;
+      }
+    }
+    window.addEventListener("dp_prefill_query", handlePrefill);
+    return () => window.removeEventListener("dp_prefill_query", handlePrefill);
+  }, []);
+
+  // Close history dropdown on outside click
+  useEffect(() => {
+    if (!historyOpen) return;
+    const handler = (e) => {
+      if (historyRef.current && !historyRef.current.contains(e.target)) setHistoryOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [historyOpen]);
+
+  async function runQuery() {
+    if (!sql.trim()) return;
+    setQueryRunning(true);
+    setError(null);
+    try {
+      const data = await api.runQuery(sql);
+      setResults(data);
+      const newHistory = [{ sql: sql.trim(), ts: new Date().toISOString() }, ...history.filter((h) => h.sql !== sql.trim())];
+      setHistory(newHistory);
+      saveHistory(newHistory);
+      addOutput("info", `Query: ${data.rows.length} rows (${data.columns.length} cols)`);
+    } catch (e) {
+      setError(e.message);
+      addOutput("error", `Query error: ${e.message}`);
+    } finally {
+      setQueryRunning(false);
+    }
+  }
+
+  function handleKeyDown(e) {
+    if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+      e.preventDefault();
+      runQuery();
+    }
+  }
+
+  function insertAtCursor(text) {
+    const ta = textareaRef.current;
+    if (!ta) {
+      setSql((prev) => prev + (prev ? " " : "") + text);
+      return;
+    }
+    const start = ta.selectionStart;
+    const end = ta.selectionEnd;
+    const before = sql.substring(0, start);
+    const after = sql.substring(end);
+    const newSql = before + text + after;
+    setSql(newSql);
+    setTimeout(() => {
+      ta.focus();
+      ta.selectionStart = ta.selectionEnd = start + text.length;
+    }, 0);
+  }
+
+  // Generate starter query suggestions from available tables
+  function getSuggestions() {
+    if (tables.length === 0) return [];
+    const suggestions = [];
+    const TIER = ["gold", "silver", "bronze", "landing"];
+    for (const tier of TIER) {
+      const t = tables.find((t) => t.schema === tier);
+      if (t) {
+        suggestions.push({ sql: `SELECT * FROM ${t.schema}.${t.name} LIMIT 10`, label: `Preview ${t.schema}.${t.name}` });
+        if (suggestions.length === 1) {
+          suggestions.push({ sql: `SELECT COUNT(*) AS total FROM ${t.schema}.${t.name}`, label: `Count ${t.schema}.${t.name}` });
+        }
+      }
+      if (suggestions.length >= 3) break;
+    }
+    if (suggestions.length < 4) {
+      suggestions.push({
+        sql: "SELECT table_schema, table_name FROM information_schema.tables\nWHERE table_schema NOT IN ('information_schema', '_dp_internal')\nORDER BY table_schema, table_name",
+        label: "List all tables",
+      });
+    }
+    return suggestions;
+  }
+
+  const suggestions = getSuggestions();
+
+  return (
+    <div style={st.container}>
+      <div style={st.main}>
+        {/* Schema sidebar */}
+        <SchemaSidebar tables={tables} onInsert={insertAtCursor} />
+
+        {/* Query area */}
+        <div style={st.queryArea}>
+          {/* Toolbar */}
+          <div style={st.toolbar}>
+            <button onClick={runQuery} disabled={queryRunning || !sql.trim()} style={st.runBtn}>
+              {queryRunning ? "Running..." : "Run"} <span style={st.shortcut}>Ctrl+Enter</span>
+            </button>
+
+            {/* History dropdown */}
+            <div ref={historyRef} style={st.historyWrapper}>
+              <button onClick={() => setHistoryOpen(!historyOpen)} style={st.historyBtn} title="Query history">
+                {"\u23F0"} {history.length > 0 && <span style={st.historyCount}>{history.length}</span>}
+              </button>
+              {historyOpen && (
+                <div style={st.historyDropdown}>
+                  <div style={st.historyHeader}>Recent Queries</div>
+                  {history.length === 0 ? (
+                    <div style={st.historyEmpty}>No history yet</div>
+                  ) : (
+                    history.slice(0, 20).map((h, i) => (
+                      <button
+                        key={i}
+                        onClick={() => { setSql(h.sql); setHistoryOpen(false); }}
+                        style={st.historyItem}
+                        onMouseEnter={(e) => e.currentTarget.style.background = "var(--dp-btn-bg)"}
+                        onMouseLeave={(e) => e.currentTarget.style.background = "none"}
+                      >
+                        <span style={st.historySQL}>{h.sql.substring(0, 80)}{h.sql.length > 80 ? "..." : ""}</span>
+                      </button>
+                    ))
+                  )}
+                </div>
+              )}
+            </div>
+
+            {results && (
+              <div style={st.viewToggle}>
+                <button onClick={() => setViewMode("table")} style={viewMode === "table" ? st.viewBtnActive : st.viewBtn}>Table</button>
+                <button onClick={() => setViewMode("chart")} style={viewMode === "chart" ? st.viewBtnActive : st.viewBtn}>Chart</button>
+              </div>
+            )}
+          </div>
+
+          {/* SQL textarea */}
+          <div style={st.editorWrapper}>
+            <textarea
+              ref={textareaRef}
+              value={sql}
+              onChange={(e) => setSql(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder="Write SQL here... (Ctrl+Enter to run)"
+              style={st.textarea}
+              spellCheck={false}
+            />
+          </div>
+
+          {/* Starter suggestions when textarea is empty */}
+          {!sql.trim() && suggestions.length > 0 && (
+            <div style={st.suggestions}>
+              <span style={st.suggestLabel}>Try:</span>
+              {suggestions.map((s, i) => (
+                <button key={i} onClick={() => setSql(s.sql)} style={st.suggestBtn}>
+                  {s.label}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Error */}
+          {error && (
+            <div style={st.error}>
+              <span style={st.errorLabel}>Error</span>
+              {error}
+            </div>
+          )}
+
+          {/* Results */}
+          {results && (
+            <div style={st.results}>
+              <div style={st.resultsHeader}>
+                <span>{results.rows.length} row{results.rows.length !== 1 ? "s" : ""}, {results.columns.length} column{results.columns.length !== 1 ? "s" : ""}</span>
+              </div>
+              <div style={st.resultsBody}>
+                {viewMode === "table" ? (
+                  <SortableTable columns={results.columns} rows={results.rows} />
+                ) : (
+                  <div style={st.chartPlaceholder}>Chart view available for numeric results.</div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const st = {
   container: { display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" },
-  inputArea: { display: "flex", gap: "8px", padding: "8px", borderBottom: "1px solid var(--dp-border)" },
-  textarea: { flex: 1, minHeight: "60px", maxHeight: "200px", background: "var(--dp-bg-tertiary)", color: "var(--dp-text)", border: "1px solid var(--dp-border-light)", borderRadius: "var(--dp-radius-lg)", padding: "8px", fontFamily: "var(--dp-font-mono)", fontSize: "13px", resize: "vertical" },
-  runCol: { display: "flex", flexDirection: "column", alignItems: "center", gap: "4px", alignSelf: "flex-end" },
-  runBtn: { padding: "8px 20px", background: "var(--dp-green)", border: "1px solid var(--dp-green-border)", borderRadius: "var(--dp-radius-lg)", color: "#fff", cursor: "pointer", fontSize: "12px", fontWeight: 500 },
-  hint: { fontSize: "10px", color: "var(--dp-text-dim)" },
-  error: { padding: "8px 12px", color: "var(--dp-red)", fontSize: "13px", fontFamily: "var(--dp-font-mono)", background: "color-mix(in srgb, var(--dp-red) 8%, transparent)", margin: "0 8px", borderRadius: "var(--dp-radius)" },
-  viewToggle: { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "4px 12px", borderBottom: "1px solid var(--dp-border)", background: "var(--dp-bg-secondary)" },
-  resultsMeta: { fontSize: "11px", color: "var(--dp-text-secondary)" },
-  truncatedMeta: { color: "var(--dp-yellow)" },
-  toggleBtns: { display: "flex", gap: "2px" },
-  toggleBtn: { padding: "3px 12px", background: "none", border: "1px solid var(--dp-border-light)", borderRadius: "var(--dp-radius)", color: "var(--dp-text-secondary)", cursor: "pointer", fontSize: "11px", fontWeight: 500 },
-  toggleActive: { padding: "3px 12px", background: "var(--dp-btn-bg)", border: "1px solid var(--dp-accent)", borderRadius: "var(--dp-radius)", color: "var(--dp-accent)", cursor: "pointer", fontSize: "11px", fontWeight: 600 },
-  tableWrap: { flex: 1, overflow: "auto", padding: "0 8px 8px" },
-  chartControls: { display: "flex", gap: "16px", padding: "8px 4px", alignItems: "flex-end" },
-  controlGroup: {},
-  controlLabel: { display: "block", fontSize: "10px", color: "var(--dp-text-secondary)", marginBottom: "2px", textTransform: "uppercase", letterSpacing: "0.5px", fontWeight: 600 },
-  controlSelect: { padding: "4px 8px", background: "var(--dp-bg-tertiary)", border: "1px solid var(--dp-border-light)", borderRadius: "var(--dp-radius)", color: "var(--dp-text)", fontSize: "12px" },
-  chartArea: { padding: "8px 0" },
-  historyBar: { display: "flex", alignItems: "center", gap: "8px", padding: "2px 8px", borderBottom: "1px solid var(--dp-border)", background: "var(--dp-bg-secondary)" },
-  historyToggle: { background: "none", border: "none", color: "var(--dp-text-secondary)", cursor: "pointer", fontSize: "11px", fontWeight: 500, padding: "2px 4px" },
-  clearHistory: { background: "none", border: "none", color: "var(--dp-text-dim)", cursor: "pointer", fontSize: "10px", marginLeft: "auto" },
-  historyList: { maxHeight: "200px", overflow: "auto", borderBottom: "1px solid var(--dp-border)", background: "var(--dp-bg-tertiary)" },
-  historyEmpty: { color: "var(--dp-text-dim)", fontSize: "12px", padding: "12px", textAlign: "center", fontStyle: "italic" },
-  historyItem: { display: "flex", alignItems: "baseline", gap: "12px", padding: "4px 12px", cursor: "pointer", borderBottom: "1px solid var(--dp-border)" },
-  historySQL: { flex: 1, margin: 0, fontSize: "12px", fontFamily: "var(--dp-font-mono)", color: "var(--dp-text)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" },
-  historyTs: { fontSize: "10px", color: "var(--dp-text-dim)", flexShrink: 0 },
+  main: { display: "flex", flex: 1, overflow: "hidden" },
+
+  queryArea: { flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" },
+  toolbar: { display: "flex", alignItems: "center", gap: "8px", padding: "6px 12px", borderBottom: "1px solid var(--dp-border)", flexShrink: 0 },
+  runBtn: {
+    padding: "5px 14px",
+    background: "var(--dp-green)",
+    border: "1px solid var(--dp-green-border)",
+    borderRadius: "var(--dp-radius-lg)",
+    color: "#fff",
+    cursor: "pointer",
+    fontSize: "12px",
+    fontWeight: 600,
+    display: "flex",
+    alignItems: "center",
+    gap: "6px",
+  },
+  shortcut: { fontSize: "10px", opacity: 0.7 },
+
+  historyWrapper: { position: "relative" },
+  historyBtn: { background: "var(--dp-btn-bg)", border: "1px solid var(--dp-btn-border)", borderRadius: "var(--dp-radius-lg)", color: "var(--dp-text-secondary)", cursor: "pointer", padding: "4px 8px", fontSize: "14px", display: "flex", alignItems: "center", gap: "4px" },
+  historyCount: { fontSize: "10px", background: "var(--dp-bg-tertiary)", padding: "0 5px", borderRadius: "8px", color: "var(--dp-text-dim)", fontWeight: 500 },
+  historyDropdown: { position: "absolute", top: "100%", left: 0, marginTop: "4px", background: "var(--dp-bg-secondary)", border: "1px solid var(--dp-border)", borderRadius: "var(--dp-radius)", zIndex: 100, width: "400px", maxHeight: "300px", overflow: "auto", boxShadow: "0 4px 12px rgba(0,0,0,0.3)" },
+  historyHeader: { padding: "6px 12px", fontSize: "11px", fontWeight: 600, color: "var(--dp-text-secondary)", borderBottom: "1px solid var(--dp-border)" },
+  historyEmpty: { padding: "16px", color: "var(--dp-text-dim)", fontSize: "12px", textAlign: "center" },
+  historyItem: { display: "block", width: "100%", padding: "6px 12px", background: "none", border: "none", borderBottom: "1px solid var(--dp-border)", color: "var(--dp-text)", cursor: "pointer", textAlign: "left", fontSize: "12px" },
+  historySQL: { fontFamily: "var(--dp-font-mono)", fontSize: "11px", color: "var(--dp-text)", display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
+
+  viewToggle: { display: "flex", marginLeft: "auto", gap: "1px", background: "var(--dp-border)", borderRadius: "var(--dp-radius-lg)", overflow: "hidden" },
+  viewBtn: { padding: "3px 10px", background: "var(--dp-btn-bg)", border: "none", color: "var(--dp-text-secondary)", cursor: "pointer", fontSize: "11px", fontWeight: 500 },
+  viewBtnActive: { padding: "3px 10px", background: "var(--dp-bg-secondary)", border: "none", color: "var(--dp-text)", cursor: "pointer", fontSize: "11px", fontWeight: 600 },
+
+  editorWrapper: { flexShrink: 0, borderBottom: "1px solid var(--dp-border)" },
+  textarea: { width: "100%", height: "120px", padding: "10px 12px", background: "var(--dp-bg)", border: "none", color: "var(--dp-text)", fontFamily: "var(--dp-font-mono)", fontSize: "13px", resize: "vertical", outline: "none", boxSizing: "border-box", lineHeight: 1.5 },
+
+  suggestions: { display: "flex", alignItems: "center", gap: "6px", padding: "8px 12px", flexWrap: "wrap", borderBottom: "1px solid var(--dp-border)" },
+  suggestLabel: { fontSize: "11px", color: "var(--dp-text-dim)", fontWeight: 500 },
+  suggestBtn: { padding: "3px 10px", background: "var(--dp-bg-secondary)", border: "1px solid var(--dp-border)", borderRadius: "var(--dp-radius-lg)", color: "var(--dp-accent)", cursor: "pointer", fontSize: "11px", fontWeight: 500 },
+
+  error: { padding: "8px 12px", background: "rgba(255,0,0,0.05)", borderBottom: "1px solid var(--dp-red)", color: "var(--dp-red)", fontSize: "12px", fontFamily: "var(--dp-font-mono)", whiteSpace: "pre-wrap" },
+  errorLabel: { fontWeight: 600, marginRight: "8px" },
+
+  results: { flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" },
+  resultsHeader: { padding: "6px 12px", fontSize: "11px", color: "var(--dp-text-secondary)", borderBottom: "1px solid var(--dp-border)", flexShrink: 0 },
+  resultsBody: { flex: 1, overflow: "auto" },
+  chartPlaceholder: { padding: "32px", color: "var(--dp-text-dim)", textAlign: "center", fontSize: "13px" },
 };

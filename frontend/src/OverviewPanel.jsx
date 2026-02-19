@@ -22,9 +22,10 @@ function formatRows(n) {
   return String(n);
 }
 
-export default function OverviewPanel({ onNavigate }) {
+export default function OverviewPanel({ onNavigate, onRunStream, streams }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [runningDemo, setRunningDemo] = useState(false);
 
   useEffect(() => {
     load();
@@ -66,9 +67,23 @@ export default function OverviewPanel({ onNavigate }) {
             <div style={st.heroDesc}>
               Connect a data source to start building your warehouse. Import a CSV, connect a database, or set up a recurring connector.
             </div>
-            <button onClick={() => onNavigate("Data Sources")} style={st.heroCta}>
-              Connect Your Data
-            </button>
+            <div style={st.heroBtns}>
+              <button onClick={() => onNavigate("Data Sources")} style={st.heroCta}>
+                Connect Your Data
+              </button>
+              {streams && Object.keys(streams).length > 0 && onRunStream && (
+                <button
+                  onClick={() => {
+                    setRunningDemo(true);
+                    onRunStream(null, true);
+                  }}
+                  disabled={runningDemo}
+                  style={st.heroSecondary}
+                >
+                  {runningDemo ? "Running..." : "or run the sample pipeline"}
+                </button>
+              )}
+            </div>
           </div>
         )}
 
@@ -213,6 +228,7 @@ const st = {
   },
   heroTitle: { fontSize: "20px", fontWeight: 700, color: "var(--dp-text)", marginBottom: "8px" },
   heroDesc: { fontSize: "14px", color: "var(--dp-text-secondary)", lineHeight: 1.6, maxWidth: "480px", margin: "0 auto 20px" },
+  heroBtns: { display: "flex", flexDirection: "column", alignItems: "center", gap: "10px" },
   heroCta: {
     padding: "10px 28px",
     background: "var(--dp-green)",
@@ -222,6 +238,16 @@ const st = {
     cursor: "pointer",
     fontSize: "14px",
     fontWeight: 600,
+  },
+  heroSecondary: {
+    padding: "6px 16px",
+    background: "none",
+    border: "1px solid var(--dp-border)",
+    borderRadius: "var(--dp-radius-lg)",
+    color: "var(--dp-text-secondary)",
+    cursor: "pointer",
+    fontSize: "12px",
+    fontWeight: 500,
   },
 
   // Stats

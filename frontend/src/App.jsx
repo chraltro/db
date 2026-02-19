@@ -282,6 +282,36 @@ export default function App() {
     setGuideOpen(true);
   }
 
+  function navigateToTab(tab) {
+    setActiveTab(tab);
+    setMoreOpen(false);
+  }
+
+  // Close "More" dropdown on outside click
+  useEffect(() => {
+    if (!moreOpen) return;
+    const handler = (e) => {
+      if (moreRef.current && !moreRef.current.contains(e.target)) setMoreOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [moreOpen]);
+
+  // Keyboard shortcuts: Ctrl+1..5 for primary tabs
+  useEffect(() => {
+    function handleKeyDown(e) {
+      if (!e.ctrlKey && !e.metaKey) return;
+      if (e.shiftKey || e.altKey) return;
+      const num = parseInt(e.key);
+      if (num >= 1 && num <= PRIMARY_TABS.length) {
+        e.preventDefault();
+        navigateToTab(PRIMARY_TABS[num - 1]);
+      }
+    }
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, []);
+
   useEffect(() => {
     checkAuth();
     window.addEventListener("dp_auth_required", () => setAuthRequired(true));
@@ -648,20 +678,46 @@ export default function App() {
     return <LoginPage onLogin={handleLogin} needsSetup={needsSetup} />;
   }
 
-  // Close "More" dropdown on outside click
-  useEffect(() => {
-    if (!moreOpen) return;
-    const handler = (e) => {
-      if (moreRef.current && !moreRef.current.contains(e.target)) setMoreOpen(false);
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, [moreOpen]);
-
-  function navigateToTab(tab) {
-    setActiveTab(tab);
-    setMoreOpen(false);
+  // Navigate to Query with pre-filled SQL (for "Query this table" from TablesPanel)
+  function queryTable(schema, table) {
+    navigateToTab("Query");
+    // Store the query intent for QueryPanel to pick up
+    window.__dp_prefill_query = `SELECT * FROM ${schema}.${table} LIMIT 100`;
+    window.dispatchEvent(new Event("dp_prefill_query"));
   }
+
+  // Run a specific transform model from the editor
+  async function runSingleModel() {
+    if (!activeFile || !activeFile.includes("transform/") || !activeFile.endsWith(".sql")) return;
+    if (dirty) await saveFile();
+    setRunning(true);
+    setRunSummary(null);
+    const modelName = activeFile.replace(/^transform\//, "").replace(/\.sql$/, "").replace(/\//g, ".");
+    addOutput("info", `Running transform for ${modelName}...`);
+    try {
+      const data = await api.runTransform([modelName], false);
+      const models = [];
+      for (const [model, status] of Object.entries(data.results || {})) {
+        addOutput(status === "error" ? "error" : "info", `${model}: ${status}`);
+        models.push({ name: model, result: status });
+      }
+      loadTables();
+      setRunSummary({
+        type: "transform",
+        status: models.some((m) => m.result === "error") ? "failed" : "success",
+        models,
+        totalRows: 0,
+        duration: 0,
+        errors: models.filter((m) => m.result === "error").length,
+      });
+    } catch (e) {
+      addOutput("error", e.message);
+    } finally {
+      setRunning(false);
+    }
+  }
+
+  const isTransformFile = activeFile && activeFile.includes("transform/") && activeFile.endsWith(".sql");
 
   return (
     <div style={styles.container}>
@@ -734,15 +790,16 @@ export default function App() {
         <div style={styles.content}>
           {/* Tabs — primary tabs + "More" dropdown for secondary */}
           <div style={styles.tabs} data-dp-guide="tabs">
-            {PRIMARY_TABS.map((tab) => (
+            {PRIMARY_TABS.map((tab, i) => (
               <button
                 key={tab}
                 data-dp-tab=""
                 data-dp-active={activeTab === tab ? "true" : "false"}
                 onClick={() => navigateToTab(tab)}
                 style={activeTab === tab ? styles.tabActive : styles.tab}
+                title={`${tab} (Ctrl+${i + 1})`}
               >
-                {tab}
+                {tab === "Editor" && dirty ? tab + " *" : tab}
               </button>
             ))}
             {/* More dropdown for secondary tabs */}
@@ -782,6 +839,11 @@ export default function App() {
                 <button onClick={saveFile} disabled={!dirty} style={styles.btn}>
                   Save
                 </button>
+                {isTransformFile && (
+                  <button onClick={runSingleModel} disabled={running} style={styles.btn} title="Run just this model">
+                    Run Model
+                  </button>
+                )}
                 <button onClick={runCurrentFile} disabled={running} style={styles.btnPrimary}>
                   Run
                 </button>
@@ -791,7 +853,30 @@ export default function App() {
 
           {/* Panel */}
           <div style={styles.panel} data-dp-guide="editor">
-            {activeTab === "Overview" && <ErrorBoundary name="Overview"><OverviewPanel onNavigate={navigateToTab} /></ErrorBoundary>}
+            {/* Breadcrumb for secondary tabs */}
+            {SECONDARY_TABS.includes(activeTab) && (
+              <div style={styles.breadcrumb}>
+                <button onClick={() => navigateToTab("Overview")} style={styles.breadcrumbLink}>Overview</button>
+                <span style={styles.breadcrumbSep}>/</span>
+                <span style={styles.breadcrumbCurrent}>{activeTab}</span>
+              </div>
+            )}
+            {activeTab === "Overview" && (
+              <ErrorBoundary name="Overview">
+                <OverviewPanel
+                  onNavigate={navigateToTab}
+                  onRunStream={(name, force) => {
+                    if (name) runStream(name, force);
+                    else {
+                      const names = Object.keys(streams);
+                      if (names.length > 0) runStream(names[0], force);
+                      else addOutput("warn", "No streams defined in project.yml");
+                    }
+                  }}
+                  streams={streams}
+                />
+              </ErrorBoundary>
+            )}
             {activeTab === "Editor" && (
               <ErrorBoundary name="Editor">
                 <Editor
@@ -808,7 +893,7 @@ export default function App() {
               </ErrorBoundary>
             )}
             {activeTab === "Query" && <ErrorBoundary name="Query"><QueryPanel addOutput={addOutput} /></ErrorBoundary>}
-            {activeTab === "Tables" && <ErrorBoundary name="Tables"><TablesPanel selectedTable={selectedTable} /></ErrorBoundary>}
+            {activeTab === "Tables" && <ErrorBoundary name="Tables"><TablesPanel selectedTable={selectedTable} onQueryTable={queryTable} /></ErrorBoundary>}
             {activeTab === "Data Sources" && <ErrorBoundary name="Data Sources"><DataSourcesPanel addOutput={addOutput} /></ErrorBoundary>}
             {activeTab === "Notebooks" && <ErrorBoundary name="Notebooks"><NotebookPanel openPath={notebookPath} /></ErrorBoundary>}
             {activeTab === "DAG" && <ErrorBoundary name="DAG"><DAGPanel onOpenFile={openFile} /></ErrorBoundary>}
@@ -872,4 +957,9 @@ const styles = {
   moreArrow: { marginLeft: "4px", fontSize: "10px" },
   moreMenu: { position: "absolute", top: "100%", left: 0, marginTop: "2px", background: "var(--dp-bg-secondary)", border: "1px solid var(--dp-border)", borderRadius: "var(--dp-radius)", zIndex: 100, minWidth: "130px", boxShadow: "0 4px 12px rgba(0,0,0,0.3)" },
   moreItem: { display: "block", width: "100%", padding: "7px 14px", background: "none", border: "none", color: "var(--dp-text)", cursor: "pointer", fontSize: "13px", textAlign: "left", whiteSpace: "nowrap" },
+  // Breadcrumb for secondary tabs
+  breadcrumb: { display: "flex", alignItems: "center", gap: "6px", padding: "6px 16px", fontSize: "12px", borderBottom: "1px solid var(--dp-border)", background: "var(--dp-bg-tertiary)" },
+  breadcrumbLink: { background: "none", border: "none", color: "var(--dp-accent)", cursor: "pointer", fontSize: "12px", padding: 0, fontWeight: 500 },
+  breadcrumbSep: { color: "var(--dp-text-dim)" },
+  breadcrumbCurrent: { color: "var(--dp-text-secondary)", fontWeight: 500 },
 };

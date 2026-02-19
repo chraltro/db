@@ -1473,6 +1473,42 @@ def remove_connector_endpoint(request: Request, connection_name: str) -> dict:
     return result
 
 
+@app.get("/api/connectors/health")
+def connector_health_endpoint(request: Request) -> list:
+    """Get last sync status for each connector from run_log."""
+    _require_permission(request, "read")
+    db_path = _get_db_path()
+    if not db_path.exists():
+        return []
+    conn = connect(db_path, read_only=True)
+    try:
+        rows = conn.execute(
+            """
+            SELECT target, status, started_at, duration_ms, error
+            FROM _dp_internal.run_log
+            WHERE run_type = 'script' AND target LIKE 'ingest/%'
+            ORDER BY started_at DESC
+            """
+        ).fetchall()
+    except Exception:
+        return []
+    finally:
+        conn.close()
+
+    # Deduplicate: keep only the latest run per target
+    seen: dict[str, dict] = {}
+    for target, status, started_at, duration_ms, error in rows:
+        if target not in seen:
+            seen[target] = {
+                "target": target,
+                "status": status,
+                "started_at": str(started_at) if started_at else None,
+                "duration_ms": duration_ms,
+                "error": error,
+            }
+    return list(seen.values())
+
+
 @app.post("/api/webhook/{webhook_name}")
 async def receive_webhook(request: Request, webhook_name: str) -> dict:
     """Receive webhook data and store it in the inbox table."""

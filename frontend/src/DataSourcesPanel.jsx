@@ -1,6 +1,17 @@
 import React, { useState, useEffect } from "react";
 import { api } from "./api";
 
+function _timeAgo(dateStr) {
+  if (!dateStr) return "";
+  const seconds = Math.floor((new Date() - new Date(dateStr)) / 1000);
+  if (seconds < 60) return "just now";
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return `${Math.floor(hours / 24)}d ago`;
+}
+
 /**
  * Unified Data Sources panel — merges the old Import and Connectors panels
  * into a single flow. Users pick a method (file, database, connector) and
@@ -41,18 +52,34 @@ export default function DataSourcesPanel({ addOutput }) {
   const [discovering, setDiscovering] = useState(false);
   const [setting, setSetting] = useState(false);
   const [syncing, setSyncing] = useState(null);
+  const [health, setHealth] = useState({});
+  const [successBanner, setSuccessBanner] = useState(null);
 
   useEffect(() => { loadData(); }, []);
+
+  // Auto-dismiss success banner after 8 seconds
+  useEffect(() => {
+    if (!successBanner) return;
+    const timer = setTimeout(() => setSuccessBanner(null), 8000);
+    return () => clearTimeout(timer);
+  }, [successBanner]);
 
   async function loadData() {
     setLoading(true);
     try {
-      const [avail, conf] = await Promise.all([
+      const [avail, conf, healthData] = await Promise.all([
         api.listAvailableConnectors().catch(() => []),
         api.listConfiguredConnectors().catch(() => []),
+        api.getConnectorHealth().catch(() => []),
       ]);
       setAvailable(avail);
       setConfigured(conf);
+      // Index health by target
+      const hMap = {};
+      for (const h of healthData) {
+        hMap[h.target] = h;
+      }
+      setHealth(hMap);
     } finally {
       setLoading(false);
     }
@@ -89,6 +116,8 @@ export default function DataSourcesPanel({ addOutput }) {
       const result = await api.importFile(filePath, targetSchema, targetTable || undefined);
       if (result.status === "success") {
         addOutput("info", `Imported ${result.rows} rows into ${result.table} (${result.duration_ms}ms)`);
+        setSuccessBanner({ rows: result.rows, table: result.table });
+        goHome();
       } else {
         addOutput("error", `Import failed: ${result.error}`);
       }
@@ -122,6 +151,8 @@ export default function DataSourcesPanel({ addOutput }) {
       const result = await api.importFromConnection(connType, params, sourceTable, targetSchema, targetTable || undefined);
       if (result.status === "success") {
         addOutput("info", `Imported ${result.rows} rows into ${result.table} (${result.duration_ms}ms)`);
+        setSuccessBanner({ rows: result.rows, table: result.table });
+        goHome();
       } else {
         addOutput("error", `Import failed: ${result.error}`);
       }
@@ -604,13 +635,19 @@ export default function DataSourcesPanel({ addOutput }) {
             <div style={st.emptyState}>No connectors configured yet.</div>
           ) : (
             <div style={st.connectorList}>
-              {configured.map((c) => (
+              {configured.map((c) => {
+                const scriptKey = `ingest/${c.name}.py`;
+                const h = health[scriptKey];
+                return (
                 <div key={c.name} style={st.connectorItem}>
                   <div style={st.connectorMain}>
                     <div style={st.connectorNameRow}>
                       <span style={st.connectorName}>{c.name}</span>
                       <span style={st.connectorType}>{c.type}</span>
-                      <span style={{ ...st.statusDot, background: c.has_script ? "var(--dp-green)" : "var(--dp-yellow)" }} />
+                      <span style={{ ...st.statusDot, background: h ? (h.status === "success" ? "var(--dp-green)" : "var(--dp-red)") : (c.has_script ? "var(--dp-yellow)" : "var(--dp-text-dim)") }} />
+                      {h && <span style={{ ...st.healthInfo, color: h.status === "success" ? "var(--dp-text-dim)" : "var(--dp-red)" }}>
+                        {h.status === "success" ? `Last synced ${_timeAgo(h.started_at)}` : `Last sync failed ${_timeAgo(h.started_at)}`}
+                      </span>}
                     </div>
                     <div style={st.connectorParams}>
                       {Object.entries(c.params || {}).filter(([k]) => k !== "type").map(([k, v]) => (
@@ -626,7 +663,8 @@ export default function DataSourcesPanel({ addOutput }) {
                     <button onClick={() => doRemove(c.name)} style={st.btnDanger}>Remove</button>
                   </div>
                 </div>
-              ))}
+              );
+              })}
             </div>
           )}
         </div>
@@ -646,6 +684,12 @@ export default function DataSourcesPanel({ addOutput }) {
         )}
       </div>
       <div style={st.content}>
+        {/* Success banner after import */}
+        {successBanner && (
+          <div style={st.successBanner} onClick={() => setSuccessBanner(null)}>
+            Imported {successBanner.rows.toLocaleString()} rows into <strong>{successBanner.table}</strong>
+          </div>
+        )}
         <div style={st.homeDesc}>
           How would you like to get data into your warehouse?
         </div>
@@ -675,16 +719,23 @@ export default function DataSourcesPanel({ addOutput }) {
         {configured.length > 0 && (
           <div style={st.configuredSection}>
             <div style={st.configuredHeader}>Active Connectors</div>
-            {configured.map((c) => (
-              <div key={c.name} style={st.configuredRow}>
-                <span style={{ ...st.statusDot, background: c.has_script ? "var(--dp-green)" : "var(--dp-yellow)" }} />
-                <span style={st.connectorName}>{c.name}</span>
-                <span style={st.connectorType}>{c.type}</span>
-                <button onClick={() => doSync(c.name)} disabled={syncing === c.name || !c.has_script} style={st.btnSmall}>
-                  {syncing === c.name ? "..." : "Sync"}
-                </button>
-              </div>
-            ))}
+            {configured.map((c) => {
+              const scriptKey = `ingest/${c.name}.py`;
+              const h = health[scriptKey];
+              return (
+                <div key={c.name} style={st.configuredRow}>
+                  <span style={{ ...st.statusDot, background: h ? (h.status === "success" ? "var(--dp-green)" : "var(--dp-red)") : (c.has_script ? "var(--dp-yellow)" : "var(--dp-text-dim)") }} />
+                  <span style={st.connectorName}>{c.name}</span>
+                  <span style={st.connectorType}>{c.type}</span>
+                  {h && <span style={{ ...st.healthInfo, color: h.status === "success" ? "var(--dp-text-dim)" : "var(--dp-red)" }}>
+                    {h.status === "success" ? `synced ${_timeAgo(h.started_at)}` : `failed ${_timeAgo(h.started_at)}`}
+                  </span>}
+                  <button onClick={() => doSync(c.name)} disabled={syncing === c.name || !c.has_script} style={st.btnSmall}>
+                    {syncing === c.name ? "..." : "Sync"}
+                  </button>
+                </div>
+              );
+            })}
             <button onClick={() => setView("manage")} style={st.manageLink}>
               Manage all connectors
             </button>
@@ -834,4 +885,18 @@ const st = {
   connectorActions: { display: "flex", gap: "6px", flexShrink: 0 },
 
   emptyState: { textAlign: "center", padding: "32px", color: "var(--dp-text-dim)", fontSize: "13px" },
+
+  // Success banner
+  successBanner: {
+    padding: "10px 16px",
+    background: "rgba(46, 160, 67, 0.1)",
+    border: "1px solid var(--dp-green)",
+    borderRadius: "var(--dp-radius-lg)",
+    color: "var(--dp-green)",
+    fontSize: "13px",
+    marginBottom: "16px",
+    cursor: "pointer",
+  },
+  // Health info
+  healthInfo: { fontSize: "11px", marginLeft: "auto" },
 };
