@@ -157,6 +157,26 @@ def _require_permission(request: Request, permission: str) -> dict:
     return user
 
 
+# --- Rate limiting ---
+
+_login_attempts: dict[str, list[float]] = {}
+_RATE_LIMIT_WINDOW = 60.0  # seconds
+_RATE_LIMIT_MAX = 5  # max attempts per window
+
+
+def _check_rate_limit(key: str) -> None:
+    """Enforce rate limiting. Raises 429 if too many attempts."""
+    now = time.time()
+    attempts = _login_attempts.get(key, [])
+    # Prune old attempts outside the window
+    attempts = [t for t in attempts if now - t < _RATE_LIMIT_WINDOW]
+    if len(attempts) >= _RATE_LIMIT_MAX:
+        logger.warning("Rate limit exceeded for %s", key)
+        raise HTTPException(429, "Too many login attempts. Try again later.")
+    attempts.append(now)
+    _login_attempts[key] = attempts
+
+
 # --- Auth endpoints ---
 
 
@@ -179,8 +199,10 @@ class UpdateUserRequest(BaseModel):
 
 
 @app.post("/api/auth/login")
-def login(req: LoginRequest) -> dict:
-    """Authenticate and get a token."""
+def login(request: Request, req: LoginRequest) -> dict:
+    """Authenticate and get a token (rate-limited)."""
+    client_ip = request.client.host if request.client else "unknown"
+    _check_rate_limit(f"login:{client_ip}")
     from dp.engine.auth import authenticate
     db_path = _get_db_path()
     conn = connect(db_path)
@@ -515,7 +537,7 @@ def run_script_endpoint(request: Request, req: RunScriptRequest) -> dict:
 
 @app.post("/api/stream/{stream_name}")
 def run_stream_endpoint(request: Request, stream_name: str, force: bool = False) -> dict:
-    """Run a full stream."""
+    """Run a full stream with retry support."""
     _require_permission(request, "execute")
     logger.info("Stream run requested: %s (force=%s)", stream_name, force)
     config = _get_config()
@@ -526,27 +548,71 @@ def run_stream_endpoint(request: Request, stream_name: str, force: bool = False)
     db_path = _get_db_path()
     conn = connect(db_path)
     step_results = []
-    try:
-        from dp.engine.runner import run_scripts_in_dir
+    has_error = False
+    start = time.perf_counter()
 
+    def _run_step(step):
+        from dp.engine.runner import run_scripts_in_dir
+        if step.action == "ingest":
+            results = run_scripts_in_dir(conn, _get_project_dir() / "ingest", "ingest", step.targets)
+            return {"action": "ingest", "results": results, "error": any(r["status"] == "error" for r in results)}
+        elif step.action == "transform":
+            results = run_transform(
+                conn, _get_project_dir() / "transform",
+                targets=step.targets if step.targets != ["all"] else None, force=force,
+            )
+            return {"action": "transform", "results": results, "error": any(s == "error" for s in results.values())}
+        elif step.action == "export":
+            results = run_scripts_in_dir(conn, _get_project_dir() / "export", "export", step.targets)
+            return {"action": "export", "results": results, "error": any(r["status"] == "error" for r in results)}
+        return {"action": step.action, "results": {}, "error": False}
+
+    try:
+        import time as _time
         for step in stream_config.steps:
-            if step.action == "ingest":
-                results = run_scripts_in_dir(conn, _get_project_dir() / "ingest", "ingest", step.targets)
-                step_results.append({"action": "ingest", "results": results})
-            elif step.action == "transform":
-                results = run_transform(
-                    conn,
-                    _get_project_dir() / "transform",
-                    targets=step.targets if step.targets != ["all"] else None,
-                    force=force,
-                )
-                step_results.append({"action": "transform", "results": results})
-            elif step.action == "export":
-                results = run_scripts_in_dir(conn, _get_project_dir() / "export", "export", step.targets)
-                step_results.append({"action": "export", "results": results})
-        return {"stream": stream_name, "steps": step_results}
+            result = _run_step(step)
+            if result["error"] and stream_config.retries > 0:
+                for attempt in range(1, stream_config.retries + 1):
+                    logger.info("Retrying %s step (attempt %d/%d)", step.action, attempt, stream_config.retries)
+                    _time.sleep(stream_config.retry_delay)
+                    result = _run_step(step)
+                    if not result["error"]:
+                        break
+            step_results.append({"action": result["action"], "results": result["results"]})
+            if result["error"]:
+                has_error = True
+                break
+
+        duration_s = round(time.perf_counter() - start, 1)
+        status = "failed" if has_error else "success"
+
+        # Webhook notification
+        if stream_config.webhook_url:
+            _send_webhook_notification(stream_config.webhook_url, stream_name, status, duration_s)
+
+        return {"stream": stream_name, "steps": step_results, "status": status, "duration_seconds": duration_s}
     finally:
         conn.close()
+
+
+def _send_webhook_notification(url: str, stream_name: str, status: str, duration_s: float) -> None:
+    """Send a POST webhook notification for stream completion."""
+    from datetime import datetime
+    from urllib.request import Request, urlopen
+
+    payload = json.dumps({
+        "stream": stream_name,
+        "status": status,
+        "duration_seconds": duration_s,
+        "timestamp": datetime.now().isoformat(),
+    }).encode()
+
+    try:
+        req = Request(url, data=payload, headers={"Content-Type": "application/json"})
+        urlopen(req, timeout=10)
+        logger.info("Webhook sent to %s for stream %s", url, stream_name)
+    except Exception as e:
+        logger.warning("Webhook failed for stream %s: %s", stream_name, e)
 
 
 # --- Query ---
@@ -558,27 +624,52 @@ class QueryRequest(BaseModel):
     offset: int = Field(default=0, ge=0)
 
 
+_QUERY_TIMEOUT_SECONDS = 30
+
+
 @app.post("/api/query")
 def run_query(request: Request, req: QueryRequest) -> dict:
-    """Run an ad-hoc SQL query."""
+    """Run an ad-hoc SQL query with a timeout."""
     _require_permission(request, "read")
     db_path = _get_db_path()
     conn = connect(db_path, read_only=True)
     try:
-        if req.offset > 0:
-            wrapped = f"SELECT * FROM ({req.sql}) AS _q OFFSET {req.offset} LIMIT {req.limit}"
-            result = conn.execute(wrapped)
-        else:
-            result = conn.execute(req.sql)
-        columns = [desc[0] for desc in result.description]
-        rows = result.fetchmany(req.limit)
-        return {
-            "columns": columns,
-            "rows": [[_serialize(v) for v in row] for row in rows],
-            "truncated": len(rows) == req.limit,
-            "offset": req.offset,
-            "limit": req.limit,
-        }
+        import threading
+
+        query_result: dict = {}
+        query_error: list[Exception] = []
+
+        def _exec_query():
+            try:
+                if req.offset > 0:
+                    wrapped = f"SELECT * FROM ({req.sql}) AS _q OFFSET {req.offset} LIMIT {req.limit}"
+                    result = conn.execute(wrapped)
+                else:
+                    result = conn.execute(req.sql)
+                columns = [desc[0] for desc in result.description]
+                rows = result.fetchmany(req.limit)
+                query_result["data"] = {
+                    "columns": columns,
+                    "rows": [[_serialize(v) for v in row] for row in rows],
+                    "truncated": len(rows) == req.limit,
+                    "offset": req.offset,
+                    "limit": req.limit,
+                }
+            except Exception as e:
+                query_error.append(e)
+
+        thread = threading.Thread(target=_exec_query, daemon=True)
+        thread.start()
+        thread.join(timeout=_QUERY_TIMEOUT_SECONDS)
+
+        if thread.is_alive():
+            conn.interrupt()
+            raise HTTPException(408, f"Query timed out after {_QUERY_TIMEOUT_SECONDS}s")
+        if query_error:
+            raise query_error[0]
+        return query_result["data"]
+    except HTTPException:
+        raise
     except Exception as e:
         logger.warning("Query failed: %s", e)
         raise HTTPException(400, str(e))
@@ -691,6 +782,72 @@ def sample_table(
         }
     except Exception as e:
         logger.warning("Sample query failed for %s.%s: %s", schema, table, e)
+        raise HTTPException(400, str(e))
+    finally:
+        conn.close()
+
+
+@app.get("/api/tables/{schema}/{table}/profile")
+def profile_table(request: Request, schema: str, table: str) -> dict:
+    """Get column-level statistics for a table."""
+    _require_permission(request, "read")
+    _validate_identifier(schema, "schema")
+    _validate_identifier(table, "table")
+    db_path = _get_db_path()
+    conn = connect(db_path, read_only=True)
+    try:
+        quoted = f'"{schema}"."{table}"'
+        # Get row count
+        row_count = conn.execute(f"SELECT COUNT(*) FROM {quoted}").fetchone()[0]
+        # Get column info
+        cols = conn.execute(
+            "SELECT column_name, data_type FROM information_schema.columns "
+            "WHERE table_schema = ? AND table_name = ? ORDER BY ordinal_position",
+            [schema, table],
+        ).fetchall()
+
+        profiles = []
+        for col_name, col_type in cols:
+            qcol = f'"{col_name}"'
+            stats: dict = {"name": col_name, "type": col_type}
+
+            # Null count and distinct count for all types
+            basic = conn.execute(
+                f"SELECT COUNT(*) - COUNT({qcol}), COUNT(DISTINCT {qcol}) FROM {quoted}"
+            ).fetchone()
+            stats["null_count"] = basic[0]
+            stats["distinct_count"] = basic[1]
+
+            # Numeric stats
+            is_numeric = any(t in col_type.upper() for t in (
+                "INT", "FLOAT", "DOUBLE", "DECIMAL", "NUMERIC", "BIGINT", "SMALLINT", "TINYINT", "HUGEINT",
+            ))
+            if is_numeric:
+                num = conn.execute(
+                    f"SELECT MIN({qcol}), MAX({qcol}), AVG({qcol}::DOUBLE) FROM {quoted}"
+                ).fetchone()
+                stats["min"] = _serialize(num[0])
+                stats["max"] = _serialize(num[1])
+                stats["avg"] = round(num[2], 4) if num[2] is not None else None
+            else:
+                # For non-numeric: min/max of string representation
+                minmax = conn.execute(
+                    f"SELECT MIN({qcol}::VARCHAR), MAX({qcol}::VARCHAR) FROM {quoted}"
+                ).fetchone()
+                stats["min"] = minmax[0]
+                stats["max"] = minmax[1]
+
+            # Sample values (up to 5 distinct)
+            samples = conn.execute(
+                f"SELECT DISTINCT {qcol}::VARCHAR FROM {quoted} WHERE {qcol} IS NOT NULL LIMIT 5"
+            ).fetchall()
+            stats["sample_values"] = [s[0] for s in samples]
+
+            profiles.append(stats)
+
+        return {"schema": schema, "table": table, "row_count": row_count, "columns": profiles}
+    except Exception as e:
+        logger.warning("Profile failed for %s.%s: %s", schema, table, e)
         raise HTTPException(400, str(e))
     finally:
         conn.close()
@@ -1195,10 +1352,19 @@ async def upload_file(request: Request) -> dict:
 _FRONTEND_DIR = Path(__file__).parent.parent.parent.parent / "frontend" / "dist"
 
 
+# Reserved paths that should NOT be caught by the SPA catch-all.
+# This allows FastAPI's auto-generated /docs and /redoc to work.
+_RESERVED_PATHS = {"docs", "redoc", "openapi.json"}
+
+
 @app.get("/", response_class=HTMLResponse)
 @app.get("/{path:path}", response_class=HTMLResponse)
 def serve_frontend(path: str = "") -> HTMLResponse:
-    """Serve the frontend SPA."""
+    """Serve the frontend SPA (skips /docs, /redoc, /openapi.json)."""
+    # Let FastAPI handle its own OpenAPI routes
+    if path in _RESERVED_PATHS:
+        raise HTTPException(404, "Not found")
+
     file_path = _FRONTEND_DIR / path
     if file_path.is_file():
         content_type = {

@@ -36,6 +36,9 @@ class StreamConfig:
     description: str = ""
     steps: list[StreamStep] = field(default_factory=list)
     schedule: str | None = None  # cron expression or None for on-demand
+    retries: int = 0  # number of retry attempts for failed steps
+    retry_delay: int = 5  # seconds between retries
+    webhook_url: str | None = None  # POST notification on completion/failure
 
 
 @dataclass
@@ -113,6 +116,9 @@ def load_project(project_dir: Path | None = None) -> ProjectConfig:
             description=stream_raw.get("description", ""),
             steps=_parse_stream_steps(stream_raw.get("steps", [])),
             schedule=stream_raw.get("schedule"),
+            retries=int(stream_raw.get("retries", 0)),
+            retry_delay=int(stream_raw.get("retry_delay", 5)),
+            webhook_url=stream_raw.get("webhook_url"),
         )
 
     # Lint

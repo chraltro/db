@@ -207,10 +207,38 @@ def run_script(
     duration_ms = int((time.perf_counter() - start) * 1000)
     log_output = stdout_capture.getvalue() + stderr_capture.getvalue()
 
-    log_run(conn, script_type, script_path.name, "success", duration_ms, log_output=log_output or None)
-    console.print(f"  [green]done[/green] {label} ({duration_ms}ms)")
+    # Try to extract row count from log output (e.g., "Loaded 42 rows" or "42 rows")
+    rows_affected = _extract_row_count(log_output)
 
-    return {"script": script_path.name, "status": "success", "duration_ms": duration_ms, "log_output": log_output, "error": None}
+    log_run(conn, script_type, script_path.name, "success", duration_ms, rows_affected=rows_affected, log_output=log_output or None)
+    rows_msg = f", {rows_affected} rows" if rows_affected else ""
+    console.print(f"  [green]done[/green] {label} ({duration_ms}ms{rows_msg})")
+
+    return {"script": script_path.name, "status": "success", "duration_ms": duration_ms, "log_output": log_output, "error": None, "rows_affected": rows_affected}
+
+
+def _extract_row_count(output: str) -> int:
+    """Extract row count from script output by matching common patterns.
+
+    Matches patterns like:
+    - "Loaded 42 rows"
+    - "Exported 100 rows"
+    - "42 rows"
+    - "Got 15 earthquakes"
+    """
+    import re
+    # Look for patterns: "<number> rows/records/entries" or "Loaded/Exported/Inserted <number>"
+    patterns = [
+        r"(?:loaded|exported|inserted|imported|fetched|got|wrote)\s+(\d+)",
+        r"(\d+)\s+(?:rows?|records?|entries|earthquakes|items?)",
+    ]
+    total = 0
+    for pattern in patterns:
+        for match in re.finditer(pattern, output, re.IGNORECASE):
+            n = int(match.group(1))
+            if n > total:
+                total = n
+    return total
 
 
 def run_scripts_in_dir(
