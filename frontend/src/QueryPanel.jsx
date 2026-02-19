@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { api } from "./api";
 import SortableTable from "./SortableTable";
+import { useHintTriggerFn } from "./HintSystem";
 
 const MAX_HISTORY = 50;
 
@@ -125,9 +126,11 @@ export default function QueryPanel({ addOutput }) {
   const [viewMode, setViewMode] = useState("table");
   const textareaRef = useRef(null);
   const historyRef = useRef(null);
+  const setHintTrigger = useHintTriggerFn();
 
   useEffect(() => {
     api.listTables().then(setTables).catch(() => {});
+    setHintTrigger("queryPanelOpened", true);
   }, []);
 
   // Listen for prefill events from TablesPanel "Query this table"
@@ -226,7 +229,9 @@ export default function QueryPanel({ addOutput }) {
     <div style={st.container}>
       <div style={st.main}>
         {/* Schema sidebar */}
-        <SchemaSidebar tables={tables} onInsert={insertAtCursor} />
+        <div data-dp-hint="query-sidebar">
+          <SchemaSidebar tables={tables} onInsert={insertAtCursor} />
+        </div>
 
         {/* Query area */}
         <div style={st.queryArea}>

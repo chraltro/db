@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { api } from "./api";
 import SortableTable from "./SortableTable";
+import { useHintTriggerFn } from "./HintSystem";
 
 export default function TablesPanel({ selectedTable, onQueryTable }) {
   const [columns, setColumns] = useState([]);
@@ -11,6 +12,15 @@ export default function TablesPanel({ selectedTable, onQueryTable }) {
   const [sortDir, setSortDir] = useState("ASC");
   const [stats, setStats] = useState(null);
   const [statsLoading, setStatsLoading] = useState(false);
+  const setHintTrigger = useHintTriggerFn();
+  const hasTriggeredRef = useRef(false);
+
+  useEffect(() => {
+    if (selectedTable && !hasTriggeredRef.current) {
+      hasTriggeredRef.current = true;
+      setHintTrigger("firstTableSelected", true);
+    }
+  }, [selectedTable]);
 
   useEffect(() => {
     if (!selectedTable) {
@@ -126,7 +136,7 @@ export default function TablesPanel({ selectedTable, onQueryTable }) {
           </button>
         </div>
       </div>
-      <div style={st.columnsBar}>
+      <div style={st.columnsBar} data-dp-hint="columns-bar">
         {columns.map((c) => (
           <button
             key={c.name}
