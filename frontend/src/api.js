@@ -195,6 +195,16 @@ export const api = {
   removeConnector: (connection_name) =>
     request(`/connectors/${connection_name}`, { method: "DELETE" }),
 
+  // Diff
+  runDiff: (targets = null, target_schema = null, full = false) =>
+    request("/diff", {
+      method: "POST",
+      body: JSON.stringify({ targets, target_schema, full }),
+    }),
+
+  // Git status
+  getGitStatus: () => request("/git/status"),
+
   // Upload
   uploadFile: async (file) => {
     const formData = new FormData();

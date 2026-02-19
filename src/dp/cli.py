@@ -165,6 +165,245 @@ def transform(
         conn.close()
 
 
+# --- diff ---
+
+
+@app.command()
+def diff(
+    targets: Annotated[Optional[list[str]], typer.Argument(help="Models to diff (e.g. gold.earthquake_summary)")] = None,
+    target: Annotated[Optional[str], typer.Option("--target", "-t", help="Diff all models in a schema")] = None,
+    format: Annotated[str, typer.Option("--format", "-f", help="Output format: table or json")] = "table",
+    rows: Annotated[bool, typer.Option("--rows", help="Include sample rows in output")] = False,
+    full: Annotated[bool, typer.Option("--full", help="Show all changed rows, not just samples")] = False,
+    against: Annotated[Optional[str], typer.Option("--against", help="Only diff models changed vs a git branch/ref")] = None,
+    snapshot: Annotated[Optional[str], typer.Option("--snapshot", help="Compare current state against a snapshot")] = None,
+    project_dir: Annotated[Optional[Path], typer.Option("--project", "-p")] = None,
+) -> None:
+    """Show what would change if transforms are run now. Compares model SQL output against materialized tables."""
+    import json as json_mod
+
+    from dp.config import load_project
+    from dp.engine.database import connect, ensure_meta_table
+    from dp.engine.diff import DiffResult, diff_model, diff_models, get_primary_key
+
+    project_dir = _resolve_project(project_dir)
+    config = load_project(project_dir)
+    transform_dir = project_dir / "transform"
+    db_path = project_dir / config.database.path
+
+    if not db_path.exists():
+        console.print("[yellow]No warehouse database found. Run a pipeline first.[/yellow]")
+        raise typer.Exit(1)
+
+    # Snapshot comparison mode
+    if snapshot:
+        from dp.engine.snapshot import diff_against_snapshot
+        conn = connect(db_path, read_only=True)
+        try:
+            ensure_meta_table(conn)
+            snap_results = diff_against_snapshot(conn, project_dir, snapshot)
+            if snap_results is None:
+                console.print(f"[red]Snapshot '{snapshot}' not found.[/red]")
+                raise typer.Exit(1)
+            if format == "json":
+                console.print(json_mod.dumps(snap_results, indent=2, default=str))
+            else:
+                _print_snapshot_diff(snap_results)
+        finally:
+            conn.close()
+        return
+
+    # Git-aware diff: only diff models whose SQL files changed
+    filter_targets = None
+    if against:
+        from dp.engine.git import diff_files_between, is_git_repo
+        from dp.engine.transform import discover_models as _discover
+        if not is_git_repo(project_dir):
+            console.print("[red]Not a git repository. Cannot use --against.[/red]")
+            raise typer.Exit(1)
+        changed_files = diff_files_between(project_dir, against, "HEAD")
+        # Map changed .sql files to model targets
+        models = _discover(transform_dir)
+        model_by_path = {str(m.path.relative_to(project_dir)): m.full_name for m in models}
+        filter_targets = []
+        for f in changed_files:
+            if f in model_by_path:
+                filter_targets.append(model_by_path[f])
+        if not filter_targets:
+            console.print("[green]No model SQL files changed vs {against}. Nothing to diff.[/green]")
+            return
+
+    conn = connect(db_path)
+    try:
+        ensure_meta_table(conn)
+        diff_targets = targets or filter_targets
+        results = diff_models(
+            conn,
+            transform_dir,
+            targets=diff_targets,
+            target_schema=target,
+            project_config=config,
+            full=full,
+        )
+
+        if not results:
+            console.print("[yellow]No models found to diff.[/yellow]")
+            return
+
+        if format == "json":
+            json_out = [_diff_result_to_dict(r) for r in results]
+            console.print(json_mod.dumps(json_out, indent=2, default=str))
+        else:
+            _print_diff_summary(results)
+            # Detailed output for single model
+            if (targets and len(targets) == 1) or (rows or full):
+                for r in results:
+                    _print_diff_detail(r, show_rows=rows or full)
+    finally:
+        conn.close()
+
+
+def _diff_result_to_dict(r) -> dict:
+    """Convert a DiffResult to a JSON-serializable dict."""
+    return {
+        "model": r.model,
+        "added": r.added,
+        "removed": r.removed,
+        "modified": r.modified,
+        "total_before": r.total_before,
+        "total_after": r.total_after,
+        "is_new": r.is_new,
+        "error": r.error,
+        "schema_changes": [
+            {"column": sc.column, "change_type": sc.change_type,
+             "old_type": sc.old_type, "new_type": sc.new_type}
+            for sc in r.schema_changes
+        ],
+        "sample_added": r.sample_added,
+        "sample_removed": r.sample_removed,
+        "sample_modified": r.sample_modified,
+    }
+
+
+def _print_diff_summary(results) -> None:
+    """Print a summary table of diff results."""
+    table = Table(title="Diff Summary")
+    table.add_column("Model", style="bold")
+    table.add_column("Before", justify="right")
+    table.add_column("After", justify="right")
+    table.add_column("Added", justify="right", style="green")
+    table.add_column("Removed", justify="right", style="red")
+    table.add_column("Modified", justify="right", style="yellow")
+    table.add_column("Schema")
+
+    for r in results:
+        if r.error:
+            table.add_row(r.model, "", "", "", "", "", f"[red]ERROR: {r.error[:40]}[/red]")
+            continue
+
+        before = "NEW" if r.is_new else f"{r.total_before:,}"
+        after = f"{r.total_after:,}"
+        added = f"+{r.added}" if r.added else "0"
+        removed = str(r.removed) if r.removed else "0"
+        modified = str(r.modified) if r.modified else "0"
+
+        schema_label = "\u2014"
+        if r.schema_changes:
+            adds = sum(1 for sc in r.schema_changes if sc.change_type == "added")
+            removes = sum(1 for sc in r.schema_changes if sc.change_type == "removed")
+            changes = sum(1 for sc in r.schema_changes if sc.change_type == "type_changed")
+            parts = []
+            if adds:
+                parts.append(f"+{adds} col")
+            if removes:
+                parts.append(f"-{removes} col")
+            if changes:
+                parts.append(f"~{changes} col")
+            schema_label = "[blue]" + ", ".join(parts) + "[/blue]"
+
+        table.add_row(r.model, before, after, added, removed, modified, schema_label)
+
+    console.print(table)
+
+
+def _print_diff_detail(r, show_rows: bool = False) -> None:
+    """Print detailed diff output for a single model."""
+    if r.error:
+        console.print(f"\n[red]Error diffing {r.model}: {r.error}[/red]")
+        return
+
+    if r.schema_changes:
+        console.print(f"\n[bold]Schema changes for {r.model}:[/bold]")
+        for sc in r.schema_changes:
+            if sc.change_type == "added":
+                console.print(f"  [green]+[/green] {sc.column} ({sc.new_type})")
+            elif sc.change_type == "removed":
+                console.print(f"  [red]-[/red] {sc.column} ({sc.old_type})")
+            elif sc.change_type == "type_changed":
+                console.print(f"  [yellow]~[/yellow] {sc.column}: {sc.old_type} -> {sc.new_type}")
+
+    if show_rows:
+        if r.sample_added:
+            console.print(f"\n[green]Added rows ({r.added}):[/green]")
+            _print_sample_table(r.sample_added)
+        if r.sample_removed:
+            console.print(f"\n[red]Removed rows ({r.removed}):[/red]")
+            _print_sample_table(r.sample_removed)
+        if r.sample_modified:
+            console.print(f"\n[yellow]Modified rows ({r.modified}):[/yellow]")
+            _print_sample_table(r.sample_modified)
+
+
+def _print_sample_table(rows: list[dict]) -> None:
+    """Print a list of dicts as a Rich table."""
+    if not rows:
+        return
+    table = Table()
+    for col in rows[0].keys():
+        table.add_column(col)
+    for row in rows:
+        table.add_row(*[str(v) for v in row.values()])
+    console.print(table)
+
+
+def _print_snapshot_diff(snap_results: dict) -> None:
+    """Print snapshot comparison results."""
+    console.print(f"[bold]Snapshot: {snap_results['snapshot_name']}[/bold]")
+    console.print(f"Created: {snap_results['created_at']}")
+    console.print()
+
+    # File changes
+    file_changes = snap_results.get("file_changes", {})
+    if file_changes.get("added") or file_changes.get("removed") or file_changes.get("modified"):
+        console.print("[bold]File changes:[/bold]")
+        for f in file_changes.get("added", []):
+            console.print(f"  [green]+[/green] {f}")
+        for f in file_changes.get("removed", []):
+            console.print(f"  [red]-[/red] {f}")
+        for f in file_changes.get("modified", []):
+            console.print(f"  [yellow]~[/yellow] {f}")
+        console.print()
+
+    # Table changes
+    table_changes = snap_results.get("table_changes", [])
+    if table_changes:
+        table = Table(title="Table Changes")
+        table.add_column("Table", style="bold")
+        table.add_column("Status")
+        table.add_column("Before Rows", justify="right")
+        table.add_column("After Rows", justify="right")
+        for tc in table_changes:
+            table.add_row(
+                tc["table"],
+                tc["status"],
+                str(tc.get("snapshot_rows", "")),
+                str(tc.get("current_rows", "")),
+            )
+        console.print(table)
+    else:
+        console.print("[green]No table changes detected.[/green]")
+
+
 # --- stream ---
 
 
@@ -465,6 +704,207 @@ def history(
         conn.close()
 
 
+# --- status ---
+
+
+@app.command()
+def status(
+    project_dir: Annotated[Optional[Path], typer.Option("--project", "-p")] = None,
+) -> None:
+    """Show project health: git info, warehouse stats, last run."""
+    from dp.config import load_project
+    from dp.engine.database import connect, ensure_meta_table
+
+    project_dir = _resolve_project(project_dir)
+    config = load_project(project_dir)
+
+    console.print(f"[bold]dp project:[/bold] {config.name}")
+
+    # Git info
+    try:
+        from dp.engine.git import current_branch, is_dirty, is_git_repo, changed_files
+
+        if is_git_repo(project_dir):
+            branch = current_branch(project_dir) or "unknown"
+            console.print(f"[bold]git branch:[/bold] {branch}")
+            dirty = is_dirty(project_dir)
+            if dirty:
+                files = changed_files(project_dir)
+                console.print(f"[bold]git status:[/bold] {len(files)} files modified (uncommitted)")
+                for f in files[:10]:
+                    console.print(f"  [yellow]modified:[/yellow] {f}")
+                if len(files) > 10:
+                    console.print(f"  [dim]... and {len(files) - 10} more[/dim]")
+            else:
+                console.print("[bold]git status:[/bold] [green]clean[/green]")
+        else:
+            console.print("[dim]git: not a git repository[/dim]")
+    except Exception:
+        pass
+
+    # Warehouse stats
+    db_path = project_dir / config.database.path
+    if db_path.exists():
+        conn = connect(db_path, read_only=True)
+        try:
+            rows = conn.execute(
+                "SELECT table_schema, table_name FROM information_schema.tables "
+                "WHERE table_schema NOT IN ('information_schema', '_dp_internal')"
+            ).fetchall()
+            total_tables = len(rows)
+            total_rows = 0
+            for schema, tname in rows:
+                try:
+                    count = conn.execute(f'SELECT COUNT(*) FROM "{schema}"."{tname}"').fetchone()[0]
+                    total_rows += count
+                except Exception:
+                    pass
+            console.print(f"[bold]warehouse:[/bold] {total_tables} tables, {total_rows:,} rows")
+
+            # Last run
+            ensure_meta_table(conn)
+            last = conn.execute(
+                "SELECT run_type, target, status, started_at, duration_ms "
+                "FROM _dp_internal.run_log ORDER BY started_at DESC LIMIT 1"
+            ).fetchone()
+            if last:
+                import datetime
+                run_type, run_target, run_status, started, dur = last
+                status_color = "green" if run_status == "success" else "red"
+                ago = ""
+                if started:
+                    try:
+                        delta = datetime.datetime.now() - started
+                        if delta.days > 0:
+                            ago = f"{delta.days}d ago"
+                        elif delta.seconds > 3600:
+                            ago = f"{delta.seconds // 3600}h ago"
+                        elif delta.seconds > 60:
+                            ago = f"{delta.seconds // 60}m ago"
+                        else:
+                            ago = "just now"
+                    except Exception:
+                        ago = str(started)[:19]
+                console.print(
+                    f"[bold]last run:[/bold]  {run_type} {run_target} "
+                    f"([{status_color}]{run_status}[/{status_color}], {ago})"
+                )
+        finally:
+            conn.close()
+    else:
+        console.print("[bold]warehouse:[/bold] [yellow]not created yet[/yellow]")
+
+
+# --- checkpoint ---
+
+
+@app.command()
+def checkpoint(
+    message: Annotated[Optional[str], typer.Option("--message", "-m", help="Custom commit message")] = None,
+    project_dir: Annotated[Optional[Path], typer.Option("--project", "-p")] = None,
+) -> None:
+    """Smart git commit: stages files, auto-generates commit message from changes."""
+    import subprocess
+
+    from dp.engine.git import current_branch, is_git_repo
+
+    project_dir = _resolve_project(project_dir)
+
+    if not is_git_repo(project_dir):
+        console.print("[red]Not a git repository. Run 'git init' first.[/red]")
+        raise typer.Exit(1)
+
+    # Check for .env in staged files and warn
+    try:
+        staged = subprocess.run(
+            ["git", "diff", "--cached", "--name-only"],
+            cwd=project_dir,
+            capture_output=True,
+            text=True,
+        )
+        if ".env" in (staged.stdout or ""):
+            console.print("[yellow]Warning: .env is staged. Unstaging to prevent committing secrets.[/yellow]")
+            subprocess.run(["git", "reset", "HEAD", ".env"], cwd=project_dir, capture_output=True)
+    except Exception:
+        pass
+
+    # Stage everything except .env
+    subprocess.run(["git", "add", "--all"], cwd=project_dir, capture_output=True)
+    # Unstage .env if it got added
+    subprocess.run(["git", "reset", "HEAD", ".env"], cwd=project_dir, capture_output=True, check=False)
+
+    # Check if there's anything to commit
+    result = subprocess.run(
+        ["git", "diff", "--cached", "--name-only"],
+        cwd=project_dir,
+        capture_output=True,
+        text=True,
+    )
+    staged_files = [f for f in (result.stdout or "").strip().split("\n") if f]
+    if not staged_files:
+        console.print("[yellow]No changes to commit.[/yellow]")
+        return
+
+    # Auto-generate commit message if not provided
+    if not message:
+        message = _generate_commit_message(staged_files)
+
+    # Commit
+    commit_result = subprocess.run(
+        ["git", "commit", "-m", message],
+        cwd=project_dir,
+        capture_output=True,
+        text=True,
+    )
+    if commit_result.returncode != 0:
+        console.print(f"[red]Commit failed: {commit_result.stderr}[/red]")
+        raise typer.Exit(1)
+
+    branch = current_branch(project_dir) or "unknown"
+    console.print(f"[green]Committed {len(staged_files)} file(s) on branch {branch}[/green]")
+    console.print(f"  [dim]{message}[/dim]")
+
+
+def _generate_commit_message(staged_files: list[str]) -> str:
+    """Generate a commit message from staged file paths."""
+    parts = []
+    models_changed = []
+    scripts_changed = []
+    config_changed = False
+
+    for f in staged_files:
+        if f.startswith("transform/") and f.endswith(".sql"):
+            # Extract model name: transform/gold/region_risk.sql -> gold.region_risk
+            rel = f[len("transform/"):]
+            parts_path = rel.rsplit("/", 1)
+            if len(parts_path) == 2:
+                schema, name = parts_path
+                models_changed.append(f"{schema}.{name.replace('.sql', '')}")
+            else:
+                models_changed.append(rel.replace(".sql", ""))
+        elif f.startswith("ingest/") or f.startswith("export/"):
+            scripts_changed.append(f)
+        elif f == "project.yml":
+            config_changed = True
+
+    if models_changed:
+        if len(models_changed) <= 3:
+            parts.append("Update " + ", ".join(models_changed))
+        else:
+            parts.append(f"Update {len(models_changed)} models")
+    if scripts_changed:
+        if len(scripts_changed) <= 3:
+            parts.append("update " + ", ".join(scripts_changed))
+        else:
+            parts.append(f"update {len(scripts_changed)} scripts")
+    if config_changed:
+        parts.append("modify pipeline config")
+
+    if parts:
+        return "; ".join(parts)
+    return f"Update {len(staged_files)} file(s)"
+
+
 # --- docs ---
 
 
@@ -559,6 +999,151 @@ def schedule(
     except KeyboardInterrupt:
         scheduler.stop()
         console.print("\n[dim]Scheduler stopped.[/dim]")
+
+
+# --- snapshot ---
+
+
+snapshot_app = typer.Typer(name="snapshot", help="Manage named snapshots of project + data state.")
+app.add_typer(snapshot_app)
+
+
+@snapshot_app.command("create")
+def snapshot_create(
+    name: Annotated[Optional[str], typer.Argument(help="Snapshot name (auto-generated if omitted)")] = None,
+    project_dir: Annotated[Optional[Path], typer.Option("--project", "-p")] = None,
+) -> None:
+    """Create a named snapshot of the current project and data state."""
+    from dp.config import load_project
+    from dp.engine.database import connect, ensure_meta_table
+    from dp.engine.snapshot import create_snapshot
+
+    project_dir = _resolve_project(project_dir)
+    config = load_project(project_dir)
+    db_path = project_dir / config.database.path
+
+    conn = connect(db_path)
+    try:
+        ensure_meta_table(conn)
+        result = create_snapshot(conn, project_dir, name)
+        console.print(f"[green]Snapshot '{result['name']}' created.[/green]")
+        console.print(f"  Tables: {result['table_count']}, Files: {result['file_count']}")
+    finally:
+        conn.close()
+
+
+@snapshot_app.command("list")
+def snapshot_list(
+    project_dir: Annotated[Optional[Path], typer.Option("--project", "-p")] = None,
+) -> None:
+    """List all snapshots."""
+    from dp.config import load_project
+    from dp.engine.database import connect, ensure_meta_table
+    from dp.engine.snapshot import list_snapshots
+
+    project_dir = _resolve_project(project_dir)
+    config = load_project(project_dir)
+    db_path = project_dir / config.database.path
+
+    if not db_path.exists():
+        console.print("[yellow]No warehouse database found.[/yellow]")
+        return
+
+    conn = connect(db_path)
+    try:
+        ensure_meta_table(conn)
+        snapshots = list_snapshots(conn)
+        if not snapshots:
+            console.print("[yellow]No snapshots. Create one with: dp snapshot create[/yellow]")
+            return
+
+        table = Table(title="Snapshots")
+        table.add_column("Name", style="bold")
+        table.add_column("Created")
+        table.add_column("Tables", justify="right")
+        table.add_column("Files", justify="right")
+        for s in snapshots:
+            sigs = s.get("table_signatures", {})
+            manifest = s.get("file_manifest", {})
+            table.add_row(
+                s["name"],
+                str(s["created_at"])[:19],
+                str(len(sigs) if isinstance(sigs, dict) else 0),
+                str(len(manifest) if isinstance(manifest, dict) else 0),
+            )
+        console.print(table)
+    finally:
+        conn.close()
+
+
+@snapshot_app.command("delete")
+def snapshot_delete(
+    name: Annotated[str, typer.Argument(help="Snapshot name to delete")],
+    project_dir: Annotated[Optional[Path], typer.Option("--project", "-p")] = None,
+) -> None:
+    """Delete a snapshot."""
+    from dp.config import load_project
+    from dp.engine.database import connect, ensure_meta_table
+    from dp.engine.snapshot import delete_snapshot
+
+    project_dir = _resolve_project(project_dir)
+    config = load_project(project_dir)
+    db_path = project_dir / config.database.path
+
+    if not db_path.exists():
+        console.print("[red]No warehouse database found.[/red]")
+        raise typer.Exit(1)
+
+    conn = connect(db_path)
+    try:
+        ensure_meta_table(conn)
+        if delete_snapshot(conn, name):
+            console.print(f"[green]Snapshot '{name}' deleted.[/green]")
+        else:
+            console.print(f"[red]Snapshot '{name}' not found.[/red]")
+            raise typer.Exit(1)
+    finally:
+        conn.close()
+
+
+# --- ci ---
+
+
+ci_app = typer.Typer(name="ci", help="GitHub Actions CI integration.")
+app.add_typer(ci_app)
+
+
+@ci_app.command("generate")
+def ci_generate(
+    project_dir: Annotated[Optional[Path], typer.Option("--project", "-p")] = None,
+) -> None:
+    """Generate a GitHub Actions workflow for dp CI."""
+    from dp.engine.ci import generate_workflow
+
+    project_dir = _resolve_project(project_dir)
+    result = generate_workflow(project_dir)
+    console.print(f"[green]Generated {result['path']}[/green]")
+    console.print()
+    console.print("[bold]Next steps:[/bold]")
+    console.print("  1. Review the generated workflow file")
+    console.print("  2. Commit and push to your repository")
+    console.print("  3. Open a pull request to see dp diff results as PR comments")
+
+
+@ci_app.command("diff-comment")
+def ci_diff_comment(
+    json_path: Annotated[str, typer.Option("--json", help="Path to diff-results.json")] = "diff-results.json",
+    repo: Annotated[Optional[str], typer.Option("--repo", help="GitHub repo (owner/repo)")] = None,
+    pr: Annotated[Optional[int], typer.Option("--pr", help="Pull request number")] = None,
+) -> None:
+    """Post a formatted diff comment to a GitHub pull request."""
+    from dp.engine.ci import post_diff_comment
+
+    result = post_diff_comment(json_path, repo, pr)
+    if result.get("error"):
+        console.print(f"[red]{result['error']}[/red]")
+        raise typer.Exit(1)
+    console.print(f"[green]Posted diff comment to PR #{result.get('pr')}[/green]")
 
 
 # --- serve ---

@@ -26,9 +26,11 @@ export default function OverviewPanel({ onNavigate, onRunStream, streams }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [runningDemo, setRunningDemo] = useState(false);
+  const [gitStatus, setGitStatus] = useState(null);
 
   useEffect(() => {
     load();
+    loadGitStatus();
   }, []);
 
   async function load() {
@@ -40,6 +42,15 @@ export default function OverviewPanel({ onNavigate, onRunStream, streams }) {
       console.error("Failed to load overview:", e);
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function loadGitStatus() {
+    try {
+      const gs = await api.getGitStatus();
+      setGitStatus(gs);
+    } catch (e) {
+      // Git status not critical
     }
   }
 
@@ -108,6 +119,22 @@ export default function OverviewPanel({ onNavigate, onRunStream, streams }) {
             <div style={st.statLabel}>Runs OK (recent)</div>
           </div>
         </div>
+
+        {/* Git status */}
+        {gitStatus && gitStatus.is_git_repo && (
+          <div style={{ ...st.card, marginBottom: 16, padding: "10px 16px", display: "flex", alignItems: "center", gap: 12, fontSize: 12 }}>
+            <span style={{ fontWeight: 600, color: "var(--dp-text-secondary)" }}>git</span>
+            <span style={{ fontFamily: "var(--dp-font-mono)", color: "var(--dp-accent)" }}>{gitStatus.branch}</span>
+            <span style={{ color: gitStatus.dirty ? "var(--dp-yellow, #eab308)" : "var(--dp-green)", fontWeight: 500 }}>
+              {gitStatus.dirty ? `${gitStatus.changed_files?.length || 0} uncommitted` : "clean"}
+            </span>
+            {gitStatus.last_message && (
+              <span style={{ color: "var(--dp-text-dim)", marginLeft: "auto", maxWidth: 300, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {gitStatus.last_message}
+              </span>
+            )}
+          </div>
+        )}
 
         <div style={st.columns}>
           {/* Left column */}

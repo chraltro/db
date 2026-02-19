@@ -503,6 +503,92 @@ def run_transform_endpoint(request: Request, req: TransformRequest) -> dict:
         conn.close()
 
 
+# --- Diff ---
+
+
+class DiffRequest(BaseModel):
+    targets: list[str] | None = Field(default=None)
+    target_schema: str | None = Field(default=None, max_length=100)
+    full: bool = False
+
+
+@app.post("/api/diff")
+def run_diff_endpoint(request: Request, req: DiffRequest) -> list[dict]:
+    """Diff models: compare SQL output against materialized tables."""
+    _require_permission(request, "read")
+    from dp.engine.diff import diff_models
+
+    config = _get_config()
+    db_path = _get_db_path()
+    conn = connect(db_path)
+    try:
+        ensure_meta_table(conn)
+        results = diff_models(
+            conn,
+            _get_project_dir() / "transform",
+            targets=req.targets,
+            target_schema=req.target_schema,
+            project_config=config,
+            full=req.full,
+        )
+        return [
+            {
+                "model": r.model,
+                "added": r.added,
+                "removed": r.removed,
+                "modified": r.modified,
+                "total_before": r.total_before,
+                "total_after": r.total_after,
+                "is_new": r.is_new,
+                "error": r.error,
+                "schema_changes": [
+                    {"column": sc.column, "change_type": sc.change_type,
+                     "old_type": sc.old_type, "new_type": sc.new_type}
+                    for sc in r.schema_changes
+                ],
+                "sample_added": r.sample_added,
+                "sample_removed": r.sample_removed,
+                "sample_modified": r.sample_modified,
+            }
+            for r in results
+        ]
+    finally:
+        conn.close()
+
+
+# --- Git status ---
+
+
+@app.get("/api/git/status")
+def get_git_status(request: Request) -> dict:
+    """Get git status for the project (branch, dirty, changed files)."""
+    _require_permission(request, "read")
+    try:
+        from dp.engine.git import (
+            changed_files,
+            current_branch,
+            is_dirty,
+            is_git_repo,
+            last_commit_hash,
+            last_commit_message,
+        )
+
+        project_dir = _get_project_dir()
+        if not is_git_repo(project_dir):
+            return {"is_git_repo": False}
+
+        return {
+            "is_git_repo": True,
+            "branch": current_branch(project_dir),
+            "dirty": is_dirty(project_dir),
+            "changed_files": changed_files(project_dir),
+            "last_commit": last_commit_hash(project_dir),
+            "last_message": last_commit_message(project_dir),
+        }
+    except Exception:
+        return {"is_git_repo": False}
+
+
 # --- Script execution ---
 
 
