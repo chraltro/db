@@ -1347,6 +1347,147 @@ async def upload_file(request: Request) -> dict:
     return {"path": str(file_path), "name": file.filename, "size": len(content)}
 
 
+# --- Connectors ---
+
+
+class ConnectorSetupRequest(BaseModel):
+    connector_type: str = Field(..., min_length=1, max_length=50)
+    connection_name: str = Field(..., min_length=1, max_length=100, pattern=r"^[a-zA-Z0-9_-]+$")
+    config: dict
+    tables: list[str] | None = None
+    target_schema: str = Field(default="landing", min_length=1, max_length=100)
+    schedule: str | None = None
+
+
+class ConnectorTestRequest(BaseModel):
+    connector_type: str = Field(..., min_length=1, max_length=50)
+    config: dict
+
+
+class ConnectorDiscoverRequest(BaseModel):
+    connector_type: str = Field(..., min_length=1, max_length=50)
+    config: dict
+
+
+@app.get("/api/connectors/available")
+def list_available_connectors(request: Request) -> list[dict]:
+    """List all available connector types."""
+    _require_permission(request, "read")
+    import dp.connectors  # noqa: F401
+    from dp.engine.connector import list_connectors
+    return list_connectors()
+
+
+@app.get("/api/connectors")
+def list_configured_connectors_endpoint(request: Request) -> list[dict]:
+    """List connectors configured in this project."""
+    _require_permission(request, "read")
+    import dp.connectors  # noqa: F401
+    from dp.engine.connector import list_configured_connectors
+    return list_configured_connectors(_get_project_dir())
+
+
+@app.post("/api/connectors/test")
+def test_connector_endpoint(request: Request, req: ConnectorTestRequest) -> dict:
+    """Test a connector without setting it up."""
+    _require_permission(request, "execute")
+    import dp.connectors  # noqa: F401
+    from dp.engine.connector import test_connector
+    try:
+        return test_connector(req.connector_type, req.config)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
+@app.post("/api/connectors/discover")
+def discover_connector_endpoint(request: Request, req: ConnectorDiscoverRequest) -> list[dict]:
+    """Discover available resources for a connector."""
+    _require_permission(request, "execute")
+    import dp.connectors  # noqa: F401
+    from dp.engine.connector import discover_connector
+    try:
+        return discover_connector(req.connector_type, req.config)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
+@app.post("/api/connectors/setup")
+def setup_connector_endpoint(request: Request, req: ConnectorSetupRequest) -> dict:
+    """Set up a new connector: test, generate script, update config."""
+    _require_permission(request, "execute")
+    import dp.connectors  # noqa: F401
+    from dp.engine.connector import setup_connector
+    try:
+        result = setup_connector(
+            project_dir=_get_project_dir(),
+            connector_type=req.connector_type,
+            connection_name=req.connection_name,
+            config=req.config,
+            tables=req.tables,
+            target_schema=req.target_schema,
+            schedule=req.schedule,
+        )
+        if result["status"] == "error":
+            raise HTTPException(400, result.get("error", "Setup failed"))
+        return result
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
+@app.post("/api/connectors/sync/{connection_name}")
+def sync_connector_endpoint(request: Request, connection_name: str) -> dict:
+    """Run sync for a configured connector."""
+    _require_permission(request, "execute")
+    import dp.connectors  # noqa: F401
+    from dp.engine.connector import sync_connector
+    result = sync_connector(_get_project_dir(), connection_name)
+    if result.get("status") == "error":
+        raise HTTPException(400, result.get("error", "Sync failed"))
+    return result
+
+
+@app.delete("/api/connectors/{connection_name}")
+def remove_connector_endpoint(request: Request, connection_name: str) -> dict:
+    """Remove a configured connector."""
+    _require_permission(request, "write")
+    import dp.connectors  # noqa: F401
+    from dp.engine.connector import remove_connector
+    result = remove_connector(_get_project_dir(), connection_name)
+    if result["status"] == "error":
+        raise HTTPException(404, result.get("error", "Not found"))
+    return result
+
+
+@app.post("/api/webhook/{webhook_name}")
+async def receive_webhook(request: Request, webhook_name: str) -> dict:
+    """Receive webhook data and store it in the inbox table."""
+    body = await request.body()
+    try:
+        payload = json.loads(body)
+    except Exception:
+        raise HTTPException(400, "Invalid JSON payload")
+
+    db_path = _get_db_path()
+    conn = connect(db_path)
+    try:
+        table = f"landing.{webhook_name}_inbox"
+        conn.execute("CREATE SCHEMA IF NOT EXISTS landing")
+        conn.execute(f"""
+            CREATE TABLE IF NOT EXISTS {table} (
+                id VARCHAR DEFAULT gen_random_uuid()::VARCHAR,
+                received_at TIMESTAMP DEFAULT current_timestamp,
+                payload JSON
+            )
+        """)
+        conn.execute(
+            f"INSERT INTO {table} (payload) VALUES (?::JSON)",
+            [json.dumps(payload)],
+        )
+        return {"status": "received", "table": table}
+    finally:
+        conn.close()
+
+
 # --- Serve frontend ---
 
 _FRONTEND_DIR = Path(__file__).parent.parent.parent.parent / "frontend" / "dist"

@@ -1049,5 +1049,324 @@ def context(
     console.print("[dim]Then ask your question about this project.[/dim]")
 
 
+# --- connect ---
+
+
+@app.command()
+def connect(
+    connector_type: Annotated[str, typer.Argument(help="Connector type (e.g. postgres, stripe, google-sheets)")],
+    name: Annotated[Optional[str], typer.Option("--name", "-n", help="Connection name")] = None,
+    tables: Annotated[Optional[str], typer.Option("--tables", "-t", help="Comma-separated tables to sync")] = None,
+    target_schema: Annotated[str, typer.Option("--schema", "-s", help="Target schema")] = "landing",
+    schedule: Annotated[Optional[str], typer.Option("--schedule", help="Cron schedule")] = None,
+    test_only: Annotated[bool, typer.Option("--test", help="Only test the connection")] = False,
+    discover_only: Annotated[bool, typer.Option("--discover", help="Only discover available tables")] = False,
+    project_dir: Annotated[Optional[Path], typer.Option("--project", "-p")] = None,
+    # Common connection params passed as options
+    host: Annotated[Optional[str], typer.Option(help="Host")] = None,
+    port: Annotated[Optional[int], typer.Option(help="Port")] = None,
+    database: Annotated[Optional[str], typer.Option(help="Database name")] = None,
+    user: Annotated[Optional[str], typer.Option(help="Username")] = None,
+    password: Annotated[Optional[str], typer.Option(help="Password")] = None,
+    url: Annotated[Optional[str], typer.Option(help="URL or path")] = None,
+    api_key: Annotated[Optional[str], typer.Option(help="API key")] = None,
+    token: Annotated[Optional[str], typer.Option(help="Access token")] = None,
+    path: Annotated[Optional[str], typer.Option(help="File or bucket path")] = None,
+    store: Annotated[Optional[str], typer.Option(help="Store name (Shopify)")] = None,
+    spreadsheet_id: Annotated[Optional[str], typer.Option(help="Google Sheets ID")] = None,
+    sheet_name: Annotated[Optional[str], typer.Option(help="Sheet/tab name")] = None,
+    table_name: Annotated[Optional[str], typer.Option(help="Target table name")] = None,
+    resources: Annotated[Optional[str], typer.Option(help="Resources to sync (comma-separated)")] = None,
+) -> None:
+    """Set up a data connector: test connection, generate ingest script, schedule sync.
+
+    Examples:
+      dp connect postgres --host localhost --database mydb --user admin --password secret
+      dp connect stripe --api-key sk_live_xxx
+      dp connect google-sheets --spreadsheet-id 1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgVE2upms
+      dp connect csv --path /data/customers.csv
+      dp connect rest-api --url https://api.example.com/data --api-key xxx
+      dp connect s3-gcs --path s3://my-bucket/data.parquet
+    """
+    import dp.connectors  # noqa: F401 — registers all connectors
+    from dp.engine.connector import (
+        discover_connector,
+        get_connector,
+        list_connectors,
+        setup_connector,
+        test_connector,
+    )
+
+    # Normalize connector type (allow hyphens)
+    connector_type = connector_type.replace("-", "_")
+
+    # Show available connectors
+    if connector_type == "list":
+        available = list_connectors()
+        table_out = Table(title="Available Connectors")
+        table_out.add_column("Name", style="bold")
+        table_out.add_column("Display Name")
+        table_out.add_column("Description")
+        table_out.add_column("Schedule")
+        for c in available:
+            table_out.add_row(
+                c["name"],
+                c["display_name"],
+                c["description"],
+                c.get("default_schedule") or "on-demand",
+            )
+        console.print(table_out)
+        return
+
+    # Build config from CLI flags
+    config: dict = {}
+    if host is not None:
+        config["host"] = host
+    if port is not None:
+        config["port"] = port
+    if database is not None:
+        config["database"] = database
+    if user is not None:
+        config["user"] = user
+    if password is not None:
+        config["password"] = password
+    if url is not None:
+        config["url"] = url
+    if api_key is not None:
+        config["api_key"] = api_key
+    if token is not None:
+        config["access_token"] = token
+    if path is not None:
+        config["path"] = path
+    if store is not None:
+        config["store"] = store
+    if spreadsheet_id is not None:
+        config["spreadsheet_id"] = spreadsheet_id
+    if sheet_name is not None:
+        config["sheet_name"] = sheet_name
+    if table_name is not None:
+        config["table_name"] = table_name
+    if resources is not None:
+        config["resources"] = resources
+        config["objects"] = resources  # HubSpot uses 'objects'
+
+    # Validate connector exists
+    try:
+        connector = get_connector(connector_type)
+    except ValueError as e:
+        console.print(f"[red]{e}[/red]")
+        raise typer.Exit(1)
+
+    # Fill defaults from param spec
+    for pspec in connector.params:
+        if pspec.name not in config and pspec.default is not None:
+            config[pspec.name] = pspec.default
+
+    # Check required params
+    missing = [
+        p.name for p in connector.params
+        if p.required and p.name not in config
+    ]
+    if missing:
+        console.print(f"[red]Missing required parameters: {', '.join(missing)}[/red]")
+        console.print()
+        console.print(f"[bold]{connector.display_name}[/bold] parameters:")
+        for p in connector.params:
+            req = "[red]*[/red]" if p.required else " "
+            default = f" [dim](default: {p.default})[/dim]" if p.default else ""
+            secret = " [yellow](secret)[/yellow]" if p.secret else ""
+            console.print(f"  {req} --{p.name.replace('_', '-')}: {p.description}{default}{secret}")
+        raise typer.Exit(1)
+
+    connection_name = name or f"{connector_type}_{config.get('database', config.get('store', config.get('table_name', 'default')))}"
+
+    # Test only
+    if test_only:
+        console.print(f"[bold]Testing {connector.display_name} connection...[/bold]")
+        result = test_connector(connector_type, config)
+        if result.get("success"):
+            console.print("[green]Connection successful![/green]")
+        else:
+            console.print(f"[red]Connection failed: {result.get('error')}[/red]")
+            raise typer.Exit(1)
+        return
+
+    # Discover only
+    if discover_only:
+        console.print(f"[bold]Discovering {connector.display_name} resources...[/bold]")
+        resources_list = discover_connector(connector_type, config)
+        if not resources_list:
+            console.print("[yellow]No resources found.[/yellow]")
+            return
+        table_out = Table(title="Available Resources")
+        table_out.add_column("Name", style="bold")
+        table_out.add_column("Schema")
+        table_out.add_column("Description")
+        for r in resources_list:
+            table_out.add_row(r["name"], r.get("schema", ""), r.get("description", ""))
+        console.print(table_out)
+        return
+
+    # Full setup
+    project_dir = _resolve_project(project_dir)
+    console.print(f"[bold]Setting up {connector.display_name} connector...[/bold]")
+    console.print()
+
+    # Test
+    console.print("  [blue]test[/blue]  Testing connection...")
+    table_list = [t.strip() for t in tables.split(",")] if tables else None
+
+    result = setup_connector(
+        project_dir=project_dir,
+        connector_type=connector_type,
+        connection_name=connection_name,
+        config=config,
+        tables=table_list,
+        target_schema=target_schema,
+        schedule=schedule,
+    )
+
+    if result["status"] == "error":
+        console.print(f"  [red]fail[/red]  {result.get('error')}")
+        raise typer.Exit(1)
+
+    console.print("[green]  done[/green]  Connection verified")
+    console.print(f"[green]  done[/green]  Generated {result['script_path']}")
+    console.print(f"[green]  done[/green]  Added connection '{result['connection_name']}' to project.yml")
+    if result.get("schedule"):
+        console.print(f"[green]  done[/green]  Scheduled sync: {result['schedule']}")
+    console.print()
+    console.print(f"  Tables to sync: {', '.join(result.get('tables', []))}")
+    console.print()
+    console.print("[bold]Next steps:[/bold]")
+    console.print(f"  dp run {result['script_path']}          # run sync now")
+    console.print(f"  dp transform                             # build downstream models")
+    console.print(f"  dp connect --test --name {connection_name}  # re-test later")
+
+
+# --- connectors ---
+
+connectors_app = typer.Typer(name="connectors", help="Manage configured data connectors.")
+app.add_typer(connectors_app)
+
+
+@connectors_app.command("list")
+def connectors_list(
+    project_dir: Annotated[Optional[Path], typer.Option("--project", "-p")] = None,
+) -> None:
+    """List configured connectors."""
+    import dp.connectors  # noqa: F401
+    from dp.engine.connector import list_configured_connectors
+
+    project_dir = _resolve_project(project_dir)
+    connectors = list_configured_connectors(project_dir)
+
+    if not connectors:
+        console.print("[yellow]No connectors configured. Set one up with: dp connect <type>[/yellow]")
+        return
+
+    table = Table(title="Configured Connectors")
+    table.add_column("Name", style="bold")
+    table.add_column("Type", style="cyan")
+    table.add_column("Script")
+    table.add_column("Status")
+    for c in connectors:
+        status = "[green]ready[/green]" if c["has_script"] else "[yellow]no script[/yellow]"
+        table.add_row(c["name"], c["type"], c["script_path"], status)
+    console.print(table)
+
+
+@connectors_app.command("test")
+def connectors_test(
+    connection_name: Annotated[str, typer.Argument(help="Connection name from project.yml")],
+    project_dir: Annotated[Optional[Path], typer.Option("--project", "-p")] = None,
+) -> None:
+    """Test a configured connector."""
+    import dp.connectors  # noqa: F401
+    from dp.config import load_project
+    from dp.engine.connector import test_connector
+
+    project_dir = _resolve_project(project_dir)
+    config = load_project(project_dir)
+
+    if connection_name not in config.connections:
+        console.print(f"[red]Connection '{connection_name}' not found in project.yml[/red]")
+        raise typer.Exit(1)
+
+    conn_config = config.connections[connection_name]
+    console.print(f"[bold]Testing '{connection_name}' ({conn_config.type})...[/bold]")
+
+    result = test_connector(conn_config.type, conn_config.params)
+    if result.get("success"):
+        console.print("[green]Connection successful![/green]")
+    else:
+        console.print(f"[red]Connection failed: {result.get('error')}[/red]")
+        raise typer.Exit(1)
+
+
+@connectors_app.command("sync")
+def connectors_sync(
+    connection_name: Annotated[str, typer.Argument(help="Connection name")],
+    project_dir: Annotated[Optional[Path], typer.Option("--project", "-p")] = None,
+) -> None:
+    """Run sync for a configured connector."""
+    import dp.connectors  # noqa: F401
+    from dp.engine.connector import sync_connector
+
+    project_dir = _resolve_project(project_dir)
+
+    console.print(f"[bold]Syncing '{connection_name}'...[/bold]")
+    result = sync_connector(project_dir, connection_name)
+
+    if result.get("status") == "error":
+        console.print(f"[red]Sync failed: {result.get('error')}[/red]")
+        raise typer.Exit(1)
+
+    console.print(f"[green]Sync completed ({result.get('duration_ms', 0)}ms)[/green]")
+
+
+@connectors_app.command("remove")
+def connectors_remove(
+    connection_name: Annotated[str, typer.Argument(help="Connection name to remove")],
+    project_dir: Annotated[Optional[Path], typer.Option("--project", "-p")] = None,
+) -> None:
+    """Remove a configured connector (deletes script and config)."""
+    import dp.connectors  # noqa: F401
+    from dp.engine.connector import remove_connector
+
+    project_dir = _resolve_project(project_dir)
+    result = remove_connector(project_dir, connection_name)
+
+    if result["status"] == "error":
+        console.print(f"[red]{result.get('error')}[/red]")
+        raise typer.Exit(1)
+
+    console.print(f"[green]Connector '{connection_name}' removed.[/green]")
+
+
+@connectors_app.command("available")
+def connectors_available() -> None:
+    """List all available connector types."""
+    import dp.connectors  # noqa: F401
+    from dp.engine.connector import list_connectors
+
+    available = list_connectors()
+    table = Table(title="Available Connector Types")
+    table.add_column("Name", style="bold")
+    table.add_column("Display Name")
+    table.add_column("Description")
+    table.add_column("Default Schedule")
+    for c in available:
+        table.add_row(
+            c["name"].replace("_", "-"),
+            c["display_name"],
+            c["description"],
+            c.get("default_schedule") or "on-demand",
+        )
+    console.print(table)
+    console.print()
+    console.print("Set up a connector with: [bold]dp connect <type>[/bold]")
+
+
 if __name__ == "__main__":
     app()
