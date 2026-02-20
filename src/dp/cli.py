@@ -114,8 +114,14 @@ def run(
         console.print(f"[red]Script not found: {script_path}[/red]")
         raise typer.Exit(1)
 
-    # Determine script type from path
-    script_type = "ingest" if "ingest" in str(script_path) else "export"
+    # Determine script type from immediate parent directory
+    parent_name = script_path.parent.name
+    if parent_name == "ingest":
+        script_type = "ingest"
+    elif parent_name == "export":
+        script_type = "export"
+    else:
+        script_type = "script"
     console.print(f"[bold]Running {script_type}:[/bold]")
 
     db_path = project_dir / config.database.path
@@ -230,7 +236,7 @@ def diff(
             if f in model_by_path:
                 filter_targets.append(model_by_path[f])
         if not filter_targets:
-            console.print("[green]No model SQL files changed vs {against}. Nothing to diff.[/green]")
+            console.print(f"[green]No model SQL files changed vs {against}. Nothing to diff.[/green]")
             return
 
     conn = connect(db_path)
@@ -298,7 +304,8 @@ def _print_diff_summary(results) -> None:
 
     for r in results:
         if r.error:
-            table.add_row(r.model, "", "", "", "", "", f"[red]ERROR: {r.error[:40]}[/red]")
+            error_display = r.error[:80] + ("..." if len(r.error) > 80 else "")
+            table.add_row(r.model, "", "", "", "", "", f"[red]ERROR: {error_display}[/red]")
             continue
 
         before = "NEW" if r.is_new else f"{r.total_before:,}"
@@ -556,10 +563,14 @@ def lint(
             console.print(f"[green]{fixed} fixed.[/green]")
         if count > 0:
             console.print(f"[yellow]{count} violation(s) remain (unfixable by SQLFluff).[/yellow]")
+            raise typer.Exit(1)
         if fixed == 0 and count == 0:
-            console.print("[green]All fixable violations resolved.[/green]")
+            console.print("[green]All clean — no violations found.[/green]")
     elif count > 0:
+        console.print(f"\n[red]{count} violation(s) found.[/red] Run [bold]dp lint --fix[/bold] to auto-fix.")
         raise typer.Exit(1)
+    else:
+        console.print("[green]All clean — no violations found.[/green]")
 
 
 # --- query ---
@@ -577,10 +588,18 @@ def query(
     project_dir = _resolve_project(project_dir)
     config = load_project(project_dir)
 
+    sql = sql.strip()
+    if not sql:
+        console.print("[red]Empty query. Provide a SQL statement to execute.[/red]")
+        raise typer.Exit(1)
+
     db_path = project_dir / config.database.path
     conn = connect(db_path, read_only=True)
     try:
         result = conn.execute(sql)
+        if result.description is None:
+            console.print("[yellow]Query executed successfully (no results returned).[/yellow]")
+            return
         columns = [desc[0] for desc in result.description]
         rows = result.fetchall()
 
@@ -591,6 +610,9 @@ def query(
             table.add_row(*[str(v) for v in row])
         console.print(table)
         console.print(f"[dim]{len(rows)} rows[/dim]")
+    except Exception as e:
+        console.print(f"[red]Query error:[/red] {e}")
+        raise typer.Exit(1)
     finally:
         conn.close()
 
@@ -617,16 +639,23 @@ def tables(
 
     conn = connect(db_path, read_only=True)
     try:
-        sql = """
-            SELECT table_schema, table_name, table_type
-            FROM information_schema.tables
-            WHERE table_schema NOT IN ('information_schema', '_dp_internal')
-        """
         if schema:
-            sql += f" AND table_schema = '{schema}'"
-        sql += " ORDER BY table_schema, table_name"
-
-        result = conn.execute(sql).fetchall()
+            sql = """
+                SELECT table_schema, table_name, table_type
+                FROM information_schema.tables
+                WHERE table_schema NOT IN ('information_schema', '_dp_internal')
+                  AND table_schema = ?
+                ORDER BY table_schema, table_name
+            """
+            result = conn.execute(sql, [schema]).fetchall()
+        else:
+            sql = """
+                SELECT table_schema, table_name, table_type
+                FROM information_schema.tables
+                WHERE table_schema NOT IN ('information_schema', '_dp_internal')
+                ORDER BY table_schema, table_name
+            """
+            result = conn.execute(sql).fetchall()
         if not result:
             console.print("[yellow]No tables found.[/yellow]")
             return
@@ -663,8 +692,11 @@ def history(
         console.print("[yellow]No warehouse database found.[/yellow]")
         return
 
-    conn = connect(db_path, read_only=False)
+    conn = connect(db_path)
     ensure_meta_table(conn)
+    conn.close()
+
+    conn = connect(db_path, read_only=True)
     try:
         result = conn.execute(
             """
