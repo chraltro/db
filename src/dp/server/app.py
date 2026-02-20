@@ -124,6 +124,12 @@ def _get_db_path() -> Path:
     return _get_project_dir() / config.database.path
 
 
+def _require_db(db_path: Path) -> None:
+    """Raise 404 if the warehouse database doesn't exist yet."""
+    if not db_path.exists():
+        raise HTTPException(404, "Warehouse database not found. Run a pipeline first.")
+
+
 def _get_user(request: Request) -> dict | None:
     """Extract and validate user from auth header. Returns None if auth disabled."""
     if not AUTH_ENABLED:
@@ -165,6 +171,7 @@ def _require_permission(request: Request, permission: str) -> dict:
 _login_attempts: dict[str, list[float]] = {}
 _RATE_LIMIT_WINDOW = 60.0  # seconds
 _RATE_LIMIT_MAX = 5  # max attempts per window
+_RATE_LIMIT_MAX_KEYS = 10_000  # max tracked IPs to prevent memory leak
 
 
 def _check_rate_limit(key: str) -> None:
@@ -178,6 +185,11 @@ def _check_rate_limit(key: str) -> None:
         raise HTTPException(429, "Too many login attempts. Try again later.")
     attempts.append(now)
     _login_attempts[key] = attempts
+    # Evict stale keys to prevent unbounded memory growth
+    if len(_login_attempts) > _RATE_LIMIT_MAX_KEYS:
+        stale = [k for k, v in _login_attempts.items() if not v or now - v[-1] > _RATE_LIMIT_WINDOW]
+        for k in stale:
+            del _login_attempts[k]
 
 
 # --- Auth endpoints ---
@@ -727,6 +739,7 @@ def run_query(request: Request, req: QueryRequest) -> dict:
     """Run an ad-hoc SQL query with a timeout."""
     _require_permission(request, "read")
     db_path = _get_db_path()
+    _require_db(db_path)
     conn = connect(db_path, read_only=True)
     try:
         import threading
@@ -826,6 +839,7 @@ def describe_table(request: Request, schema: str, table: str) -> dict:
     _validate_identifier(schema, "schema")
     _validate_identifier(table, "table")
     db_path = _get_db_path()
+    _require_db(db_path)
     conn = connect(db_path, read_only=True)
     try:
         cols = conn.execute(
@@ -861,6 +875,7 @@ def sample_table(
     limit = max(1, min(limit, 10_000))
     offset = max(0, offset)
     db_path = _get_db_path()
+    _require_db(db_path)
     conn = connect(db_path, read_only=True)
     try:
         quoted = f'"{schema}"."{table}"'
@@ -889,6 +904,7 @@ def profile_table(request: Request, schema: str, table: str) -> dict:
     _validate_identifier(schema, "schema")
     _validate_identifier(table, "table")
     db_path = _get_db_path()
+    _require_db(db_path)
     conn = connect(db_path, read_only=True)
     try:
         quoted = f'"{schema}"."{table}"'
@@ -1503,15 +1519,21 @@ async def upload_file(request: Request) -> dict:
     if not file:
         raise HTTPException(400, "No file uploaded")
 
-    # Save to data/ directory
+    # Save to data/ directory — sanitize filename to prevent path traversal
     data_dir = _get_project_dir() / "data"
     data_dir.mkdir(exist_ok=True)
-    file_path = data_dir / file.filename
+    safe_name = Path(file.filename).name  # strip any directory components
+    if not safe_name or safe_name.startswith("."):
+        raise HTTPException(400, "Invalid filename")
+    file_path = data_dir / safe_name
+    # Verify resolved path is still inside data_dir
+    if not file_path.resolve().is_relative_to(data_dir.resolve()):
+        raise HTTPException(400, "Invalid filename")
 
     content = await file.read()
     file_path.write_bytes(content)
 
-    return {"path": str(file_path), "name": file.filename, "size": len(content)}
+    return {"path": str(file_path), "name": safe_name, "size": len(content)}
 
 
 # --- Connectors ---

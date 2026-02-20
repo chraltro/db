@@ -114,6 +114,11 @@ def run(
         console.print(f"[red]Script not found: {script_path}[/red]")
         raise typer.Exit(1)
 
+    if script_path.is_dir():
+        console.print(f"[red]Expected a script file, got a directory: {script_path}[/red]")
+        console.print("Hint: use [bold]dp stream[/bold] to run a full pipeline, or specify a file like [bold]dp run ingest/script.py[/bold]")
+        raise typer.Exit(1)
+
     # Determine script type from immediate parent directory
     parent_name = script_path.parent.name
     if parent_name == "ingest":
@@ -204,9 +209,8 @@ def diff(
     # Snapshot comparison mode
     if snapshot:
         from dp.engine.snapshot import diff_against_snapshot
-        conn = connect(db_path, read_only=True)
+        conn = connect(db_path)
         try:
-            ensure_meta_table(conn)
             snap_results = diff_against_snapshot(conn, project_dir, snapshot)
             if snap_results is None:
                 console.print(f"[red]Snapshot '{snapshot}' not found.[/red]")
@@ -579,9 +583,14 @@ def lint(
 @app.command()
 def query(
     sql: Annotated[str, typer.Argument(help="SQL query to execute")],
+    csv: Annotated[bool, typer.Option("--csv", help="Output as CSV")] = False,
+    json_output: Annotated[bool, typer.Option("--json", help="Output as JSON")] = False,
+    limit: Annotated[int, typer.Option("--limit", "-n", help="Max rows to return")] = 0,
     project_dir: Annotated[Optional[Path], typer.Option("--project", "-p")] = None,
 ) -> None:
     """Run an ad-hoc SQL query against the warehouse."""
+    import json as json_mod
+
     from dp.config import load_project
     from dp.engine.database import connect
 
@@ -606,19 +615,42 @@ def query(
             return
         columns = [desc[0] for desc in result.description]
         rows = result.fetchall()
+        if limit > 0:
+            rows = rows[:limit]
 
-        table = Table()
-        for col in columns:
-            table.add_column(col)
-        for row in rows:
-            table.add_row(*[str(v) for v in row])
-        console.print(table)
-        console.print(f"[dim]{len(rows)} rows[/dim]")
+        if csv:
+            import io as _io
+            import csv as _csv
+            buf = _io.StringIO()
+            writer = _csv.writer(buf)
+            writer.writerow(columns)
+            for row in rows:
+                writer.writerow(row)
+            console.print(buf.getvalue().rstrip())
+        elif json_output:
+            data = [dict(zip(columns, [_json_safe(v) for v in row])) for row in rows]
+            console.print(json_mod.dumps(data, indent=2, default=str))
+        else:
+            table = Table(show_lines=len(columns) > 8)
+            for col in columns:
+                table.add_column(col, no_wrap=False, max_width=60)
+            for row in rows:
+                table.add_row(*[str(v) for v in row])
+            console.print(table)
+            console.print(f"[dim]{len(rows)} rows[/dim]")
     except Exception as e:
         console.print(f"[red]Query error:[/red] {e}")
         raise typer.Exit(1)
     finally:
         conn.close()
+
+
+def _json_safe(v):
+    """Convert DuckDB values to JSON-safe types."""
+    import datetime
+    if isinstance(v, (datetime.date, datetime.datetime)):
+        return str(v)
+    return v
 
 
 # --- tables ---
