@@ -298,6 +298,12 @@ def run_transform(
     if targets and targets != ["all"]:
         target_set = set(targets)
         models = [m for m in models if m.full_name in target_set or m.name in target_set]
+        if not models:
+            all_names = [m.full_name for m in discover_models(transform_dir)]
+            console.print(f"[yellow]No models matched targets: {', '.join(targets)}[/yellow]")
+            if all_names:
+                console.print(f"[dim]Available models: {', '.join(all_names)}[/dim]")
+            return {}
 
     # Build DAG and sort
     ordered = build_dag(models)

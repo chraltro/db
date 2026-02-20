@@ -152,3 +152,81 @@ def test_overview_endpoint(client):
     assert "landing" in schema_names
     # Should include streams from project.yml
     assert "test-stream" in data["streams"]
+
+
+# --- Tests for warehouse existence handling ---
+
+
+@pytest.fixture
+def no_warehouse_project(tmp_path):
+    """Create a project with no warehouse database."""
+    (tmp_path / "project.yml").write_text("""
+name: test
+database:
+  path: warehouse.duckdb
+streams:
+  test-stream:
+    description: "Test"
+    steps:
+      - transform: [all]
+""")
+    (tmp_path / "transform" / "bronze").mkdir(parents=True)
+    (tmp_path / "ingest").mkdir()
+    (tmp_path / "export").mkdir()
+    return tmp_path
+
+
+@pytest.fixture
+def no_db_client(no_warehouse_project):
+    import dp.server.app as server_app
+    server_app.PROJECT_DIR = no_warehouse_project
+    return TestClient(server_app.app)
+
+
+def test_query_no_warehouse(no_db_client):
+    resp = no_db_client.post("/api/query", json={"sql": "SELECT 1"})
+    assert resp.status_code == 404
+    assert "not found" in resp.json()["detail"].lower()
+
+
+def test_describe_table_no_warehouse(no_db_client):
+    resp = no_db_client.get("/api/tables/landing/data")
+    assert resp.status_code == 404
+
+
+def test_sample_table_no_warehouse(no_db_client):
+    resp = no_db_client.get("/api/tables/landing/data/sample")
+    assert resp.status_code == 404
+
+
+def test_profile_table_no_warehouse(no_db_client):
+    resp = no_db_client.get("/api/tables/landing/data/profile")
+    assert resp.status_code == 404
+
+
+# --- Tests for upload path safety ---
+
+
+def test_upload_rejects_path_traversal(client):
+    import io
+    # Simulate a file upload with path traversal name
+    resp = client.post(
+        "/api/upload",
+        files={"file": ("../../../etc/passwd", io.BytesIO(b"evil"), "text/plain")},
+    )
+    # Should either reject the name or strip the path components
+    if resp.status_code == 200:
+        data = resp.json()
+        assert ".." not in data["name"]
+        assert "/" not in data["name"]
+    else:
+        assert resp.status_code == 400
+
+
+def test_upload_rejects_dotfile(client):
+    import io
+    resp = client.post(
+        "/api/upload",
+        files={"file": (".env", io.BytesIO(b"SECRET=x"), "text/plain")},
+    )
+    assert resp.status_code == 400

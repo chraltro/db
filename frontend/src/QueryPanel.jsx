@@ -140,7 +140,7 @@ export default function QueryPanel({ addOutput }) {
   const colCacheRef = useRef({}); // schema.table -> columns[]
 
   useEffect(() => {
-    api.listTables().then(setTables).catch(() => {});
+    api.listTables().then(setTables).catch((e) => console.warn("Failed to load tables:", e.message));
     setHintTrigger("queryPanelOpened", true);
   }, []);
 

@@ -92,6 +92,7 @@ function TableDetail({ table }) {
 export default function DocsPanel() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [selected, setSelected] = useState(null);
   const [expandedSchemas, setExpandedSchemas] = useState({});
 
@@ -113,7 +114,7 @@ export default function DocsPanel() {
       if (!selected && result.schemas?.length > 0 && result.schemas[0].tables.length > 0) {
         setSelected(result.schemas[0].tables[0].full_name);
       }
-    } catch {}
+    } catch (e) { setError(e.message || "Failed to load docs"); }
     setLoading(false);
   }
 
@@ -146,7 +147,10 @@ export default function DocsPanel() {
       </div>
       <div style={s.body}>
         {loading && <div style={s.loading}>Loading docs...</div>}
-        {!loading && (!data || data.schemas.length === 0) && (
+        {!loading && error && (
+          <div style={{ ...s.loading, color: "var(--dp-red)" }}>{error}</div>
+        )}
+        {!loading && !error && (!data || data.schemas.length === 0) && (
           <div style={s.loading}>No documentation available. Run a pipeline first.</div>
         )}
         {!loading && data && data.schemas.length > 0 && (

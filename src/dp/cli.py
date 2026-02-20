@@ -99,7 +99,7 @@ def init(
 @app.command()
 def run(
     script: Annotated[str, typer.Argument(help="Script path (e.g. ingest/customers.py)")],
-    project_dir: Annotated[Optional[Path], typer.Option("--project", "-p")] = None,
+    project_dir: Annotated[Optional[Path], typer.Option("--project", "-p", help="Project directory (default: current dir)")] = None,
 ) -> None:
     """Run a single ingest or export script (.py or .dpnb notebook)."""
     from dp.config import load_project
@@ -112,6 +112,11 @@ def run(
 
     if not script_path.exists():
         console.print(f"[red]Script not found: {script_path}[/red]")
+        raise typer.Exit(1)
+
+    if script_path.is_dir():
+        console.print(f"[red]Expected a script file, got a directory: {script_path}[/red]")
+        console.print("Hint: use [bold]dp stream[/bold] to run a full pipeline, or specify a file like [bold]dp run ingest/script.py[/bold]")
         raise typer.Exit(1)
 
     # Determine script type from immediate parent directory
@@ -141,7 +146,7 @@ def run(
 def transform(
     targets: Annotated[Optional[list[str]], typer.Argument(help="Specific models to run")] = None,
     force: Annotated[bool, typer.Option("--force", "-f", help="Force rebuild all models")] = False,
-    project_dir: Annotated[Optional[Path], typer.Option("--project", "-p")] = None,
+    project_dir: Annotated[Optional[Path], typer.Option("--project", "-p", help="Project directory (default: current dir)")] = None,
 ) -> None:
     """Parse SQL models, resolve DAG, execute in dependency order."""
     from dp.config import load_project
@@ -183,7 +188,7 @@ def diff(
     full: Annotated[bool, typer.Option("--full", help="Show all changed rows, not just samples")] = False,
     against: Annotated[Optional[str], typer.Option("--against", help="Only diff models changed vs a git branch/ref")] = None,
     snapshot: Annotated[Optional[str], typer.Option("--snapshot", help="Compare current state against a snapshot")] = None,
-    project_dir: Annotated[Optional[Path], typer.Option("--project", "-p")] = None,
+    project_dir: Annotated[Optional[Path], typer.Option("--project", "-p", help="Project directory (default: current dir)")] = None,
 ) -> None:
     """Show what would change if transforms are run now. Compares model SQL output against materialized tables."""
     import json as json_mod
@@ -204,9 +209,8 @@ def diff(
     # Snapshot comparison mode
     if snapshot:
         from dp.engine.snapshot import diff_against_snapshot
-        conn = connect(db_path, read_only=True)
+        conn = connect(db_path)
         try:
-            ensure_meta_table(conn)
             snap_results = diff_against_snapshot(conn, project_dir, snapshot)
             if snap_results is None:
                 console.print(f"[red]Snapshot '{snapshot}' not found.[/red]")
@@ -418,7 +422,7 @@ def _print_snapshot_diff(snap_results: dict) -> None:
 def stream(
     name: Annotated[str, typer.Argument(help="Stream name from project.yml")],
     force: Annotated[bool, typer.Option("--force", "-f", help="Force rebuild all models")] = False,
-    project_dir: Annotated[Optional[Path], typer.Option("--project", "-p")] = None,
+    project_dir: Annotated[Optional[Path], typer.Option("--project", "-p", help="Project directory (default: current dir)")] = None,
 ) -> None:
     """Run a full stream: ingest -> transform -> export as defined in project.yml."""
     import time as _time
@@ -535,7 +539,7 @@ def _send_webhook(url: str, stream_name: str, status: str, duration_s: float) ->
 @app.command()
 def lint(
     fix: Annotated[bool, typer.Option("--fix", help="Auto-fix violations")] = False,
-    project_dir: Annotated[Optional[Path], typer.Option("--project", "-p")] = None,
+    project_dir: Annotated[Optional[Path], typer.Option("--project", "-p", help="Project directory (default: current dir)")] = None,
 ) -> None:
     """Lint SQL files in the transform directory with SQLFluff."""
     from dp.config import load_project
@@ -579,9 +583,14 @@ def lint(
 @app.command()
 def query(
     sql: Annotated[str, typer.Argument(help="SQL query to execute")],
-    project_dir: Annotated[Optional[Path], typer.Option("--project", "-p")] = None,
+    csv: Annotated[bool, typer.Option("--csv", help="Output as CSV")] = False,
+    json_output: Annotated[bool, typer.Option("--json", help="Output as JSON")] = False,
+    limit: Annotated[int, typer.Option("--limit", "-n", help="Max rows to return")] = 0,
+    project_dir: Annotated[Optional[Path], typer.Option("--project", "-p", help="Project directory (default: current dir)")] = None,
 ) -> None:
     """Run an ad-hoc SQL query against the warehouse."""
+    import json as json_mod
+
     from dp.config import load_project
     from dp.engine.database import connect
 
@@ -594,6 +603,10 @@ def query(
         raise typer.Exit(1)
 
     db_path = project_dir / config.database.path
+    if not db_path.exists():
+        console.print("[yellow]No warehouse database found. Run a pipeline first.[/yellow]")
+        raise typer.Exit(1)
+
     conn = connect(db_path, read_only=True)
     try:
         result = conn.execute(sql)
@@ -602,19 +615,46 @@ def query(
             return
         columns = [desc[0] for desc in result.description]
         rows = result.fetchall()
+        if limit > 0:
+            rows = rows[:limit]
 
-        table = Table()
-        for col in columns:
-            table.add_column(col)
-        for row in rows:
-            table.add_row(*[str(v) for v in row])
-        console.print(table)
-        console.print(f"[dim]{len(rows)} rows[/dim]")
+        if csv:
+            import io as _io
+            import csv as _csv
+            buf = _io.StringIO()
+            writer = _csv.writer(buf)
+            writer.writerow(columns)
+            for row in rows:
+                writer.writerow(row)
+            console.print(buf.getvalue().rstrip())
+        elif json_output:
+            data = [dict(zip(columns, [_json_safe(v) for v in row])) for row in rows]
+            console.print(json_mod.dumps(data, indent=2, default=str))
+        else:
+            table = Table(show_lines=len(columns) > 8)
+            for col in columns:
+                table.add_column(col, no_wrap=False, max_width=60)
+            for row in rows:
+                table.add_row(*[str(v) for v in row])
+            console.print(table)
+            console.print(f"[dim]{len(rows)} rows[/dim]")
     except Exception as e:
-        console.print(f"[red]Query error:[/red] {e}")
+        err_msg = str(e)
+        if "read-only mode" in err_msg:
+            console.print("[red]Query error:[/red] dp query is read-only. Use [bold]dp run[/bold] for write operations.")
+        else:
+            console.print(f"[red]Query error:[/red] {e}")
         raise typer.Exit(1)
     finally:
         conn.close()
+
+
+def _json_safe(v):
+    """Convert DuckDB values to JSON-safe types."""
+    import datetime
+    if isinstance(v, (datetime.date, datetime.datetime)):
+        return str(v)
+    return v
 
 
 # --- tables ---
@@ -623,7 +663,7 @@ def query(
 @app.command()
 def tables(
     schema: Annotated[Optional[str], typer.Argument(help="Schema to list (all if omitted)")] = None,
-    project_dir: Annotated[Optional[Path], typer.Option("--project", "-p")] = None,
+    project_dir: Annotated[Optional[Path], typer.Option("--project", "-p", help="Project directory (default: current dir)")] = None,
 ) -> None:
     """List tables and views in the warehouse."""
     from dp.config import load_project
@@ -678,11 +718,13 @@ def tables(
 @app.command()
 def history(
     limit: Annotated[int, typer.Option("--limit", "-n", help="Number of entries")] = 20,
-    project_dir: Annotated[Optional[Path], typer.Option("--project", "-p")] = None,
+    project_dir: Annotated[Optional[Path], typer.Option("--project", "-p", help="Project directory (default: current dir)")] = None,
 ) -> None:
     """Show recent run history."""
+    import duckdb
+
     from dp.config import load_project
-    from dp.engine.database import connect, ensure_meta_table
+    from dp.engine.database import connect
 
     project_dir = _resolve_project(project_dir)
     config = load_project(project_dir)
@@ -692,21 +734,21 @@ def history(
         console.print("[yellow]No warehouse database found.[/yellow]")
         return
 
-    conn = connect(db_path)
-    ensure_meta_table(conn)
-    conn.close()
-
     conn = connect(db_path, read_only=True)
     try:
-        result = conn.execute(
-            """
-            SELECT run_type, target, status, started_at, duration_ms, rows_affected, error
-            FROM _dp_internal.run_log
-            ORDER BY started_at DESC
-            LIMIT ?
-            """,
-            [limit],
-        ).fetchall()
+        try:
+            result = conn.execute(
+                """
+                SELECT run_type, target, status, started_at, duration_ms, rows_affected, error
+                FROM _dp_internal.run_log
+                ORDER BY started_at DESC
+                LIMIT ?
+                """,
+                [limit],
+            ).fetchall()
+        except duckdb.CatalogException:
+            console.print("[yellow]No run history yet.[/yellow]")
+            return
 
         if not result:
             console.print("[yellow]No run history yet.[/yellow]")
@@ -746,11 +788,11 @@ def history(
 
 @app.command()
 def status(
-    project_dir: Annotated[Optional[Path], typer.Option("--project", "-p")] = None,
+    project_dir: Annotated[Optional[Path], typer.Option("--project", "-p", help="Project directory (default: current dir)")] = None,
 ) -> None:
     """Show project health: git info, warehouse stats, last run."""
     from dp.config import load_project
-    from dp.engine.database import connect, ensure_meta_table
+    from dp.engine.database import connect
 
     project_dir = _resolve_project(project_dir)
     config = load_project(project_dir)
@@ -798,12 +840,14 @@ def status(
                     pass
             console.print(f"[bold]warehouse:[/bold] {total_tables} tables, {total_rows:,} rows")
 
-            # Last run
-            ensure_meta_table(conn)
-            last = conn.execute(
-                "SELECT run_type, target, status, started_at, duration_ms "
-                "FROM _dp_internal.run_log ORDER BY started_at DESC LIMIT 1"
-            ).fetchone()
+            # Last run (skip if meta tables don't exist yet)
+            try:
+                last = conn.execute(
+                    "SELECT run_type, target, status, started_at, duration_ms "
+                    "FROM _dp_internal.run_log ORDER BY started_at DESC LIMIT 1"
+                ).fetchone()
+            except Exception:
+                last = None
             if last:
                 import datetime
                 run_type, run_target, run_status, started, dur = last
@@ -838,7 +882,7 @@ def status(
 @app.command()
 def checkpoint(
     message: Annotated[Optional[str], typer.Option("--message", "-m", help="Custom commit message")] = None,
-    project_dir: Annotated[Optional[Path], typer.Option("--project", "-p")] = None,
+    project_dir: Annotated[Optional[Path], typer.Option("--project", "-p", help="Project directory (default: current dir)")] = None,
 ) -> None:
     """Smart git commit: stages files, auto-generates commit message from changes."""
     import subprocess
@@ -948,7 +992,7 @@ def _generate_commit_message(staged_files: list[str]) -> str:
 @app.command()
 def docs(
     output: Annotated[Optional[Path], typer.Option("--output", "-o", help="Write to file instead of stdout")] = None,
-    project_dir: Annotated[Optional[Path], typer.Option("--project", "-p")] = None,
+    project_dir: Annotated[Optional[Path], typer.Option("--project", "-p", help="Project directory (default: current dir)")] = None,
 ) -> None:
     """Generate markdown documentation from the warehouse schema."""
     from dp.config import load_project
@@ -980,7 +1024,7 @@ def docs(
 
 @app.command()
 def watch(
-    project_dir: Annotated[Optional[Path], typer.Option("--project", "-p")] = None,
+    project_dir: Annotated[Optional[Path], typer.Option("--project", "-p", help="Project directory (default: current dir)")] = None,
 ) -> None:
     """Watch for file changes and auto-rebuild transforms."""
     from dp.engine.scheduler import FileWatcher
@@ -1004,7 +1048,7 @@ def watch(
 
 @app.command()
 def schedule(
-    project_dir: Annotated[Optional[Path], typer.Option("--project", "-p")] = None,
+    project_dir: Annotated[Optional[Path], typer.Option("--project", "-p", help="Project directory (default: current dir)")] = None,
 ) -> None:
     """Show scheduled streams and start the scheduler."""
     from dp.engine.scheduler import SchedulerThread, get_scheduled_streams
@@ -1048,7 +1092,7 @@ app.add_typer(snapshot_app)
 @snapshot_app.command("create")
 def snapshot_create(
     name: Annotated[Optional[str], typer.Argument(help="Snapshot name (auto-generated if omitted)")] = None,
-    project_dir: Annotated[Optional[Path], typer.Option("--project", "-p")] = None,
+    project_dir: Annotated[Optional[Path], typer.Option("--project", "-p", help="Project directory (default: current dir)")] = None,
 ) -> None:
     """Create a named snapshot of the current project and data state."""
     from dp.config import load_project
@@ -1071,7 +1115,7 @@ def snapshot_create(
 
 @snapshot_app.command("list")
 def snapshot_list(
-    project_dir: Annotated[Optional[Path], typer.Option("--project", "-p")] = None,
+    project_dir: Annotated[Optional[Path], typer.Option("--project", "-p", help="Project directory (default: current dir)")] = None,
 ) -> None:
     """List all snapshots."""
     from dp.config import load_project
@@ -1116,7 +1160,7 @@ def snapshot_list(
 @snapshot_app.command("delete")
 def snapshot_delete(
     name: Annotated[str, typer.Argument(help="Snapshot name to delete")],
-    project_dir: Annotated[Optional[Path], typer.Option("--project", "-p")] = None,
+    project_dir: Annotated[Optional[Path], typer.Option("--project", "-p", help="Project directory (default: current dir)")] = None,
 ) -> None:
     """Delete a snapshot."""
     from dp.config import load_project
@@ -1152,7 +1196,7 @@ app.add_typer(ci_app)
 
 @ci_app.command("generate")
 def ci_generate(
-    project_dir: Annotated[Optional[Path], typer.Option("--project", "-p")] = None,
+    project_dir: Annotated[Optional[Path], typer.Option("--project", "-p", help="Project directory (default: current dir)")] = None,
 ) -> None:
     """Generate a GitHub Actions workflow for dp CI."""
     from dp.engine.ci import generate_workflow
@@ -1193,7 +1237,7 @@ def serve(
     watch_files: Annotated[bool, typer.Option("--watch", "-w", help="Watch files for changes")] = False,
     scheduler_on: Annotated[bool, typer.Option("--schedule", "-s", help="Enable cron scheduler")] = False,
     auth: Annotated[bool, typer.Option("--auth", help="Enable authentication")] = False,
-    project_dir: Annotated[Optional[Path], typer.Option("--project", "-p")] = None,
+    project_dir: Annotated[Optional[Path], typer.Option("--project", "-p", help="Project directory (default: current dir)")] = None,
 ) -> None:
     """Start the web UI server."""
     import uvicorn
@@ -1240,7 +1284,7 @@ app.add_typer(secrets_app)
 
 @secrets_app.command("list")
 def secrets_list(
-    project_dir: Annotated[Optional[Path], typer.Option("--project", "-p")] = None,
+    project_dir: Annotated[Optional[Path], typer.Option("--project", "-p", help="Project directory (default: current dir)")] = None,
 ) -> None:
     """List all secrets (keys only, values masked)."""
     from dp.engine.secrets import list_secrets
@@ -1265,7 +1309,7 @@ def secrets_list(
 def secrets_set(
     key: Annotated[str, typer.Argument(help="Secret key")],
     value: Annotated[str, typer.Argument(help="Secret value")],
-    project_dir: Annotated[Optional[Path], typer.Option("--project", "-p")] = None,
+    project_dir: Annotated[Optional[Path], typer.Option("--project", "-p", help="Project directory (default: current dir)")] = None,
 ) -> None:
     """Set or update a secret in .env."""
     from dp.engine.secrets import set_secret
@@ -1278,7 +1322,7 @@ def secrets_set(
 @secrets_app.command("delete")
 def secrets_delete(
     key: Annotated[str, typer.Argument(help="Secret key")],
-    project_dir: Annotated[Optional[Path], typer.Option("--project", "-p")] = None,
+    project_dir: Annotated[Optional[Path], typer.Option("--project", "-p", help="Project directory (default: current dir)")] = None,
 ) -> None:
     """Delete a secret from .env."""
     from dp.engine.secrets import delete_secret
@@ -1299,7 +1343,7 @@ app.add_typer(users_app)
 
 @users_app.command("list")
 def users_list(
-    project_dir: Annotated[Optional[Path], typer.Option("--project", "-p")] = None,
+    project_dir: Annotated[Optional[Path], typer.Option("--project", "-p", help="Project directory (default: current dir)")] = None,
 ) -> None:
     """List all users."""
     from dp.config import load_project
@@ -1339,7 +1383,7 @@ def users_create(
     username: Annotated[str, typer.Argument(help="Username")],
     password: Annotated[str, typer.Argument(help="Password")],
     role: Annotated[str, typer.Option("--role", "-r", help="Role: admin, editor, viewer")] = "viewer",
-    project_dir: Annotated[Optional[Path], typer.Option("--project", "-p")] = None,
+    project_dir: Annotated[Optional[Path], typer.Option("--project", "-p", help="Project directory (default: current dir)")] = None,
 ) -> None:
     """Create a new user."""
     from dp.config import load_project
@@ -1363,7 +1407,7 @@ def users_create(
 @users_app.command("delete")
 def users_delete(
     username: Annotated[str, typer.Argument(help="Username to delete")],
-    project_dir: Annotated[Optional[Path], typer.Option("--project", "-p")] = None,
+    project_dir: Annotated[Optional[Path], typer.Option("--project", "-p", help="Project directory (default: current dir)")] = None,
 ) -> None:
     """Delete a user."""
     from dp.config import load_project
@@ -1390,7 +1434,7 @@ def users_delete(
 @app.command()
 def backup(
     output: Annotated[Optional[Path], typer.Option("--output", "-o", help="Backup file path")] = None,
-    project_dir: Annotated[Optional[Path], typer.Option("--project", "-p")] = None,
+    project_dir: Annotated[Optional[Path], typer.Option("--project", "-p", help="Project directory (default: current dir)")] = None,
 ) -> None:
     """Create a backup of the warehouse database."""
     import shutil
@@ -1428,7 +1472,7 @@ def backup(
 @app.command()
 def restore(
     backup_path: Annotated[Path, typer.Argument(help="Path to the backup file")],
-    project_dir: Annotated[Optional[Path], typer.Option("--project", "-p")] = None,
+    project_dir: Annotated[Optional[Path], typer.Option("--project", "-p", help="Project directory (default: current dir)")] = None,
 ) -> None:
     """Restore the warehouse database from a backup."""
     import shutil
@@ -1461,7 +1505,7 @@ def restore(
 
 @app.command()
 def validate(
-    project_dir: Annotated[Optional[Path], typer.Option("--project", "-p")] = None,
+    project_dir: Annotated[Optional[Path], typer.Option("--project", "-p", help="Project directory (default: current dir)")] = None,
 ) -> None:
     """Validate project structure, config, and SQL model dependencies."""
     from dp.config import load_project
@@ -1553,11 +1597,11 @@ def validate(
 
 @app.command()
 def context(
-    project_dir: Annotated[Optional[Path], typer.Option("--project", "-p")] = None,
+    project_dir: Annotated[Optional[Path], typer.Option("--project", "-p", help="Project directory (default: current dir)")] = None,
 ) -> None:
     """Generate a project summary to paste into any AI assistant (ChatGPT, Claude, etc.)."""
     from dp.config import load_project
-    from dp.engine.database import connect, ensure_meta_table
+    from dp.engine.database import connect
     from dp.engine.transform import discover_models
 
     project_dir = _resolve_project(project_dir)
@@ -1624,23 +1668,25 @@ def context(
                     lines.append(f"- {schema}.{name} ({ttype.lower()})")
                 lines.append("")
 
-            # Recent history
-            ensure_meta_table(conn)
-            history_rows = conn.execute(
-                """
-                SELECT run_type, target, status, started_at, error
-                FROM _dp_internal.run_log
-                ORDER BY started_at DESC
-                LIMIT 10
-                """
-            ).fetchall()
-            if history_rows:
-                lines.append("## Recent Run History")
-                for rtype, target, status, started, error in history_rows:
-                    ts = str(started)[:19] if started else ""
-                    err = f" — {error}" if error else ""
-                    lines.append(f"- [{status}] {rtype}: {target} ({ts}){err}")
-                lines.append("")
+            # Recent history (skip if meta tables don't exist yet)
+            try:
+                history_rows = conn.execute(
+                    """
+                    SELECT run_type, target, status, started_at, error
+                    FROM _dp_internal.run_log
+                    ORDER BY started_at DESC
+                    LIMIT 10
+                    """
+                ).fetchall()
+                if history_rows:
+                    lines.append("## Recent Run History")
+                    for rtype, target, status, started, error in history_rows:
+                        ts = str(started)[:19] if started else ""
+                        err = f" — {error}" if error else ""
+                        lines.append(f"- [{status}] {rtype}: {target} ({ts}){err}")
+                    lines.append("")
+            except Exception:
+                pass  # no run history yet
         finally:
             conn.close()
 
@@ -1683,7 +1729,7 @@ def connect(
     schedule: Annotated[Optional[str], typer.Option("--schedule", help="Cron schedule")] = None,
     test_only: Annotated[bool, typer.Option("--test", help="Only test the connection")] = False,
     discover_only: Annotated[bool, typer.Option("--discover", help="Only discover available tables")] = False,
-    project_dir: Annotated[Optional[Path], typer.Option("--project", "-p")] = None,
+    project_dir: Annotated[Optional[Path], typer.Option("--project", "-p", help="Project directory (default: current dir)")] = None,
     config_json: Annotated[Optional[str], typer.Option("--config", "-c", help="JSON string or file path with connector params")] = None,
     # Convenience shortcuts for the most common params (override --config)
     host: Annotated[Optional[str], typer.Option(help="Host (shortcut for config)")] = None,
@@ -1884,7 +1930,7 @@ app.add_typer(connectors_app)
 
 @connectors_app.command("list")
 def connectors_list(
-    project_dir: Annotated[Optional[Path], typer.Option("--project", "-p")] = None,
+    project_dir: Annotated[Optional[Path], typer.Option("--project", "-p", help="Project directory (default: current dir)")] = None,
 ) -> None:
     """List configured connectors."""
     import dp.connectors  # noqa: F401
@@ -1911,7 +1957,7 @@ def connectors_list(
 @connectors_app.command("test")
 def connectors_test(
     connection_name: Annotated[str, typer.Argument(help="Connection name from project.yml")],
-    project_dir: Annotated[Optional[Path], typer.Option("--project", "-p")] = None,
+    project_dir: Annotated[Optional[Path], typer.Option("--project", "-p", help="Project directory (default: current dir)")] = None,
 ) -> None:
     """Test a configured connector."""
     import dp.connectors  # noqa: F401
@@ -1939,7 +1985,7 @@ def connectors_test(
 @connectors_app.command("sync")
 def connectors_sync(
     connection_name: Annotated[str, typer.Argument(help="Connection name")],
-    project_dir: Annotated[Optional[Path], typer.Option("--project", "-p")] = None,
+    project_dir: Annotated[Optional[Path], typer.Option("--project", "-p", help="Project directory (default: current dir)")] = None,
 ) -> None:
     """Run sync for a configured connector."""
     import dp.connectors  # noqa: F401
@@ -1960,7 +2006,7 @@ def connectors_sync(
 @connectors_app.command("remove")
 def connectors_remove(
     connection_name: Annotated[str, typer.Argument(help="Connection name to remove")],
-    project_dir: Annotated[Optional[Path], typer.Option("--project", "-p")] = None,
+    project_dir: Annotated[Optional[Path], typer.Option("--project", "-p", help="Project directory (default: current dir)")] = None,
 ) -> None:
     """Remove a configured connector (deletes script and config)."""
     import dp.connectors  # noqa: F401
@@ -1979,7 +2025,7 @@ def connectors_remove(
 @connectors_app.command("regenerate")
 def connectors_regenerate(
     connection_name: Annotated[str, typer.Argument(help="Connection name to regenerate")],
-    project_dir: Annotated[Optional[Path], typer.Option("--project", "-p")] = None,
+    project_dir: Annotated[Optional[Path], typer.Option("--project", "-p", help="Project directory (default: current dir)")] = None,
 ) -> None:
     """Regenerate the ingest script for a connector from current config."""
     import dp.connectors  # noqa: F401

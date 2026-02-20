@@ -171,4 +171,30 @@ def test_change_detection(tmp_path):
     results = run_transform(conn, tmp_path / "transform")
     assert results["bronze.data"] == "built"
 
+
+def test_transform_nonexistent_target(tmp_path):
+    """Targeting a model that doesn't exist should return empty results."""
+    db_path = tmp_path / "test.duckdb"
+    conn = duckdb.connect(str(db_path))
+    conn.execute("CREATE SCHEMA IF NOT EXISTS landing")
+    conn.execute("CREATE TABLE landing.data AS SELECT 1 AS val")
+
+    bronze = tmp_path / "transform" / "bronze"
+    bronze.mkdir(parents=True)
+    (bronze / "data.sql").write_text(
+        "-- config: materialized=view, schema=bronze\n"
+        "-- depends_on: landing.data\n\n"
+        "SELECT val FROM landing.data\n"
+    )
+
+    # Target a model that doesn't exist
+    results = run_transform(conn, tmp_path / "transform", targets=["nonexistent"])
+    assert results == {}
+
+    # Target an existing model by full_name should work
+    results = run_transform(conn, tmp_path / "transform", targets=["bronze.data"], force=True)
+    assert results["bronze.data"] == "built"
+
+    conn.close()
+
     conn.close()
