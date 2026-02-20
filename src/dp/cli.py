@@ -594,6 +594,10 @@ def query(
         raise typer.Exit(1)
 
     db_path = project_dir / config.database.path
+    if not db_path.exists():
+        console.print("[yellow]No warehouse database found. Run a pipeline first.[/yellow]")
+        raise typer.Exit(1)
+
     conn = connect(db_path, read_only=True)
     try:
         result = conn.execute(sql)
@@ -681,8 +685,10 @@ def history(
     project_dir: Annotated[Optional[Path], typer.Option("--project", "-p")] = None,
 ) -> None:
     """Show recent run history."""
+    import duckdb
+
     from dp.config import load_project
-    from dp.engine.database import connect, ensure_meta_table
+    from dp.engine.database import connect
 
     project_dir = _resolve_project(project_dir)
     config = load_project(project_dir)
@@ -692,21 +698,21 @@ def history(
         console.print("[yellow]No warehouse database found.[/yellow]")
         return
 
-    conn = connect(db_path)
-    ensure_meta_table(conn)
-    conn.close()
-
     conn = connect(db_path, read_only=True)
     try:
-        result = conn.execute(
-            """
-            SELECT run_type, target, status, started_at, duration_ms, rows_affected, error
-            FROM _dp_internal.run_log
-            ORDER BY started_at DESC
-            LIMIT ?
-            """,
-            [limit],
-        ).fetchall()
+        try:
+            result = conn.execute(
+                """
+                SELECT run_type, target, status, started_at, duration_ms, rows_affected, error
+                FROM _dp_internal.run_log
+                ORDER BY started_at DESC
+                LIMIT ?
+                """,
+                [limit],
+            ).fetchall()
+        except duckdb.CatalogException:
+            console.print("[yellow]No run history yet.[/yellow]")
+            return
 
         if not result:
             console.print("[yellow]No run history yet.[/yellow]")
@@ -1624,23 +1630,25 @@ def context(
                     lines.append(f"- {schema}.{name} ({ttype.lower()})")
                 lines.append("")
 
-            # Recent history
-            ensure_meta_table(conn)
-            history_rows = conn.execute(
-                """
-                SELECT run_type, target, status, started_at, error
-                FROM _dp_internal.run_log
-                ORDER BY started_at DESC
-                LIMIT 10
-                """
-            ).fetchall()
-            if history_rows:
-                lines.append("## Recent Run History")
-                for rtype, target, status, started, error in history_rows:
-                    ts = str(started)[:19] if started else ""
-                    err = f" — {error}" if error else ""
-                    lines.append(f"- [{status}] {rtype}: {target} ({ts}){err}")
-                lines.append("")
+            # Recent history (skip if meta tables don't exist yet)
+            try:
+                history_rows = conn.execute(
+                    """
+                    SELECT run_type, target, status, started_at, error
+                    FROM _dp_internal.run_log
+                    ORDER BY started_at DESC
+                    LIMIT 10
+                    """
+                ).fetchall()
+                if history_rows:
+                    lines.append("## Recent Run History")
+                    for rtype, target, status, started, error in history_rows:
+                        ts = str(started)[:19] if started else ""
+                        err = f" — {error}" if error else ""
+                        lines.append(f"- [{status}] {rtype}: {target} ({ts}){err}")
+                    lines.append("")
+            except Exception:
+                pass  # no run history yet
         finally:
             conn.close()
 

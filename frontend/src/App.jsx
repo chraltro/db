@@ -396,14 +396,14 @@ export default function App() {
     try {
       const data = await api.listStreams();
       setStreams(data);
-    } catch {}
+    } catch (e) { console.warn("Failed to load streams:", e.message); }
   }, []);
 
   const loadTables = useCallback(async () => {
     try {
       const data = await api.listTables();
       setWarehouseTables(data);
-    } catch {}
+    } catch (e) { console.warn("Failed to load tables:", e.message); }
   }, []);
 
   useEffect(() => {

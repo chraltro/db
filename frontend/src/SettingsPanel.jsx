@@ -46,32 +46,36 @@ function SecretsSection() {
   const [secrets, setSecrets] = useState([]);
   const [newKey, setNewKey] = useState("");
   const [newVal, setNewVal] = useState("");
+  const [error, setError] = useState(null);
 
   useEffect(() => { loadSecrets(); }, []);
 
   async function loadSecrets() {
-    try { setSecrets(await api.listSecrets()); } catch {}
+    try { setSecrets(await api.listSecrets()); } catch (e) { setError(e.message || "Failed to load secrets"); }
   }
 
   async function addSecret() {
     if (!newKey.trim()) return;
+    setError(null);
     try {
       await api.setSecret(newKey.trim(), newVal);
       setNewKey("");
       setNewVal("");
       loadSecrets();
-    } catch (e) { alert(e.message); }
+    } catch (e) { setError(e.message || "Failed to add secret"); }
   }
 
   async function removeSecret(key) {
     if (!confirm(`Delete secret "${key}"?`)) return;
-    try { await api.deleteSecret(key); loadSecrets(); } catch (e) { alert(e.message); }
+    setError(null);
+    try { await api.deleteSecret(key); loadSecrets(); } catch (e) { setError(e.message || "Failed to delete secret"); }
   }
 
   return (
     <div style={sec.section}>
       <h3 style={sec.heading}>Secrets (.env)</h3>
       <p style={sec.desc}>Secrets are stored in .env and referenced as {"${VAR}"} in project.yml. Values are never exposed.</p>
+      {error && <p style={{ color: "var(--dp-red)", fontSize: "12px", margin: "4px 0" }}>{error}</p>}
       {secrets.length > 0 && (
         <table style={sec.table}>
           <thead>
@@ -108,30 +112,34 @@ function UsersSection() {
   const [newUser, setNewUser] = useState("");
   const [newPass, setNewPass] = useState("");
   const [newRole, setNewRole] = useState("viewer");
+  const [error, setError] = useState(null);
 
   useEffect(() => { loadUsers(); }, []);
 
   async function loadUsers() {
-    try { setUsers(await api.listUsers()); } catch {}
+    try { setUsers(await api.listUsers()); } catch (e) { setError(e.message || "Failed to load users"); }
   }
 
   async function addUser() {
     if (!newUser.trim() || !newPass) return;
+    setError(null);
     try {
       await api.createUser(newUser.trim(), newPass, newRole);
       setNewUser("");
       setNewPass("");
       loadUsers();
-    } catch (e) { alert(e.message); }
+    } catch (e) { setError(e.message || "Failed to create user"); }
   }
 
   async function removeUser(username) {
     if (!confirm(`Delete user "${username}"?`)) return;
-    try { await api.deleteUser(username); loadUsers(); } catch (e) { alert(e.message); }
+    setError(null);
+    try { await api.deleteUser(username); loadUsers(); } catch (e) { setError(e.message || "Failed to delete user"); }
   }
 
   async function changeRole(username, role) {
-    try { await api.updateUser(username, { role }); loadUsers(); } catch (e) { alert(e.message); }
+    setError(null);
+    try { await api.updateUser(username, { role }); loadUsers(); } catch (e) { setError(e.message || "Failed to update role"); }
   }
 
   return (
@@ -141,6 +149,7 @@ function UsersSection() {
         Roles: <strong>admin</strong> (full access), <strong>editor</strong> (run + query), <strong>viewer</strong> (read-only).
         Enable auth with <code style={sec.code}>dp serve --auth</code>.
       </p>
+      {error && <p style={{ color: "var(--dp-red)", fontSize: "12px", margin: "4px 0" }}>{error}</p>}
       {users.length > 0 && (
         <table style={sec.table}>
           <thead>
@@ -206,6 +215,7 @@ function LintConfigSection() {
   const [exists, setExists] = useState(false);
   const [saved, setSaved] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
   useEffect(() => { loadConfig(); }, []);
 
@@ -214,26 +224,28 @@ function LintConfigSection() {
       const data = await api.getLintConfig();
       setExists(data.exists);
       setContent(data.exists ? data.content : DEFAULT_SQLFLUFF);
-    } catch {}
+    } catch (e) { setError(e.message || "Failed to load config"); }
     setLoading(false);
   }
 
   async function save() {
+    setError(null);
     try {
       await api.saveLintConfig(content);
       setExists(true);
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
-    } catch (e) { alert(e.message); }
+    } catch (e) { setError(e.message || "Failed to save config"); }
   }
 
   async function remove() {
     if (!confirm("Delete .sqlfluff and revert to default lint settings?")) return;
+    setError(null);
     try {
       await api.deleteLintConfig();
       setExists(false);
       setContent(DEFAULT_SQLFLUFF);
-    } catch (e) { alert(e.message); }
+    } catch (e) { setError(e.message || "Failed to delete config"); }
   }
 
   if (loading) return null;
@@ -241,6 +253,7 @@ function LintConfigSection() {
   return (
     <div style={sec.section}>
       <h3 style={sec.heading}>SQLFluff Config</h3>
+      {error && <p style={{ color: "var(--dp-red)", fontSize: "12px", margin: "4px 0" }}>{error}</p>}
       <p style={sec.desc}>
         {exists
           ? <>Editing <code style={sec.code}>.sqlfluff</code> in your project root. The linter uses this file.</>

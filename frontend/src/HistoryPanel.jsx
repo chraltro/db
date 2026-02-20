@@ -4,6 +4,7 @@ import { api } from "./api";
 export default function HistoryPanel({ onOpenFile }) {
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
     loadHistory();
@@ -11,10 +12,13 @@ export default function HistoryPanel({ onOpenFile }) {
 
   async function loadHistory() {
     setLoading(true);
+    setError(null);
     try {
       const data = await api.getHistory(100);
       setHistory(data);
-    } catch {}
+    } catch (e) {
+      setError(e.message || "Failed to load history");
+    }
     setLoading(false);
   }
 
@@ -27,7 +31,10 @@ export default function HistoryPanel({ onOpenFile }) {
         </button>
       </div>
       {loading && <div style={styles.loading}>Loading...</div>}
-      {!loading && history.length === 0 && (
+      {!loading && error && (
+        <div style={styles.error}>{error}</div>
+      )}
+      {!loading && !error && history.length === 0 && (
         <div style={styles.empty}>No runs yet. Execute a pipeline to see history here.</div>
       )}
       {!loading && history.length > 0 && (
@@ -101,6 +108,7 @@ const styles = {
   refreshBtn: { background: "var(--dp-btn-bg)", border: "1px solid var(--dp-btn-border)", borderRadius: "var(--dp-radius-lg)", color: "var(--dp-text)", padding: "4px 12px", cursor: "pointer", fontSize: "12px", fontWeight: 500 },
   loading: { padding: "24px", color: "var(--dp-text-secondary)", textAlign: "center" },
   empty: { padding: "24px", color: "var(--dp-text-dim)", textAlign: "center" },
+  error: { padding: "24px", color: "var(--dp-red)", textAlign: "center" },
   tableWrap: { flex: 1, overflow: "auto" },
   table: { width: "100%", borderCollapse: "collapse", fontSize: "12px" },
   th: { textAlign: "left", padding: "6px 12px", borderBottom: "2px solid var(--dp-border-light)", color: "var(--dp-text-secondary)", fontWeight: 600, position: "sticky", top: 0, background: "var(--dp-bg)" },

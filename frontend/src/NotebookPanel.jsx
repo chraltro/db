@@ -134,6 +134,7 @@ export default function NotebookPanel({ openPath }) {
   const [newName, setNewName] = useState("");
   const [runningAll, setRunningAll] = useState(false);
   const [runningCellId, setRunningCellId] = useState(null);
+  const [nbError, setNbError] = useState(null);
 
   useEffect(() => { loadList(); }, []);
 
@@ -148,21 +149,23 @@ export default function NotebookPanel({ openPath }) {
     try {
       const data = await api.listNotebooks();
       setNotebooks(data);
-    } catch {}
+    } catch (e) { setNbError(e.message || "Failed to load notebooks"); }
   }
 
   async function openNotebook(name) {
+    setNbError(null);
     try {
       const nb = await api.getNotebook(name);
       setActive(name);
       setNotebook(nb);
     } catch (e) {
-      alert(e.message);
+      setNbError(e.message || "Failed to open notebook");
     }
   }
 
   async function createNotebook() {
     const name = newName.trim().replace(/\s+/g, "_") || "untitled";
+    setNbError(null);
     try {
       const nb = await api.createNotebook(name, name);
       setNewName("");
@@ -170,7 +173,7 @@ export default function NotebookPanel({ openPath }) {
       setActive(name);
       setNotebook(nb);
     } catch (e) {
-      alert(e.message);
+      setNbError(e.message || "Failed to create notebook");
     }
   }
 
@@ -179,13 +182,14 @@ export default function NotebookPanel({ openPath }) {
     try {
       await api.saveNotebook(active, notebook);
     } catch (e) {
-      alert(e.message);
+      setNbError(e.message || "Failed to save notebook");
     }
   }
 
   async function runAll() {
     if (!active || !notebook || runningAll) return;
     setRunningAll(true);
+    setNbError(null);
     try {
       await saveNotebook();
       const cells = [...notebook.cells];
@@ -206,7 +210,7 @@ export default function NotebookPanel({ openPath }) {
         }
       }
     } catch (e) {
-      alert(e.message);
+      setNbError(e.message || "Failed to run notebook");
     }
     setRunningCellId(null);
     setRunningAll(false);
@@ -246,6 +250,7 @@ export default function NotebookPanel({ openPath }) {
             <button onClick={createNotebook} style={s.btn}>New</button>
           </div>
         </div>
+        {nbError && <div style={{ color: "var(--dp-red)", fontSize: "12px", padding: "6px 12px" }}>{nbError}</div>}
         <div style={s.list}>
           {notebooks.length === 0 && (
             <div style={s.empty}>No notebooks yet. Create one above.</div>

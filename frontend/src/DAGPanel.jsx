@@ -89,8 +89,10 @@ export default function DAGPanel({ onOpenFile }) {
   const [hovered, setHovered] = useState(null);
   const setHintTrigger = useHintTriggerFn();
 
+  const [error, setError] = useState(null);
+
   useEffect(() => {
-    api.getDAG().then(setDag).catch(() => {});
+    api.getDAG().then(setDag).catch((e) => setError(e.message || "Failed to load DAG"));
     setHintTrigger("dagOpened", true);
   }, []);
 
@@ -243,6 +245,10 @@ export default function DAGPanel({ onOpenFile }) {
         break;
       }
     }
+  }
+
+  if (error) {
+    return <div style={{ padding: "24px", color: "var(--dp-red)", textAlign: "center" }}>{error}</div>;
   }
 
   if (!dag) {

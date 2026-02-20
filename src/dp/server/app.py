@@ -502,6 +502,9 @@ def run_transform_endpoint(request: Request, req: TransformRequest) -> dict:
             force=req.force,
         )
         return {"results": results}
+    except Exception as e:
+        logger.exception("Transform failed")
+        raise HTTPException(400, f"Transform failed: {e}")
     finally:
         conn.close()
 
@@ -555,6 +558,9 @@ def run_diff_endpoint(request: Request, req: DiffRequest) -> list[dict]:
             }
             for r in results
         ]
+    except Exception as e:
+        logger.exception("Diff failed")
+        raise HTTPException(400, f"Diff failed: {e}")
     finally:
         conn.close()
 

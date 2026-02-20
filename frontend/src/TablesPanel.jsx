@@ -7,6 +7,7 @@ export default function TablesPanel({ selectedTable, onQueryTable }) {
   const [columns, setColumns] = useState([]);
   const [preview, setPreview] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
   const [rowCount, setRowCount] = useState(null);
   const [sortCol, setSortCol] = useState(null);
   const [sortDir, setSortDir] = useState("ASC");
@@ -33,6 +34,7 @@ export default function TablesPanel({ selectedTable, onQueryTable }) {
     }
     const [schema, name] = selectedTable.split(".");
     setLoading(true);
+    setError(null);
     setRowCount(null);
     setSortCol(null);
     setStats(null);
@@ -48,7 +50,7 @@ export default function TablesPanel({ selectedTable, onQueryTable }) {
           setRowCount(countData.rows[0][0]);
         }
       })
-      .catch(() => {})
+      .catch((e) => setError(e.message || "Failed to load table data"))
       .finally(() => setLoading(false));
   }, [selectedTable]);
 
@@ -61,7 +63,7 @@ export default function TablesPanel({ selectedTable, onQueryTable }) {
     setLoading(true);
     api.runQuery(`SELECT * FROM ${schema}.${name} ORDER BY "${colName}" ${newDir} LIMIT 100`)
       .then((data) => setPreview(data))
-      .catch(() => {})
+      .catch((e) => setError(e.message || "Failed to sort table"))
       .finally(() => setLoading(false));
   }
 
@@ -112,6 +114,10 @@ export default function TablesPanel({ selectedTable, onQueryTable }) {
 
   if (loading && !preview) {
     return <div style={st.placeholder}>Loading...</div>;
+  }
+
+  if (error) {
+    return <div style={{ ...st.placeholder, color: "var(--dp-red)" }}>{error}</div>;
   }
 
   function formatCount(n) {
