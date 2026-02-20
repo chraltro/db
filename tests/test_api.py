@@ -82,11 +82,32 @@ def test_run_query(client):
     assert data["rows"] == [[42]]
 
 
+def test_run_query_invalid_sql(client):
+    resp = client.post("/api/query", json={"sql": "INVALID SQL FOOBAR"})
+    assert resp.status_code == 400
+
+
+def test_run_query_empty_rejected(client):
+    resp = client.post("/api/query", json={"sql": ""})
+    assert resp.status_code == 422  # pydantic min_length=1
+
+
 def test_list_tables(client):
     resp = client.get("/api/tables")
     assert resp.status_code == 200
     tables = resp.json()
     assert any(t["name"] == "data" and t["schema"] == "landing" for t in tables)
+
+
+def test_list_tables_with_schema_filter(client):
+    resp = client.get("/api/tables?schema=landing")
+    assert resp.status_code == 200
+    tables = resp.json()
+    assert all(t["schema"] == "landing" for t in tables)
+
+    resp = client.get("/api/tables?schema=nonexistent")
+    assert resp.status_code == 200
+    assert resp.json() == []
 
 
 def test_list_streams(client):

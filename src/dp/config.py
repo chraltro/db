@@ -216,20 +216,20 @@ SAMPLE_BRONZE_SQL = """\
 -- depends_on: landing.earthquakes
 
 SELECT
-    id                                                          AS event_id,
+    id AS event_id,
     magnitude,
     mag_type,
     place,
-    epoch_ms(event_time)                                        AS event_time,
-    epoch_ms(updated)                                           AS updated_at,
     latitude,
     longitude,
     depth_km,
-    COALESCE(felt, 0)                                           AS felt_reports,
-    CASE WHEN tsunami = 1 THEN true ELSE false END              AS tsunami_alert,
-    sig                                                         AS significance,
+    sig AS significance,
     event_type,
-    status
+    status,
+    epoch_ms(event_time) AS event_time,
+    epoch_ms(updated) AS updated_at,
+    coalesce(felt, 0) AS felt_reports,
+    tsunami = 1 AS tsunami_alert
 FROM landing.earthquakes
 WHERE magnitude IS NOT NULL
 """
@@ -243,6 +243,14 @@ SELECT
     event_time,
     magnitude,
     mag_type,
+    place,
+    latitude,
+    longitude,
+    depth_km,
+    felt_reports,
+    tsunami_alert,
+    significance,
+    cast(event_time AS DATE) AS event_date,
     CASE
         WHEN magnitude >= 8.0 THEN 'Great'
         WHEN magnitude >= 7.0 THEN 'Major'
@@ -250,26 +258,18 @@ SELECT
         WHEN magnitude >= 5.0 THEN 'Moderate'
         WHEN magnitude >= 4.0 THEN 'Light'
         ELSE 'Minor'
-    END                                                         AS magnitude_class,
-    place,
+    END AS magnitude_class,
     CASE
         WHEN place LIKE '% of %'
             THEN trim(split_part(place, ' of ', 2))
         ELSE place
-    END                                                         AS region,
-    latitude,
-    longitude,
-    depth_km,
+    END AS region,
     CASE
-        WHEN depth_km < 70  THEN 'Shallow'
+        WHEN depth_km < 70 THEN 'Shallow'
         WHEN depth_km < 300 THEN 'Intermediate'
         ELSE 'Deep'
-    END                                                         AS depth_class,
-    felt_reports,
-    tsunami_alert,
-    significance,
-    CAST(event_time AS DATE)                                    AS event_date,
-    hour(event_time)                                            AS event_hour
+    END AS depth_class,
+    hour(event_time) AS event_hour
 FROM bronze.earthquakes
 """
 
@@ -279,15 +279,25 @@ SAMPLE_SILVER_DAILY_SQL = """\
 
 SELECT
     event_date,
-    COUNT(*)                                                    AS total_events,
-    round(AVG(magnitude), 2)                                    AS avg_magnitude,
-    MAX(magnitude)                                              AS max_magnitude,
-    round(AVG(depth_km), 1)                                     AS avg_depth_km,
-    SUM(CASE WHEN magnitude_class IN ('Strong','Major','Great')
-        THEN 1 ELSE 0 END)                                     AS significant_count,
-    SUM(CASE WHEN tsunami_alert THEN 1 ELSE 0 END)             AS tsunami_alerts,
-    SUM(felt_reports)                                           AS total_felt_reports,
-    ARG_MAX(place, magnitude)                                   AS strongest_location
+    count(*) AS total_events,
+    round(avg(magnitude), 2) AS avg_magnitude,
+    max(magnitude) AS max_magnitude,
+    round(avg(depth_km), 1) AS avg_depth_km,
+    sum(
+        CASE
+            WHEN
+                magnitude_class IN (
+                    'Strong', 'Major', 'Great'
+                )
+                THEN 1
+            ELSE 0
+        END
+    ) AS significant_count,
+    sum(
+        CASE WHEN tsunami_alert THEN 1 ELSE 0 END
+    ) AS tsunami_alerts,
+    sum(felt_reports) AS total_felt_reports,
+    arg_max(place, magnitude) AS strongest_location
 FROM silver.earthquake_events
 GROUP BY event_date
 ORDER BY event_date DESC
@@ -307,14 +317,33 @@ SELECT
     d.tsunami_alerts,
     d.total_felt_reports,
     d.strongest_location,
-    SUM(CASE WHEN e.magnitude_class = 'Minor'    THEN 1 ELSE 0 END) AS minor_count,
-    SUM(CASE WHEN e.magnitude_class = 'Light'    THEN 1 ELSE 0 END) AS light_count,
-    SUM(CASE WHEN e.magnitude_class = 'Moderate' THEN 1 ELSE 0 END) AS moderate_count,
-    SUM(CASE WHEN e.magnitude_class = 'Strong'   THEN 1 ELSE 0 END) AS strong_count,
-    SUM(CASE WHEN e.magnitude_class = 'Major'    THEN 1 ELSE 0 END) AS major_count,
-    SUM(CASE WHEN e.magnitude_class = 'Great'    THEN 1 ELSE 0 END) AS great_count
-FROM silver.earthquake_daily d
-JOIN silver.earthquake_events e ON e.event_date = d.event_date
+    sum(CASE
+        WHEN e.magnitude_class = 'Minor' THEN 1
+        ELSE 0
+    END) AS minor_count,
+    sum(CASE
+        WHEN e.magnitude_class = 'Light' THEN 1
+        ELSE 0
+    END) AS light_count,
+    sum(CASE
+        WHEN e.magnitude_class = 'Moderate' THEN 1
+        ELSE 0
+    END) AS moderate_count,
+    sum(CASE
+        WHEN e.magnitude_class = 'Strong' THEN 1
+        ELSE 0
+    END) AS strong_count,
+    sum(CASE
+        WHEN e.magnitude_class = 'Major' THEN 1
+        ELSE 0
+    END) AS major_count,
+    sum(CASE
+        WHEN e.magnitude_class = 'Great' THEN 1
+        ELSE 0
+    END) AS great_count
+FROM silver.earthquake_daily AS d
+INNER JOIN silver.earthquake_events AS e
+    ON d.event_date = e.event_date
 GROUP BY ALL
 ORDER BY d.event_date DESC
 """
@@ -348,17 +377,21 @@ SAMPLE_GOLD_REGIONS_SQL = """\
 
 SELECT
     region,
-    COUNT(*)                                                    AS total_events,
-    round(AVG(magnitude), 2)                                    AS avg_magnitude,
-    MAX(magnitude)                                              AS max_magnitude,
-    round(AVG(depth_km), 1)                                     AS avg_depth_km,
-    SUM(CASE WHEN magnitude >= 5.0 THEN 1 ELSE 0 END)          AS significant_events,
-    SUM(CASE WHEN tsunami_alert THEN 1 ELSE 0 END)             AS tsunami_alerts,
-    MIN(event_date)                                             AS first_event,
-    MAX(event_date)                                             AS last_event
+    count(*) AS total_events,
+    round(avg(magnitude), 2) AS avg_magnitude,
+    max(magnitude) AS max_magnitude,
+    round(avg(depth_km), 1) AS avg_depth_km,
+    sum(CASE
+        WHEN magnitude >= 5.0 THEN 1 ELSE 0
+    END) AS significant_events,
+    sum(CASE
+        WHEN tsunami_alert THEN 1 ELSE 0
+    END) AS tsunami_alerts,
+    min(event_date) AS first_event,
+    max(event_date) AS last_event
 FROM silver.earthquake_events
 GROUP BY region
-HAVING COUNT(*) >= 3
+HAVING count(*) >= 3
 ORDER BY total_events DESC
 """
 
