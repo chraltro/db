@@ -215,12 +215,17 @@ def execute_sql_cell(
             # For queries that return results, render as table
             if result.description:
                 columns = [desc[0] for desc in result.description]
-                rows = result.fetchall()
+                # Fetch only what we need for display (plus 1 to detect truncation)
+                max_display = 500
+                rows = result.fetchmany(max_display + 1)
+                truncated = len(rows) > max_display
+                display_rows = rows[:max_display]
                 outputs.append({
                     "type": "table",
                     "columns": columns,
-                    "rows": [[_serialize(v) for v in row] for row in rows[:500]],
-                    "total_rows": len(rows),
+                    "rows": [[_serialize(v) for v in row] for row in display_rows],
+                    "total_rows": len(display_rows),
+                    "truncated": truncated,
                 })
             else:
                 # DDL/DML: report what happened
@@ -622,6 +627,10 @@ def promote_sql_to_model(
     Returns:
         Path to the created .sql file
     """
+    # Validate identifiers to prevent path traversal and SQL injection
+    _validate_identifier(model_name, "model_name")
+    _validate_identifier(schema, "schema")
+
     # Parse existing config from SQL if present
     existing_config = _parse_sql_config(sql_source)
     query = _strip_sql_comments(sql_source).strip()
@@ -629,6 +638,7 @@ def promote_sql_to_model(
     # Use existing config values or defaults
     materialized = existing_config.get("materialized", "table")
     target_schema = existing_config.get("schema", schema)
+    _validate_identifier(target_schema, "target schema from config")
 
     # Infer dependencies from the SQL
     refs = _infer_table_refs(query)

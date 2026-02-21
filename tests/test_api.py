@@ -423,3 +423,41 @@ def test_list_notebooks(client, project):
     assert resp.status_code == 200
     data = resp.json()
     assert any(n["name"] == "test" for n in data)
+
+
+# --- Notebook path traversal tests ---
+
+
+def test_resolve_notebook_rejects_path_traversal(project):
+    """_resolve_notebook rejects paths that escape the project directory."""
+    from fastapi import HTTPException
+    import dp.server.app as server_app
+
+    with pytest.raises(HTTPException) as exc_info:
+        server_app._resolve_notebook(project, "../../../etc/passwd")
+    assert exc_info.value.status_code == 400
+
+    with pytest.raises(HTTPException) as exc_info:
+        server_app._resolve_notebook(project, "notebooks/../../../etc/passwd.dpnb")
+    assert exc_info.value.status_code == 400
+
+
+def test_run_cell_ingest_rejects_injection(client):
+    """Ingest cell via API rejects SQL injection in identifiers."""
+    import json as _json
+    resp = client.post(
+        "/api/notebooks/run-cell/test_nb",
+        json={
+            "source": _json.dumps({
+                "source_type": "csv",
+                "source_path": "/data/test.csv",
+                "target_schema": "landing; DROP TABLE--",
+                "target_table": "data",
+            }),
+            "cell_type": "ingest",
+        },
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert any(o["type"] == "error" for o in data["outputs"])
+    assert any("Invalid" in o.get("text", "") for o in data["outputs"])

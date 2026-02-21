@@ -1339,16 +1339,26 @@ def list_notebooks(request: Request) -> list[dict]:
 
 
 def _resolve_notebook(project_dir: Path, name: str) -> Path:
-    """Resolve a notebook name or path to a file path."""
+    """Resolve a notebook name or path to a file path.
+
+    Validates the resolved path stays within the project directory
+    to prevent path traversal attacks.
+    """
     # Try as a relative path first (e.g. "ingest/earthquakes.dpnb")
     if "/" in name or name.endswith(".dpnb"):
         candidate = project_dir / name
         if not candidate.suffix:
             candidate = candidate.with_suffix(".dpnb")
+        # Path traversal protection
+        if not candidate.resolve().is_relative_to(project_dir.resolve()):
+            raise HTTPException(400, "Invalid notebook path")
         if candidate.exists():
             return candidate
     # Fall back to notebooks/ directory
     nb_path = project_dir / "notebooks" / f"{name}.dpnb"
+    # Path traversal protection
+    if not nb_path.resolve().is_relative_to(project_dir.resolve()):
+        raise HTTPException(400, "Invalid notebook path")
     return nb_path
 
 

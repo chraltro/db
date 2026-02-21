@@ -933,3 +933,65 @@ def test_extract_notebook_outputs_mixed_cells():
     assert "landing.t4" in outputs
     # SELECT-only queries should not appear as outputs
     assert len(outputs) == 4
+
+
+# --- Promote validation tests ---
+
+
+def test_promote_rejects_invalid_model_name(tmp_path):
+    """Promote rejects model names with path traversal or invalid chars."""
+    transform_dir = tmp_path / "transform"
+
+    with pytest.raises(ValueError, match="Invalid"):
+        promote_sql_to_model(
+            sql_source="SELECT 1",
+            model_name="../../../evil",
+            schema="bronze",
+            transform_dir=transform_dir,
+        )
+
+    with pytest.raises(ValueError, match="Invalid"):
+        promote_sql_to_model(
+            sql_source="SELECT 1",
+            model_name="DROP TABLE users--",
+            schema="bronze",
+            transform_dir=transform_dir,
+        )
+
+
+def test_promote_rejects_invalid_schema(tmp_path):
+    """Promote rejects invalid schema names."""
+    transform_dir = tmp_path / "transform"
+
+    with pytest.raises(ValueError, match="Invalid"):
+        promote_sql_to_model(
+            sql_source="SELECT 1",
+            model_name="ok_model",
+            schema="silver; DROP TABLE--",
+            transform_dir=transform_dir,
+        )
+
+
+# --- SQL cell truncation test ---
+
+
+def test_execute_sql_cell_truncation():
+    """SQL cell uses fetchmany and reports truncation for large results."""
+    conn = duckdb.connect(":memory:")
+    # Generate a table with 600 rows (more than 500 display limit)
+    conn.execute("CREATE TABLE big AS SELECT range AS id FROM range(600)")
+    result = execute_sql_cell(conn, "SELECT * FROM big")
+    out = result["outputs"][0]
+    assert out["type"] == "table"
+    assert out["total_rows"] == 500
+    assert out["truncated"] is True
+    conn.close()
+
+
+def test_execute_sql_cell_no_truncation():
+    """SQL cell doesn't report truncation for small results."""
+    conn = duckdb.connect(":memory:")
+    result = execute_sql_cell(conn, "SELECT 1 AS id")
+    out = result["outputs"][0]
+    assert out["truncated"] is False
+    conn.close()
