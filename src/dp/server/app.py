@@ -1299,12 +1299,6 @@ def get_scheduler_status(request: Request) -> dict:
 # --- Notebooks ---
 
 
-class NotebookCellRequest(BaseModel):
-    source: str = Field(..., max_length=1_000_000)
-    cell_id: str | None = Field(default=None, max_length=200)
-    reset: bool = False
-
-
 # Per-notebook namespace store for persistent cell execution.
 # Bounded to prevent unbounded memory growth — evicts oldest entries.
 _NOTEBOOK_NS_MAX = 50
@@ -1394,7 +1388,7 @@ def create_notebook_endpoint(request: Request, name: str, title: str = "") -> di
 
 @app.post("/api/notebooks/run/{name:path}")
 def run_notebook_endpoint(request: Request, name: str) -> dict:
-    """Execute all cells in a notebook."""
+    """Execute all cells in a notebook (code, sql, and ingest)."""
     _require_permission(request, "execute")
     from dp.engine.notebook import load_notebook, run_notebook, save_notebook
     nb_path = _resolve_notebook(_get_project_dir(), name)
@@ -1404,32 +1398,195 @@ def run_notebook_endpoint(request: Request, name: str) -> dict:
     db_path = _get_db_path()
     conn = connect(db_path)
     try:
-        result = run_notebook(conn, nb)
+        result = run_notebook(conn, nb, project_dir=_get_project_dir())
         save_notebook(nb_path, result)
         return result
     finally:
         conn.close()
 
 
+class NotebookRunCellRequest(BaseModel):
+    source: str = Field(..., max_length=1_000_000)
+    cell_type: str = Field(default="code", pattern=r"^(code|sql|ingest)$")
+    cell_id: str | None = Field(default=None, max_length=200)
+    reset: bool = False
+
+
 @app.post("/api/notebooks/run-cell/{name:path}")
-def run_cell_endpoint(request: Request, name: str, req: NotebookCellRequest) -> dict:
-    """Execute a single notebook cell.
+def run_cell_endpoint(request: Request, name: str, req: NotebookRunCellRequest) -> dict:
+    """Execute a single notebook cell (code, sql, or ingest).
 
     Namespaces are persisted per notebook so variables defined in one cell
     are available in subsequent cells. Send reset=true to clear the namespace
     (e.g. at the start of Run All).
     """
     _require_permission(request, "execute")
-    from dp.engine.notebook import execute_cell
     if req.reset:
         _notebook_namespaces.pop(name, None)
-    namespace = _notebook_namespaces.get(name)
     db_path = _get_db_path()
     conn = connect(db_path)
     try:
-        result = execute_cell(conn, req.source, namespace)
-        _notebook_ns_set(name, result["namespace"])
-        return {"outputs": result["outputs"], "duration_ms": result["duration_ms"]}
+        if req.cell_type == "sql":
+            from dp.engine.notebook import execute_sql_cell
+            result = execute_sql_cell(conn, req.source)
+            return {"outputs": result["outputs"], "duration_ms": result["duration_ms"], "config": result.get("config", {})}
+        elif req.cell_type == "ingest":
+            from dp.engine.notebook import execute_ingest_cell
+            result = execute_ingest_cell(conn, req.source, _get_project_dir())
+            return {"outputs": result["outputs"], "duration_ms": result["duration_ms"]}
+        else:
+            from dp.engine.notebook import execute_cell
+            namespace = _notebook_namespaces.get(name)
+            result = execute_cell(conn, req.source, namespace)
+            _notebook_ns_set(name, result["namespace"])
+            return {"outputs": result["outputs"], "duration_ms": result["duration_ms"]}
+    finally:
+        conn.close()
+
+
+# --- Promote to model ---
+
+
+class PromoteToModelRequest(BaseModel):
+    model_config = {"protected_namespaces": ()}
+
+    sql_source: str = Field(..., min_length=1, max_length=1_000_000)
+    model_name: str = Field(..., min_length=1, max_length=200, pattern=r"^[a-zA-Z_][a-zA-Z0-9_]*$")
+    target_schema: str = Field(default="bronze", min_length=1, max_length=100, pattern=r"^[a-zA-Z_][a-zA-Z0-9_]*$")
+    description: str = Field(default="", max_length=1000)
+
+
+@app.post("/api/notebooks/promote-to-model")
+def promote_to_model_endpoint(request: Request, req: PromoteToModelRequest) -> dict:
+    """Promote a SQL cell from a notebook to a transform model file."""
+    _require_permission(request, "write")
+    from dp.engine.notebook import promote_sql_to_model
+
+    project_dir = _get_project_dir()
+    transform_dir = project_dir / "transform"
+
+    try:
+        model_path = promote_sql_to_model(
+            sql_source=req.sql_source,
+            model_name=req.model_name,
+            schema=req.target_schema,
+            transform_dir=transform_dir,
+            description=req.description,
+        )
+        rel_path = str(model_path.relative_to(project_dir))
+
+        # Validate the new model fits into the DAG
+        validation_warnings = []
+        try:
+            models = discover_models(transform_dir)
+            build_dag(models)
+        except Exception as e:
+            validation_warnings.append(f"DAG validation warning: {e}")
+
+        return {
+            "status": "created",
+            "path": rel_path,
+            "full_name": f"{req.target_schema}.{req.model_name}",
+            "validation_warnings": validation_warnings,
+        }
+    except Exception as e:
+        raise HTTPException(400, f"Failed to promote: {e}")
+
+
+# --- Model to notebook ---
+
+
+@app.post("/api/notebooks/model-to-notebook/{model_name:path}")
+def model_to_notebook_endpoint(request: Request, model_name: str) -> dict:
+    """Create a notebook from a transform model for interactive debugging."""
+    _require_permission(request, "write")
+    from dp.engine.notebook import model_to_notebook, save_notebook
+
+    project_dir = _get_project_dir()
+    transform_dir = project_dir / "transform"
+    db_path = _get_db_path()
+    conn = connect(db_path)
+    try:
+        nb = model_to_notebook(conn, model_name, transform_dir, project_dir / "notebooks")
+
+        # Save the notebook
+        safe_name = model_name.replace(".", "_")
+        nb_path = project_dir / "notebooks" / f"debug_{safe_name}.dpnb"
+        save_notebook(nb_path, nb)
+
+        return {
+            "status": "created",
+            "path": str(nb_path.relative_to(project_dir)),
+            "notebook": nb,
+        }
+    except ValueError as e:
+        raise HTTPException(404, str(e))
+    finally:
+        conn.close()
+
+
+# --- Debug notebook ---
+
+
+@app.post("/api/notebooks/debug/{model_name:path}")
+def debug_notebook_endpoint(request: Request, model_name: str) -> dict:
+    """Generate a debug notebook for a failed model.
+
+    Optionally looks up the most recent failure from run_log.
+    """
+    _require_permission(request, "write")
+    from dp.engine.notebook import generate_debug_notebook, save_notebook
+
+    project_dir = _get_project_dir()
+    transform_dir = project_dir / "transform"
+    db_path = _get_db_path()
+    conn = connect(db_path)
+    try:
+        # Look up most recent error from run log
+        error_message = None
+        assertion_failures = None
+        try:
+            ensure_meta_table(conn)
+            row = conn.execute(
+                "SELECT error FROM _dp_internal.run_log "
+                "WHERE target = ? AND status IN ('error', 'assertion_failed') "
+                "ORDER BY started_at DESC LIMIT 1",
+                [model_name],
+            ).fetchone()
+            if row and row[0]:
+                error_message = row[0]
+
+            # Check for assertion failures
+            assertion_rows = conn.execute(
+                "SELECT expression, detail FROM _dp_internal.assertion_results "
+                "WHERE model_path = ? AND passed = false "
+                "ORDER BY checked_at DESC LIMIT 10",
+                [model_name],
+            ).fetchall()
+            if assertion_rows:
+                assertion_failures = [
+                    {"expression": r[0], "detail": r[1]} for r in assertion_rows
+                ]
+        except Exception:
+            pass
+
+        nb = generate_debug_notebook(
+            conn, model_name, transform_dir,
+            error_message=error_message,
+            assertion_failures=assertion_failures,
+        )
+
+        safe_name = model_name.replace(".", "_")
+        nb_path = project_dir / "notebooks" / f"debug_{safe_name}.dpnb"
+        save_notebook(nb_path, nb)
+
+        return {
+            "status": "created",
+            "path": str(nb_path.relative_to(project_dir)),
+            "notebook": nb,
+        }
+    except ValueError as e:
+        raise HTTPException(404, str(e))
     finally:
         conn.close()
 

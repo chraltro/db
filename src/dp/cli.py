@@ -1621,6 +1621,154 @@ def validate(
         console.print(f"[green]Validation passed ({len(warnings)} warning(s))[/green]")
 
 
+# --- debug ---
+
+
+@app.command()
+def debug(
+    model_name: Annotated[str, typer.Argument(help="Model to debug (e.g. silver.customers)")],
+    project_dir: Annotated[Optional[Path], typer.Option("--project", "-p", help="Project directory (default: current dir)")] = None,
+) -> None:
+    """Generate a debug notebook for a failed model.
+
+    Creates a .dpnb notebook pre-populated with:
+    - Error description from the run log
+    - SQL cells for each upstream dependency
+    - The failing model's SQL for interactive editing
+    - Assertion failure diagnostics (if applicable)
+
+    Use this to interactively debug transform failures.
+    """
+    from dp.config import load_project
+    from dp.engine.database import connect, ensure_meta_table
+    from dp.engine.notebook import generate_debug_notebook, save_notebook
+
+    project_dir = _resolve_project(project_dir)
+    config = load_project(project_dir)
+    transform_dir = project_dir / "transform"
+    db_path = project_dir / config.database.path
+
+    if not db_path.exists():
+        console.print("[yellow]No warehouse database found. Run a pipeline first.[/yellow]")
+        raise typer.Exit(1)
+
+    conn = connect(db_path)
+    try:
+        ensure_meta_table(conn)
+
+        # Look up most recent error from run log
+        error_message = None
+        try:
+            row = conn.execute(
+                "SELECT error FROM _dp_internal.run_log "
+                "WHERE target = ? AND status IN ('error', 'assertion_failed') "
+                "ORDER BY started_at DESC LIMIT 1",
+                [model_name],
+            ).fetchone()
+            if row and row[0]:
+                error_message = row[0]
+        except Exception:
+            pass
+
+        # Check for assertion failures
+        assertion_failures = None
+        try:
+            assertion_rows = conn.execute(
+                "SELECT expression, detail FROM _dp_internal.assertion_results "
+                "WHERE model_path = ? AND passed = false "
+                "ORDER BY checked_at DESC LIMIT 10",
+                [model_name],
+            ).fetchall()
+            if assertion_rows:
+                assertion_failures = [
+                    {"expression": r[0], "detail": r[1]} for r in assertion_rows
+                ]
+        except Exception:
+            pass
+
+        nb = generate_debug_notebook(
+            conn, model_name, transform_dir,
+            error_message=error_message,
+            assertion_failures=assertion_failures,
+        )
+
+        safe_name = model_name.replace(".", "_")
+        nb_path = project_dir / "notebooks" / f"debug_{safe_name}.dpnb"
+        save_notebook(nb_path, nb)
+
+        rel_path = nb_path.relative_to(project_dir)
+        console.print(f"[green]Debug notebook created:[/green] {rel_path}")
+        if error_message:
+            console.print(f"  [dim]Error: {error_message[:120]}{'...' if len(error_message) > 120 else ''}[/dim]")
+        if assertion_failures:
+            for af in assertion_failures:
+                console.print(f"  [red]FAIL[/red]  assert: {af['expression']} ({af.get('detail', '')})")
+        console.print()
+        console.print(f"Open with: [bold]dp serve[/bold] and navigate to notebooks, or edit {rel_path} directly.")
+
+    except ValueError as e:
+        console.print(f"[red]{e}[/red]")
+        raise typer.Exit(1)
+    finally:
+        conn.close()
+
+
+# --- promote ---
+
+
+@app.command()
+def promote(
+    sql_source: Annotated[str, typer.Argument(help="SQL source string or path to a .dpnb cell")],
+    name: Annotated[str, typer.Option("--name", "-n", help="Model name")] = "",
+    schema: Annotated[str, typer.Option("--schema", "-s", help="Target schema")] = "bronze",
+    description: Annotated[str, typer.Option("--desc", help="Model description")] = "",
+    project_dir: Annotated[Optional[Path], typer.Option("--project", "-p", help="Project directory (default: current dir)")] = None,
+) -> None:
+    """Promote SQL to a transform model file.
+
+    Takes a SQL query and creates a proper .sql model file in the transform
+    directory with auto-generated config and depends_on comments.
+    """
+    from dp.engine.notebook import promote_sql_to_model
+    from dp.engine.transform import build_dag, discover_models
+
+    project_dir = _resolve_project(project_dir)
+    transform_dir = project_dir / "transform"
+
+    # If sql_source looks like a file path, read its contents
+    source_path = Path(sql_source)
+    if source_path.exists() and source_path.suffix == ".sql":
+        sql_source = source_path.read_text()
+
+    if not name:
+        console.print("[red]Model name is required (--name)[/red]")
+        raise typer.Exit(1)
+
+    try:
+        model_path = promote_sql_to_model(
+            sql_source=sql_source,
+            model_name=name,
+            schema=schema,
+            transform_dir=transform_dir,
+            description=description,
+        )
+
+        rel_path = model_path.relative_to(project_dir)
+        console.print(f"[green]Model created:[/green] {rel_path}")
+
+        # Validate the new model fits into the DAG
+        try:
+            models = discover_models(transform_dir)
+            build_dag(models)
+            console.print(f"[green]DAG validation passed[/green] ({len(models)} models)")
+        except Exception as e:
+            console.print(f"[yellow]DAG validation warning:[/yellow] {e}")
+
+    except Exception as e:
+        console.print(f"[red]Failed to promote: {e}[/red]")
+        raise typer.Exit(1)
+
+
 # --- context ---
 
 
