@@ -23,7 +23,7 @@ def ensure_schemas(conn: duckdb.DuckDBPyConnection, schemas: list[str]) -> None:
 
 
 def ensure_meta_table(conn: duckdb.DuckDBPyConnection) -> None:
-    """Create the internal metadata table for change tracking."""
+    """Create the internal metadata tables for change tracking, profiling, and assertions."""
     conn.execute("""
         CREATE SCHEMA IF NOT EXISTS _dp_internal
     """)
@@ -50,6 +50,41 @@ def ensure_meta_table(conn: duckdb.DuckDBPyConnection) -> None:
             rows_affected BIGINT DEFAULT 0,
             error        VARCHAR,
             log_output   VARCHAR
+        )
+    """)
+    # Model profiling stats (auto-computed after each build)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS _dp_internal.model_profiles (
+            model_path       VARCHAR PRIMARY KEY,
+            row_count        BIGINT DEFAULT 0,
+            column_count     INTEGER DEFAULT 0,
+            null_percentages JSON,
+            distinct_counts  JSON,
+            profiled_at      TIMESTAMP DEFAULT current_timestamp
+        )
+    """)
+    # Data quality assertion results
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS _dp_internal.assertion_results (
+            id          VARCHAR DEFAULT gen_random_uuid()::VARCHAR,
+            model_path  VARCHAR NOT NULL,
+            expression  VARCHAR NOT NULL,
+            passed      BOOLEAN NOT NULL,
+            detail      VARCHAR,
+            checked_at  TIMESTAMP DEFAULT current_timestamp
+        )
+    """)
+    # Alert/notification log
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS _dp_internal.alert_log (
+            id          VARCHAR DEFAULT gen_random_uuid()::VARCHAR,
+            alert_type  VARCHAR NOT NULL,
+            channel     VARCHAR NOT NULL,
+            target      VARCHAR,
+            message     VARCHAR NOT NULL,
+            status      VARCHAR NOT NULL,
+            sent_at     TIMESTAMP DEFAULT current_timestamp,
+            error       VARCHAR
         )
     """)
 

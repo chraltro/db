@@ -146,9 +146,15 @@ def run(
 def transform(
     targets: Annotated[Optional[list[str]], typer.Argument(help="Specific models to run")] = None,
     force: Annotated[bool, typer.Option("--force", "-f", help="Force rebuild all models")] = False,
+    parallel: Annotated[bool, typer.Option("--parallel", help="Run independent models in parallel")] = False,
+    workers: Annotated[int, typer.Option("--workers", "-w", help="Max parallel workers")] = 4,
     project_dir: Annotated[Optional[Path], typer.Option("--project", "-p", help="Project directory (default: current dir)")] = None,
 ) -> None:
-    """Parse SQL models, resolve DAG, execute in dependency order."""
+    """Parse SQL models, resolve DAG, execute in dependency order.
+
+    Supports incremental models, data quality assertions, auto-profiling,
+    and parallel execution of independent models.
+    """
     from dp.config import load_project
     from dp.engine.database import connect
     from dp.engine.transform import run_transform
@@ -157,20 +163,43 @@ def transform(
     config = load_project(project_dir)
     transform_dir = project_dir / "transform"
 
-    console.print("[bold]Transform:[/bold]")
+    mode = "parallel" if parallel else "sequential"
+    console.print(f"[bold]Transform[/bold] [dim]({mode})[/dim]:")
 
     db_path = project_dir / config.database.path
     conn = connect(db_path)
     try:
-        results = run_transform(conn, transform_dir, targets=targets, force=force)
+        results = run_transform(
+            conn, transform_dir, targets=targets, force=force,
+            parallel=parallel, max_workers=workers,
+        )
         if not results:
             return
         built = sum(1 for s in results.values() if s == "built")
         skipped = sum(1 for s in results.values() if s == "skipped")
         errors = sum(1 for s in results.values() if s == "error")
+        assertions_failed = sum(1 for s in results.values() if s == "assertion_failed")
         console.print()
-        console.print(f"  {built} built, {skipped} skipped, {errors} errors")
-        if errors:
+        parts = [f"{built} built", f"{skipped} skipped", f"{errors} errors"]
+        if assertions_failed:
+            parts.append(f"{assertions_failed} assertion failures")
+        console.print(f"  {', '.join(parts)}")
+
+        # Send alerts if configured
+        if config.alerts.slack_webhook_url or config.alerts.webhook_url:
+            from dp.engine.alerts import AlertConfig, alert_pipeline_success, alert_pipeline_failure
+            alert_cfg = AlertConfig(
+                slack_webhook_url=config.alerts.slack_webhook_url,
+                webhook_url=config.alerts.webhook_url,
+                channels=config.alerts.channels,
+            )
+            if errors or assertions_failed:
+                if config.alerts.on_failure:
+                    alert_pipeline_failure("transform", 0, f"{errors} errors, {assertions_failed} assertion failures", alert_cfg, conn)
+            elif config.alerts.on_success and built > 0:
+                alert_pipeline_success("transform", 0, alert_cfg, conn, models_built=built)
+
+        if errors or assertions_failed:
             raise typer.Exit(1)
     finally:
         conn.close()
@@ -2065,6 +2094,259 @@ def connectors_available() -> None:
     console.print(table)
     console.print()
     console.print("Set up a connector with: [bold]dp connect <type>[/bold]")
+
+
+# --- freshness ---
+
+
+@app.command()
+def freshness(
+    hours: Annotated[float, typer.Option("--hours", "-h", help="Max age in hours before a model is stale")] = 24.0,
+    alert: Annotated[bool, typer.Option("--alert", help="Send alerts for stale models")] = False,
+    project_dir: Annotated[Optional[Path], typer.Option("--project", "-p", help="Project directory (default: current dir)")] = None,
+) -> None:
+    """Check model freshness: which models haven't been updated recently?"""
+    from dp.config import load_project
+    from dp.engine.database import connect, ensure_meta_table
+    from dp.engine.transform import check_freshness
+
+    project_dir = _resolve_project(project_dir)
+    config = load_project(project_dir)
+    db_path = project_dir / config.database.path
+
+    if not db_path.exists():
+        console.print("[yellow]No warehouse database found.[/yellow]")
+        return
+
+    conn = connect(db_path, read_only=True)
+    try:
+        ensure_meta_table(conn)
+        results = check_freshness(conn, max_age_hours=hours)
+        if not results:
+            console.print("[yellow]No model state found. Run a transform first.[/yellow]")
+            return
+
+        table = Table(title=f"Model Freshness (stale > {hours}h)")
+        table.add_column("Model", style="bold")
+        table.add_column("Last Run")
+        table.add_column("Hours Ago", justify="right")
+        table.add_column("Rows", justify="right")
+        table.add_column("Status")
+
+        stale_models = []
+        for r in results:
+            hours_ago = r["hours_since_run"]
+            is_stale = r["is_stale"]
+            if is_stale:
+                stale_models.append(r)
+            status = "[red]STALE[/red]" if is_stale else "[green]fresh[/green]"
+            table.add_row(
+                r["model"],
+                r["last_run_at"][:19] if r["last_run_at"] else "never",
+                f"{hours_ago}h" if hours_ago is not None else "?",
+                str(r["row_count"]) if r["row_count"] else "",
+                status,
+            )
+        console.print(table)
+
+        if stale_models:
+            console.print(f"\n[yellow]{len(stale_models)} stale model(s)[/yellow]")
+            if alert and (config.alerts.slack_webhook_url or config.alerts.webhook_url):
+                from dp.engine.alerts import AlertConfig, alert_stale_models
+                alert_cfg = AlertConfig(
+                    slack_webhook_url=config.alerts.slack_webhook_url,
+                    webhook_url=config.alerts.webhook_url,
+                    channels=config.alerts.channels,
+                )
+                alert_stale_models(stale_models, alert_cfg)
+                console.print("[dim]Stale alert sent.[/dim]")
+        else:
+            console.print(f"\n[green]All models are fresh (within {hours}h).[/green]")
+    finally:
+        conn.close()
+
+
+# --- lineage ---
+
+
+@app.command()
+def lineage(
+    model: Annotated[str, typer.Argument(help="Model name (e.g. gold.earthquake_summary)")],
+    project_dir: Annotated[Optional[Path], typer.Option("--project", "-p", help="Project directory (default: current dir)")] = None,
+    json_output: Annotated[bool, typer.Option("--json", help="Output as JSON")] = False,
+) -> None:
+    """Show column-level lineage for a model. Traces each output column back to its source."""
+    import json as json_mod
+
+    from dp.engine.transform import discover_models, extract_column_lineage
+
+    project_dir = _resolve_project(project_dir)
+    transform_dir = project_dir / "transform"
+    models = discover_models(transform_dir)
+    model_map = {m.full_name: m for m in models}
+
+    target = model_map.get(model)
+    if not target:
+        # Try matching by short name
+        matches = [m for m in models if m.name == model]
+        if matches:
+            target = matches[0]
+        else:
+            console.print(f"[red]Model '{model}' not found.[/red]")
+            available = [m.full_name for m in models]
+            if available:
+                console.print(f"[dim]Available: {', '.join(available)}[/dim]")
+            raise typer.Exit(1)
+
+    lineage_map = extract_column_lineage(target)
+
+    if json_output:
+        console.print(json_mod.dumps(lineage_map, indent=2))
+        return
+
+    console.print(f"[bold]Column lineage for {target.full_name}:[/bold]\n")
+    for out_col, sources in lineage_map.items():
+        if sources:
+            source_strs = [f"{s['source_table']}.{s['source_column']}" for s in sources]
+            console.print(f"  [cyan]{out_col}[/cyan] <- {', '.join(source_strs)}")
+        else:
+            console.print(f"  [cyan]{out_col}[/cyan] <- [dim](computed)[/dim]")
+
+
+# --- profile ---
+
+
+@app.command()
+def profile(
+    model: Annotated[Optional[str], typer.Argument(help="Model name (e.g. gold.earthquake_summary)")] = None,
+    project_dir: Annotated[Optional[Path], typer.Option("--project", "-p", help="Project directory (default: current dir)")] = None,
+) -> None:
+    """Show auto-computed profile stats for models (row counts, nulls, cardinality)."""
+    import json as json_mod
+
+    from dp.config import load_project
+    from dp.engine.database import connect, ensure_meta_table
+
+    project_dir = _resolve_project(project_dir)
+    config = load_project(project_dir)
+    db_path = project_dir / config.database.path
+
+    if not db_path.exists():
+        console.print("[yellow]No warehouse database found.[/yellow]")
+        return
+
+    conn = connect(db_path, read_only=True)
+    try:
+        ensure_meta_table(conn)
+
+        if model:
+            # Show detailed profile for a specific model
+            row = conn.execute(
+                "SELECT model_path, row_count, column_count, null_percentages, distinct_counts, profiled_at "
+                "FROM _dp_internal.model_profiles WHERE model_path = ?",
+                [model],
+            ).fetchone()
+            if not row:
+                console.print(f"[yellow]No profile data for '{model}'. Run dp transform first.[/yellow]")
+                return
+
+            model_path, row_count, col_count, null_pcts_json, distinct_json, profiled_at = row
+            null_pcts = json_mod.loads(null_pcts_json) if null_pcts_json else {}
+            distinct = json_mod.loads(distinct_json) if distinct_json else {}
+
+            console.print(f"[bold]{model_path}[/bold]  ({row_count:,} rows, {col_count} columns)")
+            console.print(f"  Profiled at: {str(profiled_at)[:19]}\n")
+
+            table = Table(title="Column Statistics")
+            table.add_column("Column", style="bold")
+            table.add_column("Null %", justify="right")
+            table.add_column("Distinct", justify="right")
+            table.add_column("Status")
+
+            for col_name in null_pcts:
+                null_pct = null_pcts.get(col_name, 0)
+                dist = distinct.get(col_name, 0)
+                if null_pct > 50:
+                    status = "[red]high nulls[/red]"
+                elif null_pct > 0:
+                    status = "[yellow]has nulls[/yellow]"
+                else:
+                    status = "[green]ok[/green]"
+                table.add_row(col_name, f"{null_pct}%", str(dist), status)
+            console.print(table)
+        else:
+            # Show summary for all profiled models
+            rows = conn.execute(
+                "SELECT model_path, row_count, column_count, profiled_at "
+                "FROM _dp_internal.model_profiles ORDER BY model_path"
+            ).fetchall()
+            if not rows:
+                console.print("[yellow]No profile data. Run dp transform first.[/yellow]")
+                return
+
+            table = Table(title="Model Profiles")
+            table.add_column("Model", style="bold")
+            table.add_column("Rows", justify="right")
+            table.add_column("Columns", justify="right")
+            table.add_column("Profiled At")
+            for r in rows:
+                table.add_row(r[0], f"{r[1]:,}", str(r[2]), str(r[3])[:19] if r[3] else "")
+            console.print(table)
+    finally:
+        conn.close()
+
+
+# --- assertions ---
+
+
+@app.command()
+def assertions(
+    project_dir: Annotated[Optional[Path], typer.Option("--project", "-p", help="Project directory (default: current dir)")] = None,
+) -> None:
+    """Show recent data quality assertion results."""
+    from dp.config import load_project
+    from dp.engine.database import connect, ensure_meta_table
+
+    project_dir = _resolve_project(project_dir)
+    config = load_project(project_dir)
+    db_path = project_dir / config.database.path
+
+    if not db_path.exists():
+        console.print("[yellow]No warehouse database found.[/yellow]")
+        return
+
+    conn = connect(db_path, read_only=True)
+    try:
+        ensure_meta_table(conn)
+        rows = conn.execute(
+            """
+            SELECT model_path, expression, passed, detail, checked_at
+            FROM _dp_internal.assertion_results
+            ORDER BY checked_at DESC
+            LIMIT 50
+            """
+        ).fetchall()
+        if not rows:
+            console.print("[yellow]No assertion results yet. Add -- assert: comments to your SQL models.[/yellow]")
+            console.print()
+            console.print("[dim]Example:[/dim]")
+            console.print("  [dim]-- assert: row_count > 0[/dim]")
+            console.print("  [dim]-- assert: no_nulls(email)[/dim]")
+            console.print("  [dim]-- assert: unique(customer_id)[/dim]")
+            return
+
+        table = Table(title="Data Quality Assertions")
+        table.add_column("Model", style="bold")
+        table.add_column("Assertion")
+        table.add_column("Status")
+        table.add_column("Detail")
+        table.add_column("Checked At")
+        for r in rows:
+            status = "[green]PASS[/green]" if r[2] else "[red]FAIL[/red]"
+            table.add_row(r[0], r[1], status, r[3] or "", str(r[4])[:19] if r[4] else "")
+        console.print(table)
+    finally:
+        conn.close()
 
 
 if __name__ == "__main__":
