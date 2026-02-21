@@ -62,6 +62,56 @@ class AlertsConfig:
 
 
 @dataclass
+class EnvironmentConfig:
+    """A single environment override (e.g. dev, prod)."""
+
+    database: dict[str, Any] = field(default_factory=dict)  # {"path": "dev.duckdb"}
+    connections: dict[str, dict[str, Any]] = field(default_factory=dict)
+
+
+@dataclass
+class SourceColumn:
+    """A column in a source table."""
+
+    name: str
+    description: str = ""
+
+
+@dataclass
+class SourceTable:
+    """A declared external source table."""
+
+    name: str
+    description: str = ""
+    columns: list[SourceColumn] = field(default_factory=list)
+    loaded_at_column: str | None = None
+
+
+@dataclass
+class SourceConfig:
+    """An external data source declaration."""
+
+    name: str
+    schema: str = "landing"
+    description: str = ""
+    tables: list[SourceTable] = field(default_factory=list)
+    freshness_hours: float | None = None  # max age SLA
+    connection: str | None = None
+
+
+@dataclass
+class ExposureConfig:
+    """A downstream consumer declaration."""
+
+    name: str
+    description: str = ""
+    owner: str = ""
+    depends_on: list[str] = field(default_factory=list)
+    type: str = ""  # "dashboard", "report", "ml_model", etc.
+    url: str = ""
+
+
+@dataclass
 class ProjectConfig:
     name: str = "default"
     description: str = ""
@@ -70,6 +120,10 @@ class ProjectConfig:
     streams: dict[str, StreamConfig] = field(default_factory=dict)
     lint: LintConfig = field(default_factory=LintConfig)
     alerts: AlertsConfig = field(default_factory=AlertsConfig)
+    environments: dict[str, EnvironmentConfig] = field(default_factory=dict)
+    active_environment: str | None = None
+    sources: list[SourceConfig] = field(default_factory=list)
+    exposures: list[ExposureConfig] = field(default_factory=list)
     project_dir: Path = field(default_factory=Path.cwd)
     _raw: dict[str, Any] = field(default_factory=dict)
 
@@ -99,8 +153,66 @@ def _parse_stream_steps(raw_steps: list[dict]) -> list[StreamStep]:
     return steps
 
 
-def load_project(project_dir: Path | None = None) -> ProjectConfig:
-    """Load project.yml from the given directory (or cwd)."""
+def _parse_sources(project_dir: Path) -> list[SourceConfig]:
+    """Parse sources.yml if it exists."""
+    sources_path = project_dir / "sources.yml"
+    if not sources_path.exists():
+        return []
+    raw = yaml.safe_load(sources_path.read_text()) or {}
+    raw = _expand_env_vars(raw)
+    sources = []
+    for src_raw in raw.get("sources", []):
+        tables = []
+        for t_raw in src_raw.get("tables", []):
+            columns = [
+                SourceColumn(name=c.get("name", ""), description=c.get("description", ""))
+                for c in t_raw.get("columns", [])
+            ]
+            tables.append(SourceTable(
+                name=t_raw.get("name", ""),
+                description=t_raw.get("description", ""),
+                columns=columns,
+                loaded_at_column=t_raw.get("loaded_at_column"),
+            ))
+        sources.append(SourceConfig(
+            name=src_raw.get("name", ""),
+            schema=src_raw.get("schema", "landing"),
+            description=src_raw.get("description", ""),
+            tables=tables,
+            freshness_hours=float(src_raw["freshness_hours"]) if "freshness_hours" in src_raw else None,
+            connection=src_raw.get("connection"),
+        ))
+    return sources
+
+
+def _parse_exposures(project_dir: Path) -> list[ExposureConfig]:
+    """Parse exposures.yml if it exists."""
+    exposures_path = project_dir / "exposures.yml"
+    if not exposures_path.exists():
+        return []
+    raw = yaml.safe_load(exposures_path.read_text()) or {}
+    raw = _expand_env_vars(raw)
+    exposures = []
+    for exp_raw in raw.get("exposures", []):
+        exposures.append(ExposureConfig(
+            name=exp_raw.get("name", ""),
+            description=exp_raw.get("description", ""),
+            owner=exp_raw.get("owner", ""),
+            depends_on=exp_raw.get("depends_on", []),
+            type=exp_raw.get("type", ""),
+            url=exp_raw.get("url", ""),
+        ))
+    return exposures
+
+
+def load_project(project_dir: Path | None = None, env: str | None = None) -> ProjectConfig:
+    """Load project.yml from the given directory (or cwd).
+
+    Args:
+        project_dir: Path to the project directory.
+        env: Environment name to activate (e.g. "dev", "prod").
+             If environments are defined and env is None, defaults to "dev".
+    """
     from dp.engine.secrets import load_env
 
     project_dir = Path(project_dir) if project_dir else Path.cwd()
@@ -119,11 +231,12 @@ def load_project(project_dir: Path | None = None) -> ProjectConfig:
     db_raw = raw.get("database", {})
     database = DatabaseConfig(path=db_raw.get("path", "warehouse.duckdb"))
 
-    # Connections
+    # Connections (make a deep copy of each dict to avoid mutating raw)
     connections = {}
     for name, conn_raw in raw.get("connections", {}).items():
-        conn_type = conn_raw.pop("type", "")
-        connections[name] = ConnectionConfig(type=conn_type, params=conn_raw)
+        conn_raw_copy = dict(conn_raw)
+        conn_type = conn_raw_copy.pop("type", "")
+        connections[name] = ConnectionConfig(type=conn_type, params=conn_raw_copy)
 
     # Streams
     streams = {}
@@ -157,6 +270,34 @@ def load_project(project_dir: Path | None = None) -> ProjectConfig:
         freshness_hours=float(alerts_raw.get("freshness_hours", 24.0)),
     )
 
+    # Environments
+    environments: dict[str, EnvironmentConfig] = {}
+    for env_name, env_raw in raw.get("environments", {}).items():
+        environments[env_name] = EnvironmentConfig(
+            database=env_raw.get("database", {}),
+            connections=env_raw.get("connections", {}),
+        )
+
+    # Apply environment overrides
+    active_env = env
+    if environments and active_env is None:
+        active_env = "dev" if "dev" in environments else None
+    if active_env and active_env in environments:
+        env_cfg = environments[active_env]
+        if env_cfg.database:
+            if "path" in env_cfg.database:
+                database = DatabaseConfig(path=env_cfg.database["path"])
+        for conn_name, conn_overrides in env_cfg.connections.items():
+            if conn_name in connections:
+                connections[conn_name].params.update(conn_overrides)
+            else:
+                conn_type = conn_overrides.pop("type", "") if isinstance(conn_overrides, dict) else ""
+                connections[conn_name] = ConnectionConfig(type=conn_type, params=conn_overrides)
+
+    # Sources and exposures
+    sources = _parse_sources(project_dir)
+    exposures = _parse_exposures(project_dir)
+
     return ProjectConfig(
         name=raw.get("name", project_dir.name),
         description=raw.get("description", ""),
@@ -165,6 +306,10 @@ def load_project(project_dir: Path | None = None) -> ProjectConfig:
         streams=streams,
         lint=lint,
         alerts=alerts,
+        environments=environments,
+        active_environment=active_env if active_env and active_env in environments else None,
+        sources=sources,
+        exposures=exposures,
         project_dir=project_dir,
         _raw=raw,
     )

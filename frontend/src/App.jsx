@@ -23,6 +23,9 @@ import GuideTour from "./GuideTour";
 import ErrorBoundary from "./ErrorBoundary";
 import Hint from "./Hint";
 import { useHintTriggerFn } from "./HintSystem";
+import EnvironmentSwitcher from "./EnvironmentSwitcher";
+import ModelNotebookView from "./ModelNotebookView";
+import NewModelDialog from "./NewModelDialog";
 
 const GUIDE_STEPS = [
   {
@@ -420,14 +423,25 @@ export default function App() {
   }
 
   const [notebookPath, setNotebookPath] = useState(null);
+  const [modelNotebookName, setModelNotebookName] = useState(null);
+  const [showNewDialog, setShowNewDialog] = useState(false);
 
-  async function openFile(path) {
+  async function openFile(path, opts = {}) {
     path = path.replace(/\\/g, "/");
     // Open .dpnb files in Notebooks tab
     if (path.endsWith(".dpnb")) {
       setNotebookPath(path);
       setActiveTab("Notebooks");
       return;
+    }
+    // Open SQL models in notebook view if requested or if it's a transform model
+    if (path.endsWith(".sql") && path.startsWith("transform/") && opts.notebookView) {
+      // Extract schema.name from path: transform/silver/model.sql -> silver.model
+      const parts = path.replace("transform/", "").replace(".sql", "").split("/");
+      if (parts.length >= 2) {
+        setModelNotebookName(`${parts[0]}.${parts[1]}`);
+        return;
+      }
     }
     if (dirty && activeFile) {
       if (!confirm("Unsaved changes. Discard?")) return;
@@ -831,6 +845,8 @@ export default function App() {
             options={[{ label: "Fix", action: () => runLint(true) }]}
             disabled={running}
           />
+          <button onClick={() => setShowNewDialog(true)} style={styles.btn}>+ New</button>
+          <EnvironmentSwitcher />
         </div>
         {currentUser && (
           <div style={styles.userInfo}>
@@ -1037,6 +1053,30 @@ export default function App() {
 
       <Hint onNavigate={navigateToTab} />
       <GuideTour steps={GUIDE_STEPS} onComplete={handleGuideComplete} isOpen={guideOpen} />
+
+      {/* Model notebook view overlay */}
+      {modelNotebookName && (
+        <div style={{ position: "fixed", inset: 0, background: "var(--dp-bg)", zIndex: 900, overflow: "auto", padding: "16px" }}>
+          <ModelNotebookView
+            modelName={modelNotebookName}
+            onClose={() => setModelNotebookName(null)}
+            onSaved={() => { loadFiles(); }}
+          />
+        </div>
+      )}
+
+      {/* New model/notebook/ingest dialog */}
+      {showNewDialog && (
+        <NewModelDialog
+          onClose={() => setShowNewDialog(false)}
+          onCreated={(result) => {
+            loadFiles();
+            if (result.path) {
+              addOutput("info", `Created ${result.path}`);
+            }
+          }}
+        />
+      )}
     </div>
   );
 }

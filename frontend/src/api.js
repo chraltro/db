@@ -217,4 +217,47 @@ export const api = {
     if (!res.ok) throw new Error(await res.text());
     return res.json();
   },
+
+  // Environment
+  getEnvironment: () => request("/environment"),
+  switchEnvironment: (envName) =>
+    request(`/environment/${envName}`, { method: "PUT" }),
+
+  // Seeds
+  listSeeds: () => request("/seeds"),
+  runSeeds: (force = false, schema_name = "seeds") =>
+    request("/seeds", {
+      method: "POST",
+      body: JSON.stringify({ force, schema_name }),
+    }),
+
+  // Sources
+  listSources: () => request("/sources"),
+  checkSourceFreshness: () => request("/sources/freshness"),
+
+  // Exposures
+  listExposures: () => request("/exposures"),
+
+  // Autocomplete
+  getAutocomplete: () => request("/autocomplete"),
+
+  // Full DAG (with seeds, sources, exposures)
+  getFullDAG: () => request("/dag/full"),
+
+  // Model notebook view
+  getModelNotebookView: (modelName) => request(`/models/${modelName}/notebook-view`),
+
+  // Create model
+  createModel: (name, schema_name = "bronze", materialized = "table", sql = "") =>
+    request("/models/create", {
+      method: "POST",
+      body: JSON.stringify({ name, schema_name, materialized, sql }),
+    }),
+
+  // Check (validation)
+  runCheck: () => request("/check", { method: "POST" }),
+
+  // Lineage
+  getLineage: (modelName) => request(`/lineage/${modelName}`),
+  getAllLineage: () => request("/lineage"),
 };
