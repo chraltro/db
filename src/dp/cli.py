@@ -1718,16 +1718,20 @@ def debug(
 
 @app.command()
 def promote(
-    sql_source: Annotated[str, typer.Argument(help="SQL source string or path to a .dpnb cell")],
+    sql_source: Annotated[str, typer.Argument(help="SQL source string, or path to a .sql/.dpnb file")] = "",
     name: Annotated[str, typer.Option("--name", "-n", help="Model name")] = "",
     schema: Annotated[str, typer.Option("--schema", "-s", help="Target schema")] = "bronze",
     description: Annotated[str, typer.Option("--desc", help="Model description")] = "",
+    file: Annotated[Optional[Path], typer.Option("--file", "-f", help="Read SQL from a file instead of positional arg")] = None,
+    overwrite: Annotated[bool, typer.Option("--overwrite", help="Overwrite existing model file")] = False,
     project_dir: Annotated[Optional[Path], typer.Option("--project", "-p", help="Project directory (default: current dir)")] = None,
 ) -> None:
     """Promote SQL to a transform model file.
 
     Takes a SQL query and creates a proper .sql model file in the transform
     directory with auto-generated config and depends_on comments.
+
+    SQL can be provided as a positional argument, via --file, or piped from stdin.
     """
     from dp.engine.notebook import promote_sql_to_model
     from dp.engine.transform import build_dag, discover_models
@@ -1735,10 +1739,28 @@ def promote(
     project_dir = _resolve_project(project_dir)
     transform_dir = project_dir / "transform"
 
-    # If sql_source looks like a file path, read its contents
-    source_path = Path(sql_source)
-    if source_path.exists() and source_path.suffix == ".sql":
-        sql_source = source_path.read_text()
+    # Resolve SQL source: --file flag, positional arg (file path or literal), or stdin
+    if file:
+        if not file.exists():
+            console.print(f"[red]File not found: {file}[/red]")
+            raise typer.Exit(1)
+        sql_source = file.read_text()
+    elif sql_source:
+        source_path = Path(sql_source)
+        if source_path.exists() and source_path.suffix in (".sql", ".dpnb"):
+            if source_path.suffix == ".dpnb":
+                import json as _json
+                nb_data = _json.loads(source_path.read_text())
+                sql_cells = [c["source"] for c in nb_data.get("cells", []) if c.get("type") == "sql"]
+                if not sql_cells:
+                    console.print("[red]No SQL cells found in notebook[/red]")
+                    raise typer.Exit(1)
+                sql_source = sql_cells[-1]  # Use the last SQL cell
+            else:
+                sql_source = source_path.read_text()
+    else:
+        console.print("[red]SQL source is required (positional arg, --file, or pipe)[/red]")
+        raise typer.Exit(1)
 
     if not name:
         console.print("[red]Model name is required (--name)[/red]")
@@ -1751,6 +1773,7 @@ def promote(
             schema=schema,
             transform_dir=transform_dir,
             description=description,
+            overwrite=overwrite,
         )
 
         rel_path = model_path.relative_to(project_dir)
@@ -1764,6 +1787,10 @@ def promote(
         except Exception as e:
             console.print(f"[yellow]DAG validation warning:[/yellow] {e}")
 
+    except FileExistsError as e:
+        console.print(f"[red]{e}[/red]")
+        console.print("[dim]Use --overwrite to replace the existing model file.[/dim]")
+        raise typer.Exit(1)
     except Exception as e:
         console.print(f"[red]Failed to promote: {e}[/red]")
         raise typer.Exit(1)

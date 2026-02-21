@@ -4,8 +4,11 @@ import json
 from pathlib import Path
 
 import duckdb
+import pytest
 
 from dp.engine.notebook import (
+    _split_sql_statements,
+    _validate_identifier,
     create_notebook,
     execute_cell,
     execute_ingest_cell,
@@ -563,3 +566,370 @@ def test_extract_notebook_outputs_from_code_cells():
     }
     outputs = extract_notebook_outputs(nb)
     assert "landing.events" in outputs
+
+
+# --- Identifier validation tests ---
+
+
+def test_validate_identifier_valid():
+    """Valid identifiers pass validation."""
+    assert _validate_identifier("landing") == "landing"
+    assert _validate_identifier("my_table") == "my_table"
+    assert _validate_identifier("_private") == "_private"
+    assert _validate_identifier("Table123") == "Table123"
+
+
+def test_validate_identifier_invalid():
+    """Invalid identifiers raise ValueError."""
+    with pytest.raises(ValueError, match="Invalid"):
+        _validate_identifier("DROP TABLE users--")
+    with pytest.raises(ValueError, match="Invalid"):
+        _validate_identifier("landing.data")
+    with pytest.raises(ValueError, match="Invalid"):
+        _validate_identifier("1bad_start")
+    with pytest.raises(ValueError, match="Invalid"):
+        _validate_identifier("has space")
+    with pytest.raises(ValueError, match="Invalid"):
+        _validate_identifier("")
+
+
+# --- SQL injection protection tests ---
+
+
+def test_ingest_cell_rejects_injection_in_schema():
+    """Ingest cell rejects SQL injection in target_schema."""
+    conn = duckdb.connect(":memory:")
+    spec = json.dumps({
+        "source_type": "csv",
+        "source_path": "/data/test.csv",
+        "target_schema": "landing; DROP TABLE users--",
+        "target_table": "data",
+    })
+    result = execute_ingest_cell(conn, spec)
+    assert any(o["type"] == "error" for o in result["outputs"])
+    assert any("Invalid" in o.get("text", "") for o in result["outputs"])
+    conn.close()
+
+
+def test_ingest_cell_rejects_injection_in_table():
+    """Ingest cell rejects SQL injection in target_table."""
+    conn = duckdb.connect(":memory:")
+    spec = json.dumps({
+        "source_type": "csv",
+        "source_path": "/data/test.csv",
+        "target_schema": "landing",
+        "target_table": "data; DROP TABLE users--",
+    })
+    result = execute_ingest_cell(conn, spec)
+    assert any(o["type"] == "error" for o in result["outputs"])
+    conn.close()
+
+
+# --- Path traversal protection tests ---
+
+
+def test_resolve_path_prevents_traversal(tmp_path):
+    """_resolve_path prevents path traversal outside project dir."""
+    from dp.engine.notebook import _resolve_path
+
+    # Valid relative path should work
+    result = _resolve_path("data/test.csv", tmp_path)
+    assert str(tmp_path) in result
+
+    # Path traversal should raise ValueError
+    with pytest.raises(ValueError, match="Path traversal"):
+        _resolve_path("../../etc/passwd", tmp_path)
+
+    with pytest.raises(ValueError, match="Path traversal"):
+        _resolve_path("data/../../../etc/passwd", tmp_path)
+
+
+# --- SQL semicolon splitting tests ---
+
+
+def test_split_sql_statements_basic():
+    """Split basic multi-statement SQL."""
+    stmts = _split_sql_statements("SELECT 1; SELECT 2")
+    assert stmts == ["SELECT 1", "SELECT 2"]
+
+
+def test_split_sql_statements_preserves_quoted_semicolons():
+    """Semicolons inside single-quoted strings are preserved."""
+    stmts = _split_sql_statements("SELECT 'hello;world' AS msg")
+    assert len(stmts) == 1
+    assert "hello;world" in stmts[0]
+
+
+def test_split_sql_statements_escaped_quotes():
+    """Escaped quotes (doubled) inside strings are handled."""
+    stmts = _split_sql_statements("SELECT 'it''s a test;yes' AS msg; SELECT 2")
+    assert len(stmts) == 2
+    assert "it''s a test;yes" in stmts[0]
+    assert stmts[1] == "SELECT 2"
+
+
+def test_split_sql_statements_line_comments():
+    """Line comments don't interfere with splitting."""
+    sql = "-- Create table\nCREATE TABLE t (id INT); -- done\nSELECT * FROM t"
+    stmts = _split_sql_statements(sql)
+    assert len(stmts) == 2
+
+
+def test_split_sql_statements_no_trailing_semicolon():
+    """Handles SQL without a trailing semicolon."""
+    stmts = _split_sql_statements("SELECT 1")
+    assert stmts == ["SELECT 1"]
+
+
+def test_split_sql_statements_empty():
+    """Empty SQL returns no statements."""
+    assert _split_sql_statements("") == []
+    assert _split_sql_statements("  ") == []
+    assert _split_sql_statements(";") == []
+
+
+def test_execute_sql_cell_semicolon_in_string():
+    """SQL cell correctly handles semicolons inside string literals."""
+    conn = duckdb.connect(":memory:")
+    result = execute_sql_cell(conn, "SELECT 'hello;world' AS msg")
+    assert len(result["outputs"]) == 1
+    assert result["outputs"][0]["type"] == "table"
+    assert result["outputs"][0]["rows"] == [["hello;world"]]
+    conn.close()
+
+
+# --- Promote overwrite protection tests ---
+
+
+def test_promote_rejects_overwrite_by_default(tmp_path):
+    """Promote raises FileExistsError when model file already exists."""
+    transform_dir = tmp_path / "transform"
+
+    # Create the model first
+    promote_sql_to_model(
+        sql_source="SELECT 1 AS id",
+        model_name="existing_model",
+        schema="bronze",
+        transform_dir=transform_dir,
+    )
+
+    # Attempting to promote again should fail
+    with pytest.raises(FileExistsError, match="already exists"):
+        promote_sql_to_model(
+            sql_source="SELECT 2 AS id",
+            model_name="existing_model",
+            schema="bronze",
+            transform_dir=transform_dir,
+        )
+
+
+def test_promote_overwrite_flag(tmp_path):
+    """Promote with overwrite=True replaces existing model file."""
+    transform_dir = tmp_path / "transform"
+
+    promote_sql_to_model(
+        sql_source="SELECT 1 AS id",
+        model_name="my_model",
+        schema="bronze",
+        transform_dir=transform_dir,
+    )
+
+    # Overwrite should succeed
+    model_path = promote_sql_to_model(
+        sql_source="SELECT 2 AS id",
+        model_name="my_model",
+        schema="bronze",
+        transform_dir=transform_dir,
+        overwrite=True,
+    )
+
+    content = model_path.read_text()
+    assert "SELECT 2 AS id" in content
+
+
+# --- Error propagation in run_notebook tests ---
+
+
+def test_run_notebook_cell_error_does_not_stop_execution():
+    """An error in one cell doesn't prevent subsequent cells from running."""
+    conn = duckdb.connect(":memory:")
+    nb = {
+        "title": "Error Test",
+        "cells": [
+            {"id": "c1", "type": "sql", "source": "SELECT * FROM nonexistent", "outputs": []},
+            {"id": "c2", "type": "sql", "source": "SELECT 42 AS answer", "outputs": []},
+        ],
+    }
+    result = run_notebook(conn, nb)
+    # First cell should have error
+    assert any(o["type"] == "error" for o in result["cells"][0]["outputs"])
+    # Second cell should still execute
+    assert result["cells"][1]["outputs"][0]["type"] == "table"
+    assert result["cells"][1]["outputs"][0]["rows"] == [[42]]
+    # cell_results should reflect both
+    assert result["cell_results"][0]["has_error"] is True
+    assert result["cell_results"][1]["has_error"] is False
+    conn.close()
+
+
+def test_run_notebook_with_all_cell_types(tmp_path):
+    """Run notebook with code, sql, ingest, and markdown cells."""
+    csv_path = tmp_path / "test.csv"
+    csv_path.write_text("a,b\n1,2\n")
+
+    conn = duckdb.connect(":memory:")
+    nb = {
+        "title": "All Types",
+        "cells": [
+            {"id": "c1", "type": "markdown", "source": "# Title"},
+            {"id": "c2", "type": "code", "source": "x = 10", "outputs": []},
+            {"id": "c3", "type": "sql", "source": "SELECT 1 AS val", "outputs": []},
+            {
+                "id": "c4",
+                "type": "ingest",
+                "source": json.dumps({
+                    "source_type": "csv",
+                    "source_path": str(csv_path),
+                    "target_table": "test_data",
+                }),
+                "outputs": [],
+            },
+        ],
+    }
+    result = run_notebook(conn, nb, project_dir=tmp_path)
+    # Markdown cells are skipped — only 3 cell_results
+    assert len(result["cell_results"]) == 3
+    # All should succeed
+    assert all(not cr["has_error"] for cr in result["cell_results"])
+    assert result["last_run_ms"] >= 0
+    conn.close()
+
+
+# --- Debug notebook edge cases ---
+
+
+def test_debug_notebook_with_multiple_assertions(tmp_path):
+    """Debug notebook handles multiple assertion failures."""
+    transform_dir = tmp_path / "transform" / "silver"
+    transform_dir.mkdir(parents=True)
+    (transform_dir / "report.sql").write_text(
+        "-- config: materialized=table, schema=silver\n"
+        "-- assert: unique(id)\n"
+        "-- assert: no_nulls(name)\n"
+        "-- assert: row_count > 0\n\n"
+        "SELECT 1 AS id, 'test' AS name"
+    )
+
+    conn = duckdb.connect(":memory:")
+    nb = generate_debug_notebook(
+        conn, "silver.report",
+        tmp_path / "transform",
+        assertion_failures=[
+            {"expression": "unique(id)", "detail": "duplicates=3"},
+            {"expression": "no_nulls(name)", "detail": "null_count=5"},
+            {"expression": "row_count > 0", "detail": "row_count=0"},
+        ],
+    )
+
+    sql_cells = [c for c in nb["cells"] if c["type"] == "sql"]
+    # Should have diagnostic SQL for each assertion type
+    assert any("duplicate" in c["source"].lower() for c in sql_cells)
+    assert any("IS NULL" in c["source"] for c in sql_cells)
+    assert any("row_count" in c["source"] for c in sql_cells)
+    conn.close()
+
+
+def test_model_to_notebook_no_deps(tmp_path):
+    """Model-to-notebook works for models with no dependencies."""
+    transform_dir = tmp_path / "transform" / "gold"
+    transform_dir.mkdir(parents=True)
+    (transform_dir / "constants.sql").write_text(
+        "-- config: materialized=table, schema=gold\n\n"
+        "SELECT 1 AS one, 2 AS two"
+    )
+
+    conn = duckdb.connect(":memory:")
+    nb = model_to_notebook(
+        conn, "gold.constants",
+        tmp_path / "transform",
+        tmp_path / "notebooks",
+    )
+
+    assert nb["title"] == "Debug: gold.constants"
+    sql_cells = [c for c in nb["cells"] if c["type"] == "sql"]
+    # Should have the model SQL and current output query
+    assert any("SELECT 1 AS one, 2 AS two" in c["source"] for c in sql_cells)
+    assert any("gold.constants" in c["source"] for c in sql_cells)
+    conn.close()
+
+
+# --- Ingest cell edge cases ---
+
+
+def test_ingest_cell_json_file(tmp_path):
+    """Ingest cell loads a JSON file."""
+    json_path = tmp_path / "data.json"
+    json_path.write_text('[{"id": 1, "name": "alice"}, {"id": 2, "name": "bob"}]')
+
+    conn = duckdb.connect(":memory:")
+    spec = json.dumps({
+        "source_type": "json",
+        "source_path": str(json_path),
+        "target_schema": "landing",
+        "target_table": "people",
+    })
+    result = execute_ingest_cell(conn, spec, project_dir=tmp_path)
+    assert not any(o["type"] == "error" for o in result["outputs"])
+    rows = conn.execute("SELECT * FROM landing.people").fetchall()
+    assert len(rows) == 2
+    conn.close()
+
+
+def test_ingest_cell_default_schema():
+    """Ingest cell defaults to 'landing' schema when not specified."""
+    conn = duckdb.connect(":memory:")
+    # This will fail because the file doesn't exist, but the error should NOT be
+    # about invalid identifiers — the default schema should be valid
+    spec = json.dumps({
+        "source_type": "csv",
+        "source_path": "/nonexistent/file.csv",
+        "target_table": "test_data",
+    })
+    result = execute_ingest_cell(conn, spec)
+    # Should get a file-not-found error, not an identifier error
+    errors = [o for o in result["outputs"] if o["type"] == "error"]
+    assert len(errors) == 1
+    assert "Invalid" not in errors[0]["text"]
+    conn.close()
+
+
+# --- Extract outputs edge cases ---
+
+
+def test_extract_notebook_outputs_mixed_cells():
+    """Extract outputs from a notebook with multiple output-producing cells."""
+    nb = {
+        "title": "Multi-output",
+        "cells": [
+            {"type": "sql", "source": "CREATE TABLE landing.t1 AS SELECT 1 AS id"},
+            {"type": "sql", "source": "CREATE OR REPLACE TABLE bronze.t2 AS SELECT 1"},
+            {
+                "type": "ingest",
+                "source": json.dumps({
+                    "source_type": "csv",
+                    "source_path": "/data.csv",
+                    "target_schema": "landing",
+                    "target_table": "t3",
+                }),
+            },
+            {"type": "code", "source": "db.execute('CREATE TABLE landing.t4 AS SELECT 1')"},
+            {"type": "sql", "source": "SELECT * FROM landing.t1"},  # Read-only, no output
+        ],
+    }
+    outputs = extract_notebook_outputs(nb)
+    assert "landing.t1" in outputs
+    assert "bronze.t2" in outputs
+    assert "landing.t3" in outputs
+    assert "landing.t4" in outputs
+    # SELECT-only queries should not appear as outputs
+    assert len(outputs) == 4

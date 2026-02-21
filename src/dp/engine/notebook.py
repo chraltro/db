@@ -14,7 +14,6 @@ import ast
 import io
 import json
 import re
-import sys
 import time
 import traceback
 from contextlib import redirect_stderr, redirect_stdout
@@ -22,6 +21,21 @@ from pathlib import Path
 from typing import Any
 
 import duckdb
+
+
+# --- Identifier validation ---
+
+_IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+
+def _validate_identifier(value: str, label: str = "identifier") -> str:
+    """Validate that a value is a safe SQL identifier.
+
+    Raises ValueError if the identifier contains unsafe characters.
+    """
+    if not _IDENTIFIER_RE.match(value):
+        raise ValueError(f"Invalid {label}: {value!r} (must match [A-Za-z_][A-Za-z0-9_]*)")
+    return value
 
 
 # --- Config comment patterns (shared with transform.py) ---
@@ -122,13 +136,53 @@ def _infer_table_refs(sql: str) -> list[str]:
     return sorted(refs)
 
 
-def _is_read_query(sql: str) -> bool:
-    """Check if the SQL is a read-only query (SELECT, SHOW, DESCRIBE, etc.)."""
-    stripped = sql.strip().upper()
-    # Remove leading comments
-    while stripped.startswith("--"):
-        stripped = stripped.split("\n", 1)[-1].strip().upper() if "\n" in stripped else ""
-    return stripped.startswith(("SELECT", "SHOW", "DESCRIBE", "EXPLAIN", "WITH", "PRAGMA"))
+def _split_sql_statements(sql: str) -> list[str]:
+    """Split SQL on semicolons, respecting quoted strings.
+
+    Handles single-quoted strings (including escaped quotes via '')
+    so that semicolons inside string literals are not treated as
+    statement separators.
+    """
+    statements: list[str] = []
+    current: list[str] = []
+    in_single_quote = False
+
+    i = 0
+    while i < len(sql):
+        ch = sql[i]
+        if in_single_quote:
+            current.append(ch)
+            if ch == "'" and i + 1 < len(sql) and sql[i + 1] == "'":
+                # Escaped single quote ''
+                current.append(sql[i + 1])
+                i += 2
+                continue
+            elif ch == "'":
+                in_single_quote = False
+        elif ch == "'":
+            in_single_quote = True
+            current.append(ch)
+        elif ch == "-" and i + 1 < len(sql) and sql[i + 1] == "-":
+            # Line comment — consume to end of line
+            while i < len(sql) and sql[i] != "\n":
+                current.append(sql[i])
+                i += 1
+            continue
+        elif ch == ";":
+            stmt = "".join(current).strip()
+            if stmt:
+                statements.append(stmt)
+            current = []
+        else:
+            current.append(ch)
+        i += 1
+
+    # Last statement (no trailing semicolon)
+    stmt = "".join(current).strip()
+    if stmt:
+        statements.append(stmt)
+
+    return statements
 
 
 def execute_sql_cell(
@@ -152,8 +206,8 @@ def execute_sql_cell(
         return {"outputs": [], "duration_ms": duration_ms, "config": config}
 
     try:
-        # Split on semicolons for multi-statement support, execute each
-        statements = [s.strip() for s in query.split(";") if s.strip()]
+        # Split on semicolons (respecting quoted strings) for multi-statement support
+        statements = _split_sql_statements(query)
 
         for i, stmt in enumerate(statements):
             result = conn.execute(stmt)
@@ -224,15 +278,18 @@ def execute_ingest_cell(
     connection_name = spec.get("connection")
     options = spec.get("options", {})
 
+    # Validate required fields
     if not source_type:
-        outputs.append({"type": "error", "text": "Missing 'source_type' in ingest cell."})
-        duration_ms = int((time.perf_counter() - start) * 1000)
-        return {"outputs": outputs, "duration_ms": duration_ms}
-
+        return _ingest_error("Missing 'source_type' in ingest cell.", start)
     if not target_table:
-        outputs.append({"type": "error", "text": "Missing 'target_table' in ingest cell."})
-        duration_ms = int((time.perf_counter() - start) * 1000)
-        return {"outputs": outputs, "duration_ms": duration_ms}
+        return _ingest_error("Missing 'target_table' in ingest cell.", start)
+
+    # Validate identifiers to prevent SQL injection
+    try:
+        _validate_identifier(target_schema, "target_schema")
+        _validate_identifier(target_table, "target_table")
+    except ValueError as e:
+        return _ingest_error(str(e), start)
 
     try:
         conn.execute(f"CREATE SCHEMA IF NOT EXISTS {target_schema}")
@@ -277,35 +334,24 @@ def execute_ingest_cell(
         elif source_type == "database":
             # Use connection from project.yml
             if not connection_name:
-                outputs.append({"type": "error", "text": "Database source requires 'connection' name."})
-                duration_ms = int((time.perf_counter() - start) * 1000)
-                return {"outputs": outputs, "duration_ms": duration_ms}
+                return _ingest_error("Database source requires 'connection' name.", start)
+            if not project_dir:
+                return _ingest_error("Database ingest requires project context.", start)
 
-            if project_dir:
-                from dp.config import load_project
-                config = load_project(project_dir)
-                conn_config = config.connections.get(connection_name)
-                if not conn_config:
-                    outputs.append({"type": "error", "text": f"Connection '{connection_name}' not found in project.yml."})
-                    duration_ms = int((time.perf_counter() - start) * 1000)
-                    return {"outputs": outputs, "duration_ms": duration_ms}
-                from dp.engine.importer import import_from_connection
-                result = import_from_connection(
-                    conn, conn_config.type, conn_config.__dict__,
-                    source_path, target_schema, target_table,
-                )
-                if result.get("error"):
-                    outputs.append({"type": "error", "text": result["error"]})
-                    duration_ms = int((time.perf_counter() - start) * 1000)
-                    return {"outputs": outputs, "duration_ms": duration_ms}
-            else:
-                outputs.append({"type": "error", "text": "Database ingest requires project context."})
-                duration_ms = int((time.perf_counter() - start) * 1000)
-                return {"outputs": outputs, "duration_ms": duration_ms}
+            from dp.config import load_project
+            config = load_project(project_dir)
+            conn_config = config.connections.get(connection_name)
+            if not conn_config:
+                return _ingest_error(f"Connection '{connection_name}' not found in project.yml.", start)
+            from dp.engine.importer import import_from_connection
+            result = import_from_connection(
+                conn, conn_config.type, conn_config.__dict__,
+                source_path, target_schema, target_table,
+            )
+            if result.get("error"):
+                return _ingest_error(result["error"], start)
         else:
-            outputs.append({"type": "error", "text": f"Unsupported source_type: {source_type}"})
-            duration_ms = int((time.perf_counter() - start) * 1000)
-            return {"outputs": outputs, "duration_ms": duration_ms}
+            return _ingest_error(f"Unsupported source_type: {source_type}", start)
 
         # Show preview of loaded data
         row_count = conn.execute(f"SELECT COUNT(*) FROM {full_table}").fetchone()[0]
@@ -340,12 +386,28 @@ def execute_ingest_cell(
     return {"outputs": outputs, "duration_ms": duration_ms}
 
 
+def _ingest_error(msg: str, start: float) -> dict:
+    """Build an ingest cell error response."""
+    return {
+        "outputs": [{"type": "error", "text": msg}],
+        "duration_ms": int((time.perf_counter() - start) * 1000),
+    }
+
+
 def _resolve_path(source_path: str, project_dir: Path | None) -> str:
-    """Resolve a relative path against the project directory."""
+    """Resolve a relative path against the project directory.
+
+    Validates that the resolved path stays within the project directory
+    to prevent path traversal attacks.
+    """
     p = Path(source_path)
     if not p.is_absolute() and project_dir:
         p = project_dir / p
-    return str(p)
+    resolved = p.resolve()
+    # Prevent path traversal: resolved path must stay within project_dir
+    if project_dir and not str(resolved).startswith(str(project_dir.resolve())):
+        raise ValueError(f"Path traversal detected: {source_path!r} resolves outside project directory")
+    return str(resolved)
 
 
 # --- Python code cell execution ---
@@ -509,43 +571,24 @@ def run_notebook(
 
         if cell_type == "code":
             result = execute_cell(conn, source, namespace)
-            cell["outputs"] = result["outputs"]
-            cell["duration_ms"] = result["duration_ms"]
             namespace = result["namespace"]
-            total_ms += result["duration_ms"]
-            cell_results.append({
-                "cell_id": cell.get("id"),
-                "type": "code",
-                "duration_ms": result["duration_ms"],
-                "has_error": any(o.get("type") == "error" for o in result["outputs"]),
-                "outputs": result["outputs"],
-            })
-
         elif cell_type == "sql":
             result = execute_sql_cell(conn, source)
-            cell["outputs"] = result["outputs"]
-            cell["duration_ms"] = result["duration_ms"]
-            total_ms += result["duration_ms"]
-            cell_results.append({
-                "cell_id": cell.get("id"),
-                "type": "sql",
-                "duration_ms": result["duration_ms"],
-                "has_error": any(o.get("type") == "error" for o in result["outputs"]),
-                "outputs": result["outputs"],
-            })
-
         elif cell_type == "ingest":
             result = execute_ingest_cell(conn, source, project_dir)
-            cell["outputs"] = result["outputs"]
-            cell["duration_ms"] = result["duration_ms"]
-            total_ms += result["duration_ms"]
-            cell_results.append({
-                "cell_id": cell.get("id"),
-                "type": "ingest",
-                "duration_ms": result["duration_ms"],
-                "has_error": any(o.get("type") == "error" for o in result["outputs"]),
-                "outputs": result["outputs"],
-            })
+        else:
+            continue
+
+        cell["outputs"] = result["outputs"]
+        cell["duration_ms"] = result["duration_ms"]
+        total_ms += result["duration_ms"]
+        cell_results.append({
+            "cell_id": cell.get("id"),
+            "type": cell_type,
+            "duration_ms": result["duration_ms"],
+            "has_error": any(o.get("type") == "error" for o in result["outputs"]),
+            "outputs": result["outputs"],
+        })
 
     notebook["last_run_ms"] = total_ms
     notebook["cell_results"] = cell_results
@@ -561,6 +604,7 @@ def promote_sql_to_model(
     schema: str,
     transform_dir: Path,
     description: str = "",
+    overwrite: bool = False,
 ) -> Path:
     """Promote a SQL cell from a notebook to a transform model file.
 
@@ -573,6 +617,7 @@ def promote_sql_to_model(
         schema: Target schema (bronze, silver, gold, etc.)
         transform_dir: Path to the transform/ directory
         description: Optional model description
+        overwrite: If False (default), raises FileExistsError when model file already exists
 
     Returns:
         Path to the created .sql file
@@ -609,6 +654,13 @@ def promote_sql_to_model(
     schema_dir = transform_dir / target_schema
     schema_dir.mkdir(parents=True, exist_ok=True)
     model_path = schema_dir / f"{model_name}.sql"
+
+    if model_path.exists() and not overwrite:
+        raise FileExistsError(
+            f"Model file already exists: {model_path}. "
+            f"Use overwrite=True to replace it."
+        )
+
     model_path.write_text(content)
 
     return model_path
@@ -847,10 +899,8 @@ def generate_debug_notebook(
 
 def _assertion_diagnostic_sql(table: str, expr: str) -> str:
     """Generate diagnostic SQL for a failed assertion."""
-    import re as _re
-
     # unique(column) — show duplicate rows
-    m = _re.match(r"unique\((\w+)\)", expr)
+    m = re.match(r"unique\((\w+)\)", expr)
     if m:
         col = m.group(1)
         return (
@@ -864,7 +914,7 @@ def _assertion_diagnostic_sql(table: str, expr: str) -> str:
         )
 
     # no_nulls(column) — show null rows
-    m = _re.match(r"no_nulls\((\w+)\)", expr)
+    m = re.match(r"no_nulls\((\w+)\)", expr)
     if m:
         col = m.group(1)
         return (
@@ -876,7 +926,7 @@ def _assertion_diagnostic_sql(table: str, expr: str) -> str:
         )
 
     # row_count check
-    m = _re.match(r"row_count\s*(>|>=|<|<=|=|==|!=)\s*(\d+)", expr)
+    m = re.match(r"row_count\s*(>|>=|<|<=|=|==|!=)\s*(\d+)", expr)
     if m:
         return (
             f"-- Current row count\n"
@@ -884,7 +934,7 @@ def _assertion_diagnostic_sql(table: str, expr: str) -> str:
         )
 
     # accepted_values(column, [...])
-    m = _re.match(r"accepted_values\((\w+),\s*\[(.+)\]\)", expr)
+    m = re.match(r"accepted_values\((\w+),\s*\[(.+)\]\)", expr)
     if m:
         col = m.group(1)
         raw_values = m.group(2)

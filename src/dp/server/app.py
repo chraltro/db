@@ -1454,6 +1454,7 @@ class PromoteToModelRequest(BaseModel):
     model_name: str = Field(..., min_length=1, max_length=200, pattern=r"^[a-zA-Z_][a-zA-Z0-9_]*$")
     target_schema: str = Field(default="bronze", min_length=1, max_length=100, pattern=r"^[a-zA-Z_][a-zA-Z0-9_]*$")
     description: str = Field(default="", max_length=1000)
+    overwrite: bool = Field(default=False)
 
 
 @app.post("/api/notebooks/promote-to-model")
@@ -1472,6 +1473,7 @@ def promote_to_model_endpoint(request: Request, req: PromoteToModelRequest) -> d
             schema=req.target_schema,
             transform_dir=transform_dir,
             description=req.description,
+            overwrite=req.overwrite,
         )
         rel_path = str(model_path.relative_to(project_dir))
 
@@ -1489,6 +1491,8 @@ def promote_to_model_endpoint(request: Request, req: PromoteToModelRequest) -> d
             "full_name": f"{req.target_schema}.{req.model_name}",
             "validation_warnings": validation_warnings,
         }
+    except FileExistsError as e:
+        raise HTTPException(409, str(e))
     except Exception as e:
         raise HTTPException(400, f"Failed to promote: {e}")
 
