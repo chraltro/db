@@ -38,15 +38,12 @@ def _validate_identifier(value: str, label: str = "identifier") -> str:
     return value
 
 
-# --- Config comment patterns (shared with transform.py) ---
-
-_CONFIG_PATTERN = re.compile(r"^--\s*config:\s*(.+)$", re.MULTILINE)
-_DEPENDS_PATTERN = re.compile(r"^--\s*depends_on:\s*(.+)$", re.MULTILINE)
-_SQL_FROM_REF_PATTERN = re.compile(
-    r"\b(?:FROM|JOIN)\s+([a-zA-Z_]\w*)\.([a-zA-Z_]\w*)\b",
-    re.IGNORECASE,
+# Import shared SQL analysis functions
+from dp.engine.sql_analysis import (
+    extract_table_refs as _extract_table_refs,
+    parse_config as _parse_sql_config_shared,
+    strip_config_comments as _strip_sql_comments_shared,
 )
-_SKIP_SCHEMAS = {"information_schema", "_dp_internal", "pg_catalog", "sys"}
 
 
 def create_notebook(title: str = "Untitled") -> dict:
@@ -93,47 +90,17 @@ def _make_cell_id() -> str:
 
 def _parse_sql_config(sql: str) -> dict[str, str]:
     """Parse -- config: key=value, key=value from SQL cell source."""
-    match = _CONFIG_PATTERN.search(sql)
-    if not match:
-        return {}
-    config: dict[str, str] = {}
-    for pair in match.group(1).split(","):
-        pair = pair.strip()
-        if "=" in pair:
-            key, value = pair.split("=", 1)
-            config[key.strip()] = value.strip()
-    return config
+    return _parse_sql_config_shared(sql)
 
 
 def _strip_sql_comments(sql: str) -> str:
     """Remove config/depends comment lines, return the actual query."""
-    lines = sql.split("\n")
-    query_lines = []
-    for line in lines:
-        stripped = line.strip()
-        if (
-            stripped.startswith("-- config:")
-            or stripped.startswith("-- depends_on:")
-            or stripped.startswith("-- description:")
-            or stripped.startswith("-- col:")
-            or stripped.startswith("-- assert:")
-        ):
-            continue
-        query_lines.append(line)
-    while query_lines and not query_lines[0].strip():
-        query_lines.pop(0)
-    return "\n".join(query_lines)
+    return _strip_sql_comments_shared(sql)
 
 
 def _infer_table_refs(sql: str) -> list[str]:
-    """Extract schema.table references from FROM/JOIN clauses."""
-    clean = re.sub(r"--[^\n]*", "", sql)
-    refs = set()
-    for match in _SQL_FROM_REF_PATTERN.finditer(clean):
-        schema, table = match.group(1).lower(), match.group(2).lower()
-        if schema not in _SKIP_SCHEMAS:
-            refs.add(f"{schema}.{table}")
-    return sorted(refs)
+    """Extract schema.table references from SQL using AST parsing."""
+    return _extract_table_refs(sql)
 
 
 def _split_sql_statements(sql: str) -> list[str]:

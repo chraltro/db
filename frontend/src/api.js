@@ -141,10 +141,10 @@ export const api = {
       method: "POST",
     }),
   runNotebook: (name) => request(`/notebooks/run/${name}`, { method: "POST" }),
-  runCell: (name, source, { reset = false } = {}) =>
+  runCell: (name, source, { reset = false, cell_type = "code" } = {}) =>
     request(`/notebooks/run-cell/${name}`, {
       method: "POST",
-      body: JSON.stringify({ source, reset }),
+      body: JSON.stringify({ source, cell_type, reset }),
     }),
 
   // Import
