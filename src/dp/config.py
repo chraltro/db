@@ -48,6 +48,20 @@ class LintConfig:
 
 
 @dataclass
+class AlertsConfig:
+    """Configuration for pipeline alerts and notifications."""
+
+    slack_webhook_url: str | None = None
+    webhook_url: str | None = None
+    channels: list[str] = field(default_factory=list)  # ["slack", "webhook", "log"]
+    on_success: bool = True
+    on_failure: bool = True
+    on_assertion_failure: bool = True
+    on_stale: bool = True
+    freshness_hours: float = 24.0  # Max hours before a model is considered stale
+
+
+@dataclass
 class ProjectConfig:
     name: str = "default"
     description: str = ""
@@ -55,6 +69,7 @@ class ProjectConfig:
     connections: dict[str, ConnectionConfig] = field(default_factory=dict)
     streams: dict[str, StreamConfig] = field(default_factory=dict)
     lint: LintConfig = field(default_factory=LintConfig)
+    alerts: AlertsConfig = field(default_factory=AlertsConfig)
     project_dir: Path = field(default_factory=Path.cwd)
     _raw: dict[str, Any] = field(default_factory=dict)
 
@@ -129,6 +144,19 @@ def load_project(project_dir: Path | None = None) -> ProjectConfig:
         rules=lint_raw.get("rules", []),
     )
 
+    # Alerts
+    alerts_raw = raw.get("alerts", {})
+    alerts = AlertsConfig(
+        slack_webhook_url=alerts_raw.get("slack_webhook_url"),
+        webhook_url=alerts_raw.get("webhook_url"),
+        channels=alerts_raw.get("channels", []),
+        on_success=alerts_raw.get("on_success", True),
+        on_failure=alerts_raw.get("on_failure", True),
+        on_assertion_failure=alerts_raw.get("on_assertion_failure", True),
+        on_stale=alerts_raw.get("on_stale", True),
+        freshness_hours=float(alerts_raw.get("freshness_hours", 24.0)),
+    )
+
     return ProjectConfig(
         name=raw.get("name", project_dir.name),
         description=raw.get("description", ""),
@@ -136,6 +164,7 @@ def load_project(project_dir: Path | None = None) -> ProjectConfig:
         connections=connections,
         streams=streams,
         lint=lint,
+        alerts=alerts,
         project_dir=project_dir,
         _raw=raw,
     )

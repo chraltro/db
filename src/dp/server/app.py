@@ -1835,6 +1835,343 @@ def get_overview(request: Request) -> dict:
     return result
 
 
+# --- Freshness ---
+
+
+@app.get("/api/freshness")
+def get_freshness(request: Request, max_hours: float = 24.0) -> list[dict]:
+    """Check model freshness: which models are stale?"""
+    _require_permission(request, "read")
+    from dp.engine.transform import check_freshness
+
+    db_path = _get_db_path()
+    if not db_path.exists():
+        return []
+    conn = connect(db_path, read_only=True)
+    try:
+        ensure_meta_table(conn)
+        return check_freshness(conn, max_age_hours=max_hours)
+    finally:
+        conn.close()
+
+
+# --- Column-level lineage ---
+
+
+@app.get("/api/lineage/{model_name}")
+def get_lineage(request: Request, model_name: str) -> dict:
+    """Get column-level lineage for a model (AST-based via sqlglot)."""
+    _require_permission(request, "read")
+    from dp.engine.transform import extract_column_lineage
+
+    transform_dir = _get_project_dir() / "transform"
+    models = _discover_models_cached(transform_dir)
+    model_map = {m.full_name: m for m in models}
+
+    target = model_map.get(model_name)
+    if not target:
+        matches = [m for m in models if m.name == model_name]
+        if matches:
+            target = matches[0]
+        else:
+            raise HTTPException(404, f"Model '{model_name}' not found")
+
+    db_path = _get_db_path()
+    conn = connect(db_path, read_only=True) if db_path.exists() else None
+    try:
+        lineage = extract_column_lineage(target, conn)
+        return {
+            "model": target.full_name,
+            "columns": lineage,
+            "depends_on": target.depends_on,
+        }
+    finally:
+        if conn:
+            conn.close()
+
+
+@app.get("/api/lineage")
+def get_all_lineage(request: Request) -> list[dict]:
+    """Get column-level lineage for all models."""
+    _require_permission(request, "read")
+    from dp.engine.transform import extract_column_lineage
+
+    transform_dir = _get_project_dir() / "transform"
+    models = _discover_models_cached(transform_dir)
+
+    db_path = _get_db_path()
+    conn = connect(db_path, read_only=True) if db_path.exists() else None
+    try:
+        results = []
+        for model in models:
+            lineage = extract_column_lineage(model, conn)
+            results.append({
+                "model": model.full_name,
+                "columns": lineage,
+                "depends_on": model.depends_on,
+            })
+        return results
+    finally:
+        if conn:
+            conn.close()
+
+
+# --- Compile-time validation ---
+
+
+@app.post("/api/check")
+def run_check(request: Request) -> dict:
+    """Validate all SQL models without executing them."""
+    _require_permission(request, "read")
+    from dp.engine.transform import discover_models, validate_models
+
+    transform_dir = _get_project_dir() / "transform"
+    models = discover_models(transform_dir)
+
+    db_path = _get_db_path()
+    conn = connect(db_path, read_only=True) if db_path.exists() else None
+    try:
+        ensure_meta_table(conn) if conn else None
+        errors = validate_models(conn, models)
+        return {
+            "models_checked": len(models),
+            "errors": [
+                {"model": e.model, "severity": e.severity, "message": e.message}
+                for e in errors
+            ],
+            "passed": not any(e.severity == "error" for e in errors),
+        }
+    finally:
+        if conn:
+            conn.close()
+
+
+# --- Impact analysis ---
+
+
+@app.get("/api/impact/{model_name}")
+def get_impact(request: Request, model_name: str, column: str | None = None) -> dict:
+    """Analyze downstream impact of changing a model or column."""
+    _require_permission(request, "read")
+    from dp.engine.transform import discover_models, impact_analysis
+
+    transform_dir = _get_project_dir() / "transform"
+    models = discover_models(transform_dir)
+    model_map = {m.full_name: m for m in models}
+
+    if model_name not in model_map:
+        matches = [m for m in models if m.name == model_name]
+        if matches:
+            model_name = matches[0].full_name
+        else:
+            raise HTTPException(404, f"Model '{model_name}' not found")
+
+    db_path = _get_db_path()
+    conn = connect(db_path, read_only=True) if db_path.exists() else None
+    try:
+        return impact_analysis(models, model_name, column=column, conn=conn)
+    finally:
+        if conn:
+            conn.close()
+
+
+# --- Model profiles ---
+
+
+@app.get("/api/profiles")
+def get_profiles(request: Request) -> list[dict]:
+    """Get auto-computed profile stats for all models."""
+    _require_permission(request, "read")
+    db_path = _get_db_path()
+    if not db_path.exists():
+        return []
+    conn = connect(db_path, read_only=True)
+    try:
+        ensure_meta_table(conn)
+        rows = conn.execute(
+            "SELECT model_path, row_count, column_count, null_percentages, distinct_counts, profiled_at "
+            "FROM _dp_internal.model_profiles ORDER BY model_path"
+        ).fetchall()
+        return [
+            {
+                "model": r[0],
+                "row_count": r[1],
+                "column_count": r[2],
+                "null_percentages": json.loads(r[3]) if r[3] else {},
+                "distinct_counts": json.loads(r[4]) if r[4] else {},
+                "profiled_at": str(r[5]) if r[5] else None,
+            }
+            for r in rows
+        ]
+    finally:
+        conn.close()
+
+
+@app.get("/api/profiles/{model_name}")
+def get_profile(request: Request, model_name: str) -> dict:
+    """Get profile stats for a specific model."""
+    _require_permission(request, "read")
+    db_path = _get_db_path()
+    _require_db(db_path)
+    conn = connect(db_path, read_only=True)
+    try:
+        ensure_meta_table(conn)
+        row = conn.execute(
+            "SELECT model_path, row_count, column_count, null_percentages, distinct_counts, profiled_at "
+            "FROM _dp_internal.model_profiles WHERE model_path = ?",
+            [model_name],
+        ).fetchone()
+        if not row:
+            raise HTTPException(404, f"No profile for '{model_name}'. Run dp transform first.")
+        return {
+            "model": row[0],
+            "row_count": row[1],
+            "column_count": row[2],
+            "null_percentages": json.loads(row[3]) if row[3] else {},
+            "distinct_counts": json.loads(row[4]) if row[4] else {},
+            "profiled_at": str(row[5]) if row[5] else None,
+        }
+    finally:
+        conn.close()
+
+
+# --- Assertions ---
+
+
+@app.get("/api/assertions")
+def get_assertions(request: Request, limit: int = 100) -> list[dict]:
+    """Get recent data quality assertion results."""
+    _require_permission(request, "read")
+    db_path = _get_db_path()
+    if not db_path.exists():
+        return []
+    conn = connect(db_path, read_only=True)
+    try:
+        ensure_meta_table(conn)
+        rows = conn.execute(
+            """
+            SELECT model_path, expression, passed, detail, checked_at
+            FROM _dp_internal.assertion_results
+            ORDER BY checked_at DESC
+            LIMIT ?
+            """,
+            [limit],
+        ).fetchall()
+        return [
+            {
+                "model": r[0],
+                "expression": r[1],
+                "passed": r[2],
+                "detail": r[3],
+                "checked_at": str(r[4]) if r[4] else None,
+            }
+            for r in rows
+        ]
+    finally:
+        conn.close()
+
+
+@app.get("/api/assertions/{model_name}")
+def get_model_assertions(request: Request, model_name: str) -> list[dict]:
+    """Get assertion results for a specific model."""
+    _require_permission(request, "read")
+    db_path = _get_db_path()
+    _require_db(db_path)
+    conn = connect(db_path, read_only=True)
+    try:
+        ensure_meta_table(conn)
+        rows = conn.execute(
+            """
+            SELECT model_path, expression, passed, detail, checked_at
+            FROM _dp_internal.assertion_results
+            WHERE model_path = ?
+            ORDER BY checked_at DESC
+            LIMIT 50
+            """,
+            [model_name],
+        ).fetchall()
+        return [
+            {
+                "model": r[0],
+                "expression": r[1],
+                "passed": r[2],
+                "detail": r[3],
+                "checked_at": str(r[4]) if r[4] else None,
+            }
+            for r in rows
+        ]
+    finally:
+        conn.close()
+
+
+# --- Alerts ---
+
+
+@app.get("/api/alerts")
+def get_alert_history(request: Request, limit: int = 50) -> list[dict]:
+    """Get alert history."""
+    _require_permission(request, "read")
+    db_path = _get_db_path()
+    if not db_path.exists():
+        return []
+    conn = connect(db_path, read_only=True)
+    try:
+        ensure_meta_table(conn)
+        rows = conn.execute(
+            """
+            SELECT alert_type, channel, target, message, status, sent_at, error
+            FROM _dp_internal.alert_log
+            ORDER BY sent_at DESC
+            LIMIT ?
+            """,
+            [limit],
+        ).fetchall()
+        return [
+            {
+                "alert_type": r[0],
+                "channel": r[1],
+                "target": r[2],
+                "message": r[3],
+                "status": r[4],
+                "sent_at": str(r[5]) if r[5] else None,
+                "error": r[6],
+            }
+            for r in rows
+        ]
+    finally:
+        conn.close()
+
+
+class TestAlertRequest(BaseModel):
+    channel: str = Field(..., pattern=r"^(slack|webhook|log)$")
+    slack_webhook_url: str | None = None
+    webhook_url: str | None = None
+
+
+@app.post("/api/alerts/test")
+def test_alert(request: Request, req: TestAlertRequest) -> dict:
+    """Send a test alert to verify configuration."""
+    _require_permission(request, "execute")
+    from dp.engine.alerts import Alert, AlertConfig, send_alert
+
+    config = AlertConfig(
+        slack_webhook_url=req.slack_webhook_url,
+        webhook_url=req.webhook_url,
+        channels=[req.channel],
+    )
+    alert = Alert(
+        alert_type="test",
+        target="dp_test",
+        message="This is a test alert from dp. If you see this, alerts are working!",
+        details={"source": "dp alerts test"},
+    )
+    results = send_alert(alert, config)
+    if results and results[0].get("status") == "sent":
+        return {"status": "sent", "channel": req.channel}
+    error = results[0].get("error", "Unknown error") if results else "No channels configured"
+    raise HTTPException(400, f"Alert test failed: {error}")
+
+
 # --- Serve frontend ---
 
 _FRONTEND_DIR = Path(__file__).parent.parent.parent.parent / "frontend" / "dist"
