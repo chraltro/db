@@ -22,22 +22,17 @@ from dp.engine.database import ensure_meta_table, log_run
 
 console = Console()
 
-# Pattern for config comments at the top of SQL files
-# -- config: materialized=view, schema=bronze
-CONFIG_PATTERN = re.compile(r"^--\s*config:\s*(.+)$", re.MULTILINE)
-# -- depends_on: bronze.customers, bronze.orders
-DEPENDS_PATTERN = re.compile(r"^--\s*depends_on:\s*(.+)$", re.MULTILINE)
-# Matches schema.table after FROM / JOIN keywords
-SQL_FROM_REF_PATTERN = re.compile(
-    r"\b(?:FROM|JOIN)\s+([a-zA-Z_]\w*)\.([a-zA-Z_]\w*)\b",
-    re.IGNORECASE,
+# Import shared SQL analysis functions (replaces regex-based parsing)
+from dp.engine.sql_analysis import (
+    extract_table_refs,
+    extract_column_lineage as _extract_column_lineage_impl,
+    parse_config as _sa_parse_config,
+    parse_depends as _sa_parse_depends,
+    parse_assertions as _sa_parse_assertions,
+    parse_description as _sa_parse_description,
+    parse_column_docs as _sa_parse_column_docs,
+    strip_config_comments as _sa_strip_config_comments,
 )
-# -- description: Human-readable model description
-DESCRIPTION_PATTERN = re.compile(r"^--\s*description:\s*(.+)$", re.MULTILINE)
-# -- col: column_name: Column description
-COL_PATTERN = re.compile(r"^--\s*col:\s*(\w+):\s*(.+)$", re.MULTILINE)
-# -- assert: <assertion expression>
-ASSERT_PATTERN = re.compile(r"^--\s*assert:\s*(.+)$", re.MULTILINE)
 
 
 @dataclass
@@ -104,81 +99,37 @@ def _hash_content(content: str) -> str:
 
 def _parse_config(sql: str) -> dict[str, str]:
     """Parse -- config: key=value, key=value from SQL header."""
-    match = CONFIG_PATTERN.search(sql)
-    if not match:
-        return {}
-    config = {}
-    for pair in match.group(1).split(","):
-        pair = pair.strip()
-        if "=" in pair:
-            key, value = pair.split("=", 1)
-            config[key.strip()] = value.strip()
-    return config
+    return _sa_parse_config(sql)
 
 
 def _parse_depends(sql: str) -> list[str]:
     """Parse -- depends_on: schema.table, schema.table from SQL header."""
-    match = DEPENDS_PATTERN.search(sql)
-    if not match:
-        return []
-    return [dep.strip() for dep in match.group(1).split(",") if dep.strip()]
+    return _sa_parse_depends(sql)
 
 
 def _parse_assertions(sql: str) -> list[str]:
     """Parse -- assert: expression lines from SQL header."""
-    return [m.group(1).strip() for m in ASSERT_PATTERN.finditer(sql)]
-
-
-# Schemas that are never real upstream dependencies
-_SKIP_SCHEMAS = {"information_schema", "_dp_internal", "pg_catalog", "sys"}
+    return _sa_parse_assertions(sql)
 
 
 def _infer_depends(query: str, own_full_name: str) -> list[str]:
-    """Infer upstream table dependencies from FROM/JOIN clauses in the SQL body."""
-    refs = set()
-    # Strip SQL line comments before scanning to avoid matching commented-out refs
-    clean = re.sub(r"--[^\n]*", "", query)
-    for match in SQL_FROM_REF_PATTERN.finditer(clean):
-        schema, table = match.group(1).lower(), match.group(2).lower()
-        if schema in _SKIP_SCHEMAS:
-            continue
-        ref = f"{schema}.{table}"
-        if ref == own_full_name:
-            continue
-        refs.add(ref)
-    return sorted(refs)
+    """Infer upstream table dependencies from SQL using AST parsing."""
+    return extract_table_refs(query, exclude=own_full_name)
 
 
 def _parse_description(sql: str) -> str:
     """Parse -- description: text from SQL header."""
-    match = DESCRIPTION_PATTERN.search(sql)
-    return match.group(1).strip() if match else ""
+    return _sa_parse_description(sql)
 
 
 def _parse_column_docs(sql: str) -> dict[str, str]:
     """Parse -- col: name: description lines from SQL header."""
-    return {m.group(1): m.group(2).strip() for m in COL_PATTERN.finditer(sql)}
+    return _sa_parse_column_docs(sql)
 
 
 def _strip_config_comments(sql: str) -> str:
-    """Remove config/depends/description/col/assert comments, return the actual query."""
-    lines = sql.split("\n")
-    query_lines = []
-    for line in lines:
-        stripped = line.strip()
-        if (
-            stripped.startswith("-- config:")
-            or stripped.startswith("-- depends_on:")
-            or stripped.startswith("-- description:")
-            or stripped.startswith("-- col:")
-            or stripped.startswith("-- assert:")
-        ):
-            continue
-        query_lines.append(line)
-    # Strip leading blank lines
-    while query_lines and not query_lines[0].strip():
-        query_lines.pop(0)
-    return "\n".join(query_lines)
+    """Remove config/depends/description/col/assert comments, return the query."""
+    return _sa_strip_config_comments(sql)
 
 
 def discover_models(transform_dir: Path) -> list[SQLModel]:
@@ -616,133 +567,13 @@ def extract_column_lineage(
     """Extract column-level lineage from a SQL model using sqlglot AST parsing.
 
     Returns a mapping of output_column -> list of {source_table, source_column}.
-    Uses sqlglot to parse the SQL and trace column references through CTEs,
-    subqueries, CASE expressions, and window functions.
-
-    If conn is provided, resolves SELECT * by querying information_schema.
+    Delegates to the shared sql_analysis module for AST-based lineage tracing.
     """
-    import sqlglot
-    from sqlglot import exp
-
-    query = model.query
-    lineage: dict[str, list[dict[str, str]]] = {}
-
-    try:
-        parsed = sqlglot.parse_one(query, read="duckdb")
-    except sqlglot.errors.ParseError:
-        return lineage
-
-    # Build alias -> fully-qualified table map from the AST
-    alias_map: dict[str, str] = {}
-    for table in parsed.find_all(exp.Table):
-        catalog = table.catalog or ""
-        db = table.db or ""
-        name = table.name or ""
-        alias = table.alias or ""
-        if db and name:
-            fqn = f"{db}.{name}".lower()
-        elif name:
-            fqn = name.lower()
-        else:
-            continue
-        if alias:
-            alias_map[alias.lower()] = fqn
-        alias_map[fqn] = fqn
-
-    # Also build CTE name set so we can trace through them
-    cte_names: set[str] = set()
-    for cte in parsed.find_all(exp.CTE):
-        cte_alias = cte.alias
-        if cte_alias:
-            cte_names.add(cte_alias.lower())
-
-    # Resolve SELECT * columns if we have a connection
-    star_columns: dict[str, list[str]] = {}  # table_fqn -> [col1, col2, ...]
-    if conn:
-        for dep in model.depends_on:
-            parts = dep.split(".")
-            if len(parts) == 2:
-                try:
-                    cols = conn.execute(
-                        "SELECT column_name FROM information_schema.columns "
-                        "WHERE table_schema = ? AND table_name = ? ORDER BY ordinal_position",
-                        [parts[0], parts[1]],
-                    ).fetchall()
-                    star_columns[dep] = [c[0] for c in cols]
-                except Exception:
-                    pass
-
-    def _resolve_table(name: str) -> str:
-        """Resolve a table alias or name to its fully-qualified form."""
-        return alias_map.get(name.lower(), name.lower())
-
-    def _extract_sources_from_expr(node: exp.Expression) -> list[dict[str, str]]:
-        """Walk an expression node and collect all column references."""
-        sources: list[dict[str, str]] = []
-        for col in node.find_all(exp.Column):
-            col_name = col.name.lower() if col.name else ""
-            table_ref = col.table.lower() if col.table else ""
-            if table_ref:
-                resolved = _resolve_table(table_ref)
-                # If it resolves to a CTE, skip — it's an intermediate, not a source
-                if resolved in cte_names:
-                    continue
-                sources.append({"source_table": resolved, "source_column": col_name})
-            elif col_name and model.depends_on:
-                # Unqualified column — attribute to first upstream dependency
-                sources.append({"source_table": model.depends_on[0].lower(), "source_column": col_name})
-        return sources
-
-    # Find the outermost SELECT statement (skip CTE definitions)
-    main_select = parsed
-    if isinstance(parsed, exp.Union):
-        # For UNION queries, trace the first SELECT
-        main_select = parsed.find(exp.Select)
-    elif hasattr(parsed, "this") and isinstance(parsed.this, exp.Select):
-        main_select = parsed.this
-    elif not isinstance(parsed, exp.Select):
-        main_select = parsed.find(exp.Select)
-
-    if not main_select:
-        return lineage
-
-    # Process each SELECT expression
-    for select_expr in main_select.expressions:
-        # Determine the output column name
-        if isinstance(select_expr, exp.Alias):
-            out_col = select_expr.alias.lower()
-            inner = select_expr.this
-        elif isinstance(select_expr, exp.Column):
-            out_col = select_expr.name.lower()
-            inner = select_expr
-        elif isinstance(select_expr, exp.Star):
-            # SELECT * — expand using information_schema if available
-            for dep in model.depends_on:
-                if dep in star_columns:
-                    for col_name in star_columns[dep]:
-                        lineage[col_name.lower()] = [
-                            {"source_table": dep, "source_column": col_name.lower()}
-                        ]
-            continue
-        else:
-            # Complex expression without alias — use sqlglot's output name
-            out_col = select_expr.output_name.lower() if hasattr(select_expr, "output_name") and select_expr.output_name else "?"
-            inner = select_expr
-
-        sources = _extract_sources_from_expr(inner if inner else select_expr)
-
-        # Deduplicate sources
-        seen: set[tuple[str, str]] = set()
-        unique_sources: list[dict[str, str]] = []
-        for s in sources:
-            key = (s["source_table"], s["source_column"])
-            if key not in seen:
-                seen.add(key)
-                unique_sources.append(s)
-
-        lineage[out_col] = unique_sources
-
-    return lineage
+    return _extract_column_lineage_impl(
+        query=model.query,
+        depends_on=model.depends_on,
+        conn=conn,
+    )
 
 
 # --- Compile-time SQL validation ---
@@ -819,7 +650,8 @@ def validate_models(
             table_name = table.name or ""
             if db_name and table_name:
                 fqn = f"{db_name}.{table_name}".lower()
-                if fqn not in known_tables and fqn not in _SKIP_SCHEMAS:
+                from dp.engine.sql_analysis import SKIP_SCHEMAS
+                if fqn not in known_tables and fqn not in SKIP_SCHEMAS:
                     errors.append(ValidationError(
                         model=model.full_name,
                         severity="error",
