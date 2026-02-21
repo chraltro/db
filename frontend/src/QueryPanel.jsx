@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { format as formatSQL } from "sql-formatter";
 import { api } from "./api";
 import SortableTable from "./SortableTable";
+import ChartPanel from "./ChartPanel";
 import { useHintTriggerFn } from "./HintSystem";
 import ResizeHandle from "./ResizeHandle";
 import useResizable from "./useResizable";
@@ -477,7 +478,7 @@ export default function QueryPanel({ addOutput }) {
                 {viewMode === "table" ? (
                   <SortableTable columns={results.columns} rows={results.rows} />
                 ) : (
-                  <div style={st.chartPlaceholder}>Chart view available for numeric results.</div>
+                  <ChartPanel columns={results.columns} rows={results.rows} />
                 )}
               </div>
             </div>
@@ -542,6 +543,5 @@ const st = {
 
   results: { flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" },
   resultsHeader: { padding: "6px 12px", fontSize: "11px", color: "var(--dp-text-secondary)", borderBottom: "1px solid var(--dp-border)", flexShrink: 0 },
-  resultsBody: { flex: 1, overflow: "auto" },
-  chartPlaceholder: { padding: "32px", color: "var(--dp-text-dim)", textAlign: "center", fontSize: "13px" },
+  resultsBody: { flex: 1, overflow: "auto", display: "flex", flexDirection: "column" },
 };
