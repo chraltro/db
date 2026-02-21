@@ -230,3 +230,234 @@ def test_upload_rejects_dotfile(client):
         files={"file": (".env", io.BytesIO(b"SECRET=x"), "text/plain")},
     )
     assert resp.status_code == 400
+
+
+# --- Notebook API endpoint tests ---
+
+
+def test_run_sql_cell_endpoint(client):
+    """Run a SQL cell via the API."""
+    resp = client.post(
+        "/api/notebooks/run-cell/test_nb",
+        json={"source": "SELECT 42 AS answer", "cell_type": "sql"},
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert len(data["outputs"]) == 1
+    assert data["outputs"][0]["type"] == "table"
+    assert data["outputs"][0]["rows"] == [[42]]
+    assert "duration_ms" in data
+
+
+def test_run_code_cell_endpoint(client):
+    """Run a Python code cell via the API."""
+    resp = client.post(
+        "/api/notebooks/run-cell/test_nb",
+        json={"source": "1 + 1", "cell_type": "code"},
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert len(data["outputs"]) == 1
+    assert "2" in data["outputs"][0]["text"]
+
+
+def test_run_cell_namespace_persistence(client):
+    """Variables persist across code cells in the same notebook."""
+    # Set a variable
+    resp1 = client.post(
+        "/api/notebooks/run-cell/ns_test",
+        json={"source": "x = 42", "cell_type": "code", "reset": True},
+    )
+    assert resp1.status_code == 200
+
+    # Read it back
+    resp2 = client.post(
+        "/api/notebooks/run-cell/ns_test",
+        json={"source": "x", "cell_type": "code"},
+    )
+    assert resp2.status_code == 200
+    assert "42" in resp2.json()["outputs"][0]["text"]
+
+
+def test_run_cell_reset_namespace(client):
+    """Reset flag clears the namespace."""
+    # Set a variable
+    client.post(
+        "/api/notebooks/run-cell/reset_test",
+        json={"source": "y = 99", "cell_type": "code"},
+    )
+
+    # Reset and try to read
+    resp = client.post(
+        "/api/notebooks/run-cell/reset_test",
+        json={"source": "y", "cell_type": "code", "reset": True},
+    )
+    assert resp.status_code == 200
+    assert any(o["type"] == "error" for o in resp.json()["outputs"])
+
+
+def test_run_sql_cell_error_endpoint(client):
+    """SQL cell errors are returned, not raised as HTTP errors."""
+    resp = client.post(
+        "/api/notebooks/run-cell/test_nb",
+        json={"source": "SELECT * FROM nonexistent_xyzzy", "cell_type": "sql"},
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert any(o["type"] == "error" for o in data["outputs"])
+
+
+def test_promote_to_model_endpoint(client, project):
+    """Promote SQL to model via the API."""
+    resp = client.post(
+        "/api/notebooks/promote-to-model",
+        json={
+            "sql_source": "SELECT * FROM landing.data",
+            "model_name": "clean_data",
+            "target_schema": "bronze",
+        },
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["status"] == "created"
+    assert data["full_name"] == "bronze.clean_data"
+    assert "path" in data
+
+    # Verify the file was created
+    model_file = project / data["path"]
+    assert model_file.exists()
+    content = model_file.read_text()
+    assert "SELECT * FROM landing.data" in content
+    assert "-- config:" in content
+
+
+def test_promote_to_model_conflict(client, project):
+    """Promote returns 409 when model already exists."""
+    # Create first
+    client.post(
+        "/api/notebooks/promote-to-model",
+        json={
+            "sql_source": "SELECT 1",
+            "model_name": "conflict_model",
+            "target_schema": "bronze",
+        },
+    )
+    # Try again — should get 409
+    resp = client.post(
+        "/api/notebooks/promote-to-model",
+        json={
+            "sql_source": "SELECT 2",
+            "model_name": "conflict_model",
+            "target_schema": "bronze",
+        },
+    )
+    assert resp.status_code == 409
+
+    # With overwrite — should succeed
+    resp = client.post(
+        "/api/notebooks/promote-to-model",
+        json={
+            "sql_source": "SELECT 2",
+            "model_name": "conflict_model",
+            "target_schema": "bronze",
+            "overwrite": True,
+        },
+    )
+    assert resp.status_code == 200
+
+
+def test_promote_validates_identifiers(client):
+    """Promote rejects invalid model names and schemas."""
+    resp = client.post(
+        "/api/notebooks/promote-to-model",
+        json={
+            "sql_source": "SELECT 1",
+            "model_name": "DROP TABLE users--",
+            "target_schema": "bronze",
+        },
+    )
+    assert resp.status_code == 422  # Pydantic pattern validation
+
+
+def test_model_to_notebook_endpoint(client, project):
+    """Create notebook from model via the API."""
+    resp = client.post("/api/notebooks/model-to-notebook/bronze.test")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["status"] == "created"
+    assert "notebook" in data
+    assert data["notebook"]["title"] == "Debug: bronze.test"
+
+
+def test_model_to_notebook_not_found(client):
+    """Model-to-notebook returns 404 for nonexistent model."""
+    resp = client.post("/api/notebooks/model-to-notebook/nonexistent.model")
+    assert resp.status_code == 404
+
+
+def test_debug_notebook_endpoint(client, project):
+    """Generate debug notebook via the API."""
+    resp = client.post("/api/notebooks/debug/bronze.test")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["status"] == "created"
+    assert "notebook" in data
+    assert "Debug" in data["notebook"]["title"]
+
+
+def test_debug_notebook_not_found(client):
+    """Debug notebook returns 404 for nonexistent model."""
+    resp = client.post("/api/notebooks/debug/nonexistent.model")
+    assert resp.status_code == 404
+
+
+def test_list_notebooks(client, project):
+    """List notebooks endpoint."""
+    # Create a notebook
+    (project / "notebooks").mkdir(exist_ok=True)
+    import json
+    nb = {"title": "Test NB", "cells": []}
+    (project / "notebooks" / "test.dpnb").write_text(json.dumps(nb))
+
+    resp = client.get("/api/notebooks")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert any(n["name"] == "test" for n in data)
+
+
+# --- Notebook path traversal tests ---
+
+
+def test_resolve_notebook_rejects_path_traversal(project):
+    """_resolve_notebook rejects paths that escape the project directory."""
+    from fastapi import HTTPException
+    import dp.server.app as server_app
+
+    with pytest.raises(HTTPException) as exc_info:
+        server_app._resolve_notebook(project, "../../../etc/passwd")
+    assert exc_info.value.status_code == 400
+
+    with pytest.raises(HTTPException) as exc_info:
+        server_app._resolve_notebook(project, "notebooks/../../../etc/passwd.dpnb")
+    assert exc_info.value.status_code == 400
+
+
+def test_run_cell_ingest_rejects_injection(client):
+    """Ingest cell via API rejects SQL injection in identifiers."""
+    import json as _json
+    resp = client.post(
+        "/api/notebooks/run-cell/test_nb",
+        json={
+            "source": _json.dumps({
+                "source_type": "csv",
+                "source_path": "/data/test.csv",
+                "target_schema": "landing; DROP TABLE--",
+                "target_table": "data",
+            }),
+            "cell_type": "ingest",
+        },
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert any(o["type"] == "error" for o in data["outputs"])
+    assert any("Invalid" in o.get("text", "") for o in data["outputs"])

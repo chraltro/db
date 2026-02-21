@@ -62,11 +62,26 @@ def _run_notebook_as_script(
     conn: duckdb.DuckDBPyConnection,
     notebook_path: Path,
 ) -> dict:
-    """Run a .dpnb notebook as a pipeline script."""
-    from dp.engine.notebook import load_notebook, run_notebook
+    """Run a .dpnb notebook as a pipeline script.
+
+    Captures per-cell timing and output, detects output tables for DAG
+    integration, and returns detailed execution results.
+    """
+    from dp.engine.notebook import extract_notebook_outputs, load_notebook, run_notebook
 
     notebook = load_notebook(notebook_path)
-    result_nb = run_notebook(conn, notebook)
+
+    # Resolve project dir from notebook path for ingest cell support
+    project_dir = None
+    for parent in notebook_path.parents:
+        if (parent / "project.yml").exists():
+            project_dir = parent
+            break
+
+    result_nb = run_notebook(conn, notebook, project_dir=project_dir)
+
+    # Collect per-cell results
+    cell_results = result_nb.get("cell_results", [])
 
     # Check cells for errors
     errors = []
@@ -77,6 +92,18 @@ def _run_notebook_as_script(
 
     duration_ms = result_nb.get("last_run_ms", 0)
 
+    # Extract output table declarations
+    output_tables = extract_notebook_outputs(notebook)
+
+    # Count rows from output tables
+    rows_affected = 0
+    for table in output_tables:
+        try:
+            count = conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
+            rows_affected += count
+        except Exception:
+            pass
+
     if errors:
         error_msg = "\n".join(errors)
         return {
@@ -85,6 +112,8 @@ def _run_notebook_as_script(
             "duration_ms": duration_ms,
             "log_output": error_msg,
             "error": error_msg,
+            "cell_results": cell_results,
+            "output_tables": output_tables,
         }
 
     return {
@@ -93,6 +122,9 @@ def _run_notebook_as_script(
         "duration_ms": duration_ms,
         "log_output": "",
         "error": None,
+        "rows_affected": rows_affected,
+        "cell_results": cell_results,
+        "output_tables": output_tables,
     }
 
 
