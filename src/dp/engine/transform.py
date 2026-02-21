@@ -77,6 +77,8 @@ class SQLModel:
     upstream_hash: str = ""
     assertions: list[str] = field(default_factory=list)
     unique_key: str | None = None  # For incremental models
+    incremental_strategy: str = "delete+insert"  # "delete+insert" or "append"
+    incremental_filter: str | None = None  # e.g. "WHERE updated_at > (SELECT MAX(updated_at) FROM {this})"
 
     def __post_init__(self) -> None:
         self.content_hash = _hash_content(self.query)
@@ -210,6 +212,8 @@ def discover_models(transform_dir: Path) -> list[SQLModel]:
         name = sql_file.stem
         materialized = config.get("materialized", "view")
         unique_key = config.get("unique_key")
+        incremental_strategy = config.get("incremental_strategy", "delete+insert")
+        incremental_filter = config.get("incremental_filter")
 
         models.append(
             SQLModel(
@@ -225,6 +229,8 @@ def discover_models(transform_dir: Path) -> list[SQLModel]:
                 column_docs=column_docs,
                 assertions=assertions,
                 unique_key=unique_key,
+                incremental_strategy=incremental_strategy,
+                incremental_filter=incremental_filter,
             )
         )
 
@@ -323,10 +329,15 @@ def _execute_incremental(
     conn: duckdb.DuckDBPyConnection,
     model: SQLModel,
 ) -> tuple[int, int]:
-    """Execute an incremental model using MERGE/upsert logic.
+    """Execute an incremental model.
 
-    If the target table doesn't exist yet, performs a full load.
-    Otherwise merges new rows using the unique_key.
+    Strategies:
+        delete+insert (default): Delete matching rows by unique_key, insert new.
+        append: Always append, no deduplication.
+
+    If the target table doesn't exist yet, performs a full load regardless of strategy.
+    Handles schema evolution: new columns in the source query are auto-added to the target.
+    Supports incremental_filter for filtering the query on incremental runs.
     """
     conn.execute(f"CREATE SCHEMA IF NOT EXISTS {model.schema}")
     start = time.perf_counter()
@@ -337,52 +348,67 @@ def _execute_incremental(
         [model.schema, model.name],
     ).fetchone()[0] > 0
 
+    # Build the query, applying incremental_filter if this is not the first run
+    query = model.query
+    if exists and model.incremental_filter:
+        # Replace {this} with the target table name
+        filter_clause = model.incremental_filter.replace("{this}", model.full_name)
+        query = f"{query}\n{filter_clause}"
+
+    strategy = model.incremental_strategy
+
     if not exists:
         # First run — full load
-        ddl = f"CREATE TABLE {model.full_name} AS\n{model.query}"
+        ddl = f"CREATE TABLE {model.full_name} AS\n{query}"
         conn.execute(ddl)
+    elif strategy == "append" or not model.unique_key:
+        # Append-only: just insert
+        conn.execute(f"INSERT INTO {model.full_name}\n{query}")
     else:
-        unique_key = model.unique_key
-        if not unique_key:
-            # No unique key — append-only
-            conn.execute(f"INSERT INTO {model.full_name}\n{model.query}")
-        else:
-            # MERGE using unique key
-            keys = [k.strip() for k in unique_key.split(",")]
-            staging_name = f"_dp_staging_{model.name}"
-            staging_full = f"{model.schema}.{staging_name}"
+        # delete+insert strategy with unique_key
+        keys = [k.strip() for k in model.unique_key.split(",")]
+        staging_name = f"_dp_staging_{model.name}"
 
-            # Create staging table with new data
-            conn.execute(f"CREATE OR REPLACE TEMP TABLE {staging_name} AS\n{model.query}")
+        # Create staging table with new data
+        conn.execute(f"CREATE OR REPLACE TEMP TABLE {staging_name} AS\n{query}")
 
-            # Get column list from staging
-            cols_result = conn.execute(
-                f"SELECT column_name FROM information_schema.columns "
-                f"WHERE table_schema = '{model.schema}' AND table_name = '{model.name}' "
-                f"ORDER BY ordinal_position"
+        # Handle schema evolution: detect new columns in staging that don't exist in target
+        target_cols = {
+            r[0]
+            for r in conn.execute(
+                "SELECT column_name FROM information_schema.columns "
+                "WHERE table_schema = ? AND table_name = ? ",
+                [model.schema, model.name],
             ).fetchall()
-            columns = [r[0] for r in cols_result]
+        }
+        staging_cols = conn.execute(
+            "SELECT column_name, data_type FROM information_schema.columns "
+            "WHERE table_name = ? "
+            "ORDER BY ordinal_position",
+            [staging_name],
+        ).fetchall()
 
-            # Build MERGE statement
-            on_clause = " AND ".join(f"target.\"{k}\" = source.\"{k}\"" for k in keys)
-            update_cols = [c for c in columns if c not in keys]
-            update_set = ", ".join(f"\"{c}\" = source.\"{c}\"" for c in update_cols)
-            insert_cols = ", ".join(f"\"{c}\"" for c in columns)
-            insert_vals = ", ".join(f"source.\"{c}\"" for c in columns)
+        for col_name, col_type in staging_cols:
+            if col_name not in target_cols:
+                conn.execute(
+                    f'ALTER TABLE {model.full_name} ADD COLUMN "{col_name}" {col_type}'
+                )
 
-            merge_sql = f"""
-                DELETE FROM {model.full_name}
-                WHERE ({", ".join(f'"{k}"' for k in keys)}) IN (
-                    SELECT {", ".join(f'"{k}"' for k in keys)} FROM {staging_name}
-                );
-                INSERT INTO {model.full_name} SELECT * FROM {staging_name};
-            """
-            for stmt in merge_sql.strip().split(";"):
-                stmt = stmt.strip()
-                if stmt:
-                    conn.execute(stmt)
+        # Get the final column list from staging for explicit INSERT
+        staging_col_names = [r[0] for r in staging_cols]
+        staging_select = ", ".join(f'"{c}"' for c in staging_col_names)
 
-            conn.execute(f"DROP TABLE IF EXISTS {staging_name}")
+        # Delete matching rows, then insert with explicit columns
+        key_cols = ", ".join(f'"{k}"' for k in keys)
+        conn.execute(
+            f"DELETE FROM {model.full_name} "
+            f"WHERE ({key_cols}) IN (SELECT {key_cols} FROM {staging_name})"
+        )
+        insert_cols = ", ".join(f'"{c}"' for c in staging_col_names)
+        conn.execute(
+            f"INSERT INTO {model.full_name} ({insert_cols}) SELECT {staging_select} FROM {staging_name}"
+        )
+        conn.execute(f"DROP TABLE IF EXISTS {staging_name}")
 
     duration_ms = int((time.perf_counter() - start) * 1000)
     result = conn.execute(f"SELECT count(*) FROM {model.full_name}").fetchone()
@@ -583,99 +609,345 @@ def _save_assertions(
 # --- Column-level lineage ---
 
 
-def extract_column_lineage(model: SQLModel) -> dict[str, list[dict[str, str]]]:
-    """Extract column-level lineage from a SQL model.
+def extract_column_lineage(
+    model: SQLModel,
+    conn: duckdb.DuckDBPyConnection | None = None,
+) -> dict[str, list[dict[str, str]]]:
+    """Extract column-level lineage from a SQL model using sqlglot AST parsing.
 
     Returns a mapping of output_column -> list of {source_table, source_column}.
-    This uses regex-based heuristics — not a full SQL parser — but handles
-    the common patterns in plain SQL transforms.
-    """
-    query = model.query
-    # Strip comments
-    clean = re.sub(r"--[^\n]*", "", query)
-    # Strip block comments
-    clean = re.sub(r"/\*.*?\*/", "", clean, flags=re.DOTALL)
+    Uses sqlglot to parse the SQL and trace column references through CTEs,
+    subqueries, CASE expressions, and window functions.
 
+    If conn is provided, resolves SELECT * by querying information_schema.
+    """
+    import sqlglot
+    from sqlglot import exp
+
+    query = model.query
     lineage: dict[str, list[dict[str, str]]] = {}
 
-    # Parse table aliases from FROM/JOIN clauses
-    alias_map: dict[str, str] = {}
-    alias_pattern = re.compile(
-        r"\b(?:FROM|JOIN)\s+([a-zA-Z_]\w*\.[a-zA-Z_]\w*)\s+(?:AS\s+)?([a-zA-Z_]\w*)\b",
-        re.IGNORECASE,
-    )
-    for m in alias_pattern.finditer(clean):
-        alias_map[m.group(2).lower()] = m.group(1).lower()
-    # Also match FROM table without alias
-    no_alias_pattern = re.compile(
-        r"\b(?:FROM|JOIN)\s+([a-zA-Z_]\w*\.[a-zA-Z_]\w*)\b",
-        re.IGNORECASE,
-    )
-    for m in no_alias_pattern.finditer(clean):
-        table_ref = m.group(1).lower()
-        alias_map[table_ref] = table_ref
-
-    # Parse SELECT columns
-    # Find the outermost SELECT ... FROM
-    select_match = re.search(r"\bSELECT\b(.+?)\bFROM\b", clean, re.IGNORECASE | re.DOTALL)
-    if not select_match:
+    try:
+        parsed = sqlglot.parse_one(query, read="duckdb")
+    except sqlglot.errors.ParseError:
         return lineage
 
-    select_body = select_match.group(1)
-
-    # Split by commas (respecting parentheses)
-    columns: list[str] = []
-    depth = 0
-    current = ""
-    for char in select_body:
-        if char == "(":
-            depth += 1
-        elif char == ")":
-            depth -= 1
-        elif char == "," and depth == 0:
-            columns.append(current.strip())
-            current = ""
-            continue
-        current += char
-    if current.strip():
-        columns.append(current.strip())
-
-    for col_expr in columns:
-        # Determine output column name (alias)
-        alias_m = re.search(r"\bAS\s+(\w+)\s*$", col_expr, re.IGNORECASE)
-        if alias_m:
-            out_col = alias_m.group(1).lower()
-            expr = col_expr[:alias_m.start()].strip()
+    # Build alias -> fully-qualified table map from the AST
+    alias_map: dict[str, str] = {}
+    for table in parsed.find_all(exp.Table):
+        catalog = table.catalog or ""
+        db = table.db or ""
+        name = table.name or ""
+        alias = table.alias or ""
+        if db and name:
+            fqn = f"{db}.{name}".lower()
+        elif name:
+            fqn = name.lower()
         else:
-            # No alias — last identifier is the column name
-            parts = re.findall(r"[a-zA-Z_]\w*", col_expr)
-            out_col = parts[-1].lower() if parts else "?"
-            expr = col_expr.strip()
+            continue
+        if alias:
+            alias_map[alias.lower()] = fqn
+        alias_map[fqn] = fqn
 
-        # Find source references in the expression (alias.column or table.column patterns)
+    # Also build CTE name set so we can trace through them
+    cte_names: set[str] = set()
+    for cte in parsed.find_all(exp.CTE):
+        cte_alias = cte.alias
+        if cte_alias:
+            cte_names.add(cte_alias.lower())
+
+    # Resolve SELECT * columns if we have a connection
+    star_columns: dict[str, list[str]] = {}  # table_fqn -> [col1, col2, ...]
+    if conn:
+        for dep in model.depends_on:
+            parts = dep.split(".")
+            if len(parts) == 2:
+                try:
+                    cols = conn.execute(
+                        "SELECT column_name FROM information_schema.columns "
+                        "WHERE table_schema = ? AND table_name = ? ORDER BY ordinal_position",
+                        [parts[0], parts[1]],
+                    ).fetchall()
+                    star_columns[dep] = [c[0] for c in cols]
+                except Exception:
+                    pass
+
+    def _resolve_table(name: str) -> str:
+        """Resolve a table alias or name to its fully-qualified form."""
+        return alias_map.get(name.lower(), name.lower())
+
+    def _extract_sources_from_expr(node: exp.Expression) -> list[dict[str, str]]:
+        """Walk an expression node and collect all column references."""
         sources: list[dict[str, str]] = []
-        ref_pattern = re.compile(r"\b([a-zA-Z_]\w*)\.([a-zA-Z_]\w*)\b")
-        for ref_m in ref_pattern.finditer(expr):
-            alias_or_table = ref_m.group(1).lower()
-            src_col = ref_m.group(2).lower()
-            src_table = alias_map.get(alias_or_table, alias_or_table)
-            # Skip function calls or keywords
-            if src_table in _SKIP_SCHEMAS:
-                continue
-            sources.append({"source_table": src_table, "source_column": src_col})
+        for col in node.find_all(exp.Column):
+            col_name = col.name.lower() if col.name else ""
+            table_ref = col.table.lower() if col.table else ""
+            if table_ref:
+                resolved = _resolve_table(table_ref)
+                # If it resolves to a CTE, skip — it's an intermediate, not a source
+                if resolved in cte_names:
+                    continue
+                sources.append({"source_table": resolved, "source_column": col_name})
+            elif col_name and model.depends_on:
+                # Unqualified column — attribute to first upstream dependency
+                sources.append({"source_table": model.depends_on[0].lower(), "source_column": col_name})
+        return sources
 
-        if not sources and "." not in expr:
-            # Simple column reference without table qualifier — try to infer from upstream
-            simple_col = re.match(r"^\s*(\w+)\s*$", expr)
-            if simple_col:
-                col_name = simple_col.group(1).lower()
-                for dep in model.depends_on:
-                    sources.append({"source_table": dep, "source_column": col_name})
-                    break
+    # Find the outermost SELECT statement (skip CTE definitions)
+    main_select = parsed
+    if isinstance(parsed, exp.Union):
+        # For UNION queries, trace the first SELECT
+        main_select = parsed.find(exp.Select)
+    elif hasattr(parsed, "this") and isinstance(parsed.this, exp.Select):
+        main_select = parsed.this
+    elif not isinstance(parsed, exp.Select):
+        main_select = parsed.find(exp.Select)
 
-        lineage[out_col] = sources
+    if not main_select:
+        return lineage
+
+    # Process each SELECT expression
+    for select_expr in main_select.expressions:
+        # Determine the output column name
+        if isinstance(select_expr, exp.Alias):
+            out_col = select_expr.alias.lower()
+            inner = select_expr.this
+        elif isinstance(select_expr, exp.Column):
+            out_col = select_expr.name.lower()
+            inner = select_expr
+        elif isinstance(select_expr, exp.Star):
+            # SELECT * — expand using information_schema if available
+            for dep in model.depends_on:
+                if dep in star_columns:
+                    for col_name in star_columns[dep]:
+                        lineage[col_name.lower()] = [
+                            {"source_table": dep, "source_column": col_name.lower()}
+                        ]
+            continue
+        else:
+            # Complex expression without alias — use sqlglot's output name
+            out_col = select_expr.output_name.lower() if hasattr(select_expr, "output_name") and select_expr.output_name else "?"
+            inner = select_expr
+
+        sources = _extract_sources_from_expr(inner if inner else select_expr)
+
+        # Deduplicate sources
+        seen: set[tuple[str, str]] = set()
+        unique_sources: list[dict[str, str]] = []
+        for s in sources:
+            key = (s["source_table"], s["source_column"])
+            if key not in seen:
+                seen.add(key)
+                unique_sources.append(s)
+
+        lineage[out_col] = unique_sources
 
     return lineage
+
+
+# --- Compile-time SQL validation ---
+
+
+@dataclass
+class ValidationError:
+    """A single validation error found during compile-time check."""
+
+    model: str
+    severity: str  # "error" or "warning"
+    message: str
+    line: int | None = None
+
+
+def validate_models(
+    conn: duckdb.DuckDBPyConnection | None,
+    models: list[SQLModel],
+) -> list[ValidationError]:
+    """Validate all models without executing them.
+
+    Checks:
+    - SQL parses correctly (sqlglot)
+    - Referenced tables exist (in DuckDB catalog or as known model names)
+    - Column references exist in upstream models (when resolvable)
+    - Ambiguous column references (column in multiple upstream tables without qualifier)
+    """
+    import sqlglot
+    from sqlglot import exp
+
+    model_names = {m.full_name for m in models}
+    errors: list[ValidationError] = []
+
+    # Build catalog of known tables (existing in DuckDB + model names)
+    known_tables: set[str] = set(model_names)
+    if conn:
+        try:
+            rows = conn.execute(
+                "SELECT table_schema || '.' || table_name FROM information_schema.tables"
+            ).fetchall()
+            known_tables.update(r[0].lower() for r in rows)
+        except Exception:
+            pass
+
+    # Build column catalog: table -> set of columns
+    column_catalog: dict[str, set[str]] = {}
+    if conn:
+        try:
+            rows = conn.execute(
+                "SELECT table_schema || '.' || table_name, column_name "
+                "FROM information_schema.columns"
+            ).fetchall()
+            for table_fqn, col_name in rows:
+                table_fqn = table_fqn.lower()
+                column_catalog.setdefault(table_fqn, set()).add(col_name.lower())
+        except Exception:
+            pass
+
+    for model in models:
+        # 1. Parse check
+        try:
+            parsed = sqlglot.parse_one(model.query, read="duckdb")
+        except sqlglot.errors.ParseError as e:
+            errors.append(ValidationError(
+                model=model.full_name,
+                severity="error",
+                message=f"SQL parse error: {e}",
+            ))
+            continue
+
+        # 2. Check referenced tables exist
+        for table in parsed.find_all(exp.Table):
+            db_name = table.db or ""
+            table_name = table.name or ""
+            if db_name and table_name:
+                fqn = f"{db_name}.{table_name}".lower()
+                if fqn not in known_tables and fqn not in _SKIP_SCHEMAS:
+                    errors.append(ValidationError(
+                        model=model.full_name,
+                        severity="error",
+                        message=f"Referenced table '{fqn}' does not exist",
+                    ))
+
+        # 3. Check column references
+        # Build alias map for this model
+        alias_map: dict[str, str] = {}
+        for table in parsed.find_all(exp.Table):
+            db_name = table.db or ""
+            table_name = table.name or ""
+            alias = table.alias or ""
+            if db_name and table_name:
+                fqn = f"{db_name}.{table_name}".lower()
+                if alias:
+                    alias_map[alias.lower()] = fqn
+                alias_map[fqn] = fqn
+
+        for col in parsed.find_all(exp.Column):
+            col_name = col.name.lower() if col.name else ""
+            table_ref = col.table.lower() if col.table else ""
+
+            if table_ref and col_name:
+                resolved_table = alias_map.get(table_ref, table_ref)
+                if resolved_table in column_catalog:
+                    if col_name not in column_catalog[resolved_table]:
+                        errors.append(ValidationError(
+                            model=model.full_name,
+                            severity="error",
+                            message=f"Column '{col_name}' not found in table '{resolved_table}'",
+                        ))
+            elif col_name and not table_ref:
+                # Unqualified column — check for ambiguity
+                found_in: list[str] = []
+                for dep in model.depends_on:
+                    if dep in column_catalog and col_name in column_catalog[dep]:
+                        found_in.append(dep)
+                if len(found_in) > 1:
+                    errors.append(ValidationError(
+                        model=model.full_name,
+                        severity="warning",
+                        message=f"Ambiguous column '{col_name}' found in multiple tables: {', '.join(found_in)}",
+                    ))
+
+    return errors
+
+
+# --- Impact analysis ---
+
+
+def impact_analysis(
+    models: list[SQLModel],
+    target: str,
+    column: str | None = None,
+    conn: duckdb.DuckDBPyConnection | None = None,
+) -> dict:
+    """Analyze downstream impact of changing a model or column.
+
+    Args:
+        models: All discovered models
+        target: Model name (e.g. "silver.customers")
+        column: Optional column name to trace
+        conn: Optional connection for column-level lineage resolution
+
+    Returns:
+        Dict with downstream_models, affected_columns, impact_chain
+    """
+    model_map = {m.full_name: m for m in models}
+
+    # Build reverse dependency graph: model -> list of models that depend on it
+    reverse_deps: dict[str, list[str]] = {}
+    for m in models:
+        for dep in m.depends_on:
+            reverse_deps.setdefault(dep, []).append(m.full_name)
+
+    # BFS to find all downstream models
+    downstream: list[str] = []
+    visited: set[str] = set()
+    queue = [target]
+
+    while queue:
+        current = queue.pop(0)
+        for child in reverse_deps.get(current, []):
+            if child not in visited:
+                visited.add(child)
+                downstream.append(child)
+                queue.append(child)
+
+    # Build impact chain (model -> its direct dependents)
+    impact_chain: dict[str, list[str]] = {}
+    chain_visited: set[str] = set()
+    chain_queue = [target]
+    while chain_queue:
+        current = chain_queue.pop(0)
+        if current in chain_visited:
+            continue
+        chain_visited.add(current)
+        children = reverse_deps.get(current, [])
+        if children:
+            impact_chain[current] = children
+            chain_queue.extend(children)
+
+    result: dict = {
+        "target": target,
+        "downstream_models": downstream,
+        "impact_chain": impact_chain,
+    }
+
+    # Column-level impact if a column is specified
+    if column and conn:
+        affected_columns: list[dict[str, str]] = []
+        for ds_name in downstream:
+            ds_model = model_map.get(ds_name)
+            if not ds_model:
+                continue
+            lineage = extract_column_lineage(ds_model, conn)
+            for out_col, sources in lineage.items():
+                for src in sources:
+                    if src["source_table"] == target and src["source_column"] == column:
+                        affected_columns.append({
+                            "model": ds_name,
+                            "column": out_col,
+                        })
+        result["column"] = column
+        result["affected_columns"] = affected_columns
+
+    return result
 
 
 # --- Freshness monitoring ---
@@ -805,6 +1077,7 @@ def run_transform(
     force: bool = False,
     parallel: bool = False,
     max_workers: int = 4,
+    db_path: str | None = None,
 ) -> dict[str, str]:
     """Run the full transformation pipeline.
 
@@ -815,6 +1088,7 @@ def run_transform(
         force: Force rebuild even if unchanged
         parallel: Enable parallel execution of independent models
         max_workers: Max number of parallel workers
+        db_path: Explicit database path (required for parallel mode)
 
     Returns:
         Dict of model_name -> status ("built", "skipped", "error")
@@ -838,7 +1112,7 @@ def run_transform(
             return {}
 
     if parallel:
-        return _run_transform_parallel(conn, models, force, max_workers)
+        return _run_transform_parallel(conn, models, force, max_workers, db_path=db_path)
     return _run_transform_sequential(conn, models, force)
 
 
@@ -918,11 +1192,13 @@ def _run_transform_parallel(
     models: list[SQLModel],
     force: bool,
     max_workers: int,
+    db_path: str | None = None,
 ) -> dict[str, str]:
     """Run models in parallel by DAG tiers.
 
     Models within the same tier are independent and can execute concurrently.
     Each tier must complete before the next one starts.
+    Assertion failures in a tier block the next tier.
     """
     tiers = build_dag_tiers(models)
     model_map = {m.full_name: m for m in models}
@@ -932,18 +1208,33 @@ def _run_transform_parallel(
     for model in ordered:
         model.upstream_hash = _compute_upstream_hash(model, model_map)
 
-    # Get database path from the connection
-    db_path = conn.execute("SELECT current_setting('duckdb_database_file')").fetchone()
-    if not db_path or not db_path[0]:
-        # Fall back to sequential if we can't determine the db path
+    # Resolve database path explicitly
+    db_path_str = db_path
+    if not db_path_str:
+        # Fall back to extracting from connection
+        try:
+            result = conn.execute("SELECT current_setting('duckdb_database_file')").fetchone()
+            db_path_str = result[0] if result and result[0] else None
+        except Exception:
+            pass
+    if not db_path_str:
         console.print("[yellow]Cannot determine database path, falling back to sequential[/yellow]")
         return _run_transform_sequential(conn, models, force)
-    db_path_str = db_path[0]
 
     results: dict[str, str] = {}
     total_tiers = len(tiers)
 
     for tier_idx, tier in enumerate(tiers, 1):
+        # Check if any previous tier had failures that should block this tier
+        has_blocking_failure = any(
+            s in ("error", "assertion_failed") for s in results.values()
+        )
+        if has_blocking_failure:
+            for model in tier:
+                console.print(f"  [dim]skip[/dim]  [bold]{model.full_name}[/bold] (upstream failure)")
+                results[model.full_name] = "skipped"
+            continue
+
         if len(tier) > 1:
             console.print(f"  [dim]tier {tier_idx}/{total_tiers}[/dim] ({len(tier)} models in parallel)")
 
@@ -989,7 +1280,8 @@ def _run_transform_parallel(
                 results[model.full_name] = "error"
         else:
             # Multiple models — run in parallel with separate connections
-            # Close main connection temporarily so worker threads can access the database
+            # Collect ALL results from all futures before reporting
+            tier_results: list[tuple[str, ModelResult]] = []
             with ThreadPoolExecutor(max_workers=min(max_workers, len(tier))) as executor:
                 futures = {
                     executor.submit(
@@ -998,22 +1290,25 @@ def _run_transform_parallel(
                     for model in tier
                 }
                 for future in as_completed(futures):
-                    model_name, model_result = future.result()
-                    label = f"[bold]{model_name}[/bold]"
-                    if model_result.status == "skipped":
-                        console.print(f"  [dim]skip[/dim]  {label}")
-                    elif model_result.status == "built":
-                        suffix = ""
-                        if model_result.row_count:
-                            suffix = f" ({model_result.row_count:,} rows, {model_result.duration_ms}ms)"
-                        else:
-                            suffix = f" ({model_result.duration_ms}ms)"
-                        console.print(f"  [green]done[/green]  {label}{suffix}")
-                    elif model_result.status == "assertion_failed":
-                        console.print(f"  [red]FAIL[/red]  {label}: assertion(s) failed")
-                    else:
-                        console.print(f"  [red]fail[/red]  {label}: {model_result.error}")
+                    tier_results.append(future.result())
 
-                    results[model_name] = model_result.status
+            # Report all results from this tier
+            for model_name, model_result in tier_results:
+                label = f"[bold]{model_name}[/bold]"
+                if model_result.status == "skipped":
+                    console.print(f"  [dim]skip[/dim]  {label}")
+                elif model_result.status == "built":
+                    suffix = ""
+                    if model_result.row_count:
+                        suffix = f" ({model_result.row_count:,} rows, {model_result.duration_ms}ms)"
+                    else:
+                        suffix = f" ({model_result.duration_ms}ms)"
+                    console.print(f"  [green]done[/green]  {label}{suffix}")
+                elif model_result.status == "assertion_failed":
+                    console.print(f"  [red]FAIL[/red]  {label}: assertion(s) failed")
+                else:
+                    console.print(f"  [red]fail[/red]  {label}: {model_result.error}")
+
+                results[model_name] = model_result.status
 
     return results

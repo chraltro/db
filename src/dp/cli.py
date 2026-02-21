@@ -171,7 +171,7 @@ def transform(
     try:
         results = run_transform(
             conn, transform_dir, targets=targets, force=force,
-            parallel=parallel, max_workers=workers,
+            parallel=parallel, max_workers=workers, db_path=str(db_path),
         )
         if not results:
             return
@@ -2094,6 +2094,148 @@ def connectors_available() -> None:
     console.print(table)
     console.print()
     console.print("Set up a connector with: [bold]dp connect <type>[/bold]")
+
+
+# --- check ---
+
+
+@app.command()
+def check(
+    targets: Annotated[Optional[list[str]], typer.Argument(help="Specific models to check")] = None,
+    project_dir: Annotated[Optional[Path], typer.Option("--project", "-p", help="Project directory (default: current dir)")] = None,
+) -> None:
+    """Validate all SQL models without executing them.
+
+    Checks that SQL parses correctly, referenced tables exist, column references
+    are valid, and flags ambiguous column references.
+    """
+    from dp.config import load_project
+    from dp.engine.database import connect, ensure_meta_table
+    from dp.engine.transform import discover_models, validate_models
+
+    project_dir = _resolve_project(project_dir)
+    config = load_project(project_dir)
+    transform_dir = project_dir / "transform"
+    db_path = project_dir / config.database.path
+
+    models = discover_models(transform_dir)
+    if not models:
+        console.print("[yellow]No SQL models found in transform/[/yellow]")
+        return
+
+    if targets and targets != ["all"]:
+        target_set = set(targets)
+        models = [m for m in models if m.full_name in target_set or m.name in target_set]
+
+    conn = None
+    if db_path.exists():
+        conn = connect(db_path, read_only=True)
+        ensure_meta_table(conn)
+
+    try:
+        console.print(f"[bold]Checking {len(models)} model(s)...[/bold]")
+        errors = validate_models(conn, models)
+
+        if not errors:
+            console.print(f"[green]All {len(models)} models passed validation.[/green]")
+            return
+
+        err_count = sum(1 for e in errors if e.severity == "error")
+        warn_count = sum(1 for e in errors if e.severity == "warning")
+
+        for e in errors:
+            icon = "[red]error[/red]" if e.severity == "error" else "[yellow]warn[/yellow]"
+            console.print(f"  {icon}  [bold]{e.model}[/bold]: {e.message}")
+
+        console.print()
+        console.print(f"  {err_count} error(s), {warn_count} warning(s)")
+        if err_count:
+            raise typer.Exit(1)
+    finally:
+        if conn:
+            conn.close()
+
+
+# --- impact ---
+
+
+@app.command()
+def impact(
+    model: Annotated[str, typer.Argument(help="Model name (e.g. silver.customers)")],
+    column: Annotated[Optional[str], typer.Option("--column", "-c", help="Specific column to trace")] = None,
+    json_output: Annotated[bool, typer.Option("--json", help="Output as JSON")] = False,
+    project_dir: Annotated[Optional[Path], typer.Option("--project", "-p", help="Project directory (default: current dir)")] = None,
+) -> None:
+    """Analyze downstream impact of changing a model or column.
+
+    Shows all models and columns that would be affected by a change.
+    """
+    import json as json_mod
+
+    from dp.config import load_project
+    from dp.engine.database import connect, ensure_meta_table
+    from dp.engine.transform import discover_models, impact_analysis
+
+    project_dir = _resolve_project(project_dir)
+    config = load_project(project_dir)
+    transform_dir = project_dir / "transform"
+    db_path = project_dir / config.database.path
+
+    models = discover_models(transform_dir)
+    model_map = {m.full_name: m for m in models}
+
+    # Resolve model name
+    if model not in model_map:
+        matches = [m for m in models if m.name == model]
+        if matches:
+            model = matches[0].full_name
+        else:
+            console.print(f"[red]Model '{model}' not found.[/red]")
+            available = [m.full_name for m in models]
+            if available:
+                console.print(f"[dim]Available: {', '.join(available)}[/dim]")
+            raise typer.Exit(1)
+
+    conn = None
+    if db_path.exists():
+        conn = connect(db_path, read_only=True)
+        ensure_meta_table(conn)
+
+    try:
+        result = impact_analysis(models, model, column=column, conn=conn)
+
+        if json_output:
+            console.print(json_mod.dumps(result, indent=2))
+            return
+
+        console.print(f"[bold]Impact analysis for {model}[/bold]")
+        if column:
+            console.print(f"  Column: [cyan]{column}[/cyan]")
+        console.print()
+
+        downstream = result["downstream_models"]
+        if not downstream:
+            console.print("  [green]No downstream models affected.[/green]")
+            return
+
+        console.print(f"  [yellow]{len(downstream)} downstream model(s) affected:[/yellow]")
+        for ds in downstream:
+            console.print(f"    {ds}")
+
+        if result.get("affected_columns"):
+            console.print()
+            console.print(f"  [yellow]Affected columns:[/yellow]")
+            for ac in result["affected_columns"]:
+                console.print(f"    {ac['model']}.{ac['column']}")
+
+        if result.get("impact_chain"):
+            console.print()
+            console.print("  [dim]Impact chain:[/dim]")
+            for parent, children in result["impact_chain"].items():
+                console.print(f"    {parent} -> {', '.join(children)}")
+    finally:
+        if conn:
+            conn.close()
 
 
 # --- freshness ---

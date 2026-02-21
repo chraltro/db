@@ -1860,7 +1860,7 @@ def get_freshness(request: Request, max_hours: float = 24.0) -> list[dict]:
 
 @app.get("/api/lineage/{model_name}")
 def get_lineage(request: Request, model_name: str) -> dict:
-    """Get column-level lineage for a model."""
+    """Get column-level lineage for a model (AST-based via sqlglot)."""
     _require_permission(request, "read")
     from dp.engine.transform import extract_column_lineage
 
@@ -1876,12 +1876,18 @@ def get_lineage(request: Request, model_name: str) -> dict:
         else:
             raise HTTPException(404, f"Model '{model_name}' not found")
 
-    lineage = extract_column_lineage(target)
-    return {
-        "model": target.full_name,
-        "columns": lineage,
-        "depends_on": target.depends_on,
-    }
+    db_path = _get_db_path()
+    conn = connect(db_path, read_only=True) if db_path.exists() else None
+    try:
+        lineage = extract_column_lineage(target, conn)
+        return {
+            "model": target.full_name,
+            "columns": lineage,
+            "depends_on": target.depends_on,
+        }
+    finally:
+        if conn:
+            conn.close()
 
 
 @app.get("/api/lineage")
@@ -1893,15 +1899,80 @@ def get_all_lineage(request: Request) -> list[dict]:
     transform_dir = _get_project_dir() / "transform"
     models = _discover_models_cached(transform_dir)
 
-    results = []
-    for model in models:
-        lineage = extract_column_lineage(model)
-        results.append({
-            "model": model.full_name,
-            "columns": lineage,
-            "depends_on": model.depends_on,
-        })
-    return results
+    db_path = _get_db_path()
+    conn = connect(db_path, read_only=True) if db_path.exists() else None
+    try:
+        results = []
+        for model in models:
+            lineage = extract_column_lineage(model, conn)
+            results.append({
+                "model": model.full_name,
+                "columns": lineage,
+                "depends_on": model.depends_on,
+            })
+        return results
+    finally:
+        if conn:
+            conn.close()
+
+
+# --- Compile-time validation ---
+
+
+@app.post("/api/check")
+def run_check(request: Request) -> dict:
+    """Validate all SQL models without executing them."""
+    _require_permission(request, "read")
+    from dp.engine.transform import discover_models, validate_models
+
+    transform_dir = _get_project_dir() / "transform"
+    models = discover_models(transform_dir)
+
+    db_path = _get_db_path()
+    conn = connect(db_path, read_only=True) if db_path.exists() else None
+    try:
+        ensure_meta_table(conn) if conn else None
+        errors = validate_models(conn, models)
+        return {
+            "models_checked": len(models),
+            "errors": [
+                {"model": e.model, "severity": e.severity, "message": e.message}
+                for e in errors
+            ],
+            "passed": not any(e.severity == "error" for e in errors),
+        }
+    finally:
+        if conn:
+            conn.close()
+
+
+# --- Impact analysis ---
+
+
+@app.get("/api/impact/{model_name}")
+def get_impact(request: Request, model_name: str, column: str | None = None) -> dict:
+    """Analyze downstream impact of changing a model or column."""
+    _require_permission(request, "read")
+    from dp.engine.transform import discover_models, impact_analysis
+
+    transform_dir = _get_project_dir() / "transform"
+    models = discover_models(transform_dir)
+    model_map = {m.full_name: m for m in models}
+
+    if model_name not in model_map:
+        matches = [m for m in models if m.name == model_name]
+        if matches:
+            model_name = matches[0].full_name
+        else:
+            raise HTTPException(404, f"Model '{model_name}' not found")
+
+    db_path = _get_db_path()
+    conn = connect(db_path, read_only=True) if db_path.exists() else None
+    try:
+        return impact_analysis(models, model_name, column=column, conn=conn)
+    finally:
+        if conn:
+            conn.close()
 
 
 # --- Model profiles ---

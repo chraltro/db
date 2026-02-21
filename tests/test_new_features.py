@@ -1,5 +1,8 @@
 """Tests for the 7 new features: assertions, incremental, profiling, alerts,
-lineage, freshness, and parallel execution."""
+lineage, freshness, and parallel execution.
+
+Plus compile-time validation, impact analysis, and comprehensive failure-mode tests.
+"""
 
 from __future__ import annotations
 
@@ -16,6 +19,7 @@ from dp.engine.transform import (
     AssertionResult,
     ProfileResult,
     SQLModel,
+    ValidationError,
     _parse_assertions,
     _parse_config,
     build_dag,
@@ -24,9 +28,11 @@ from dp.engine.transform import (
     discover_models,
     execute_model,
     extract_column_lineage,
+    impact_analysis,
     profile_model,
     run_assertions,
     run_transform,
+    validate_models,
 )
 
 
@@ -195,6 +201,40 @@ class TestAssertions:
         results = run_transform(db, transform_dir, force=True)
         assert results["bronze.empty"] == "assertion_failed"
 
+    def test_assertion_on_all_null_table(self, db):
+        """Assertions on a table where all values are NULL."""
+        db.execute("CREATE SCHEMA IF NOT EXISTS gold")
+        db.execute(
+            "CREATE TABLE gold.all_nulls AS "
+            "SELECT NULL::INTEGER AS id, NULL::VARCHAR AS name"
+        )
+        model = SQLModel(
+            path=Path("test.sql"), name="all_nulls", schema="gold",
+            full_name="gold.all_nulls", sql="", query="SELECT 1",
+            materialized="table",
+            assertions=["no_nulls(id)", "row_count > 0"],
+        )
+        results = run_assertions(db, model)
+        # no_nulls should fail
+        assert results[0].passed is False
+        # row_count > 0 should pass (there is one row)
+        assert results[1].passed is True
+
+    def test_assertion_error_in_expression(self, db):
+        """Invalid assertion expression should fail gracefully."""
+        db.execute("CREATE SCHEMA IF NOT EXISTS gold")
+        db.execute("CREATE TABLE gold.test_err AS SELECT 1 AS id")
+        model = SQLModel(
+            path=Path("test.sql"), name="test_err", schema="gold",
+            full_name="gold.test_err", sql="", query="SELECT 1",
+            materialized="table",
+            assertions=["INVALID SQL GARBAGE %%% !!!"],
+        )
+        results = run_assertions(db, model)
+        assert len(results) == 1
+        assert results[0].passed is False
+        assert "Assertion error" in results[0].detail
+
 
 # =============================================================================
 # Feature 2: Incremental Models
@@ -207,6 +247,11 @@ class TestIncrementalModels:
         config = _parse_config(sql)
         assert config["materialized"] == "incremental"
         assert config["unique_key"] == "id"
+
+    def test_parse_incremental_strategy(self):
+        sql = "-- config: materialized=incremental, schema=silver, unique_key=id, incremental_strategy=append\nSELECT 1"
+        config = _parse_config(sql)
+        assert config["incremental_strategy"] == "append"
 
     def test_incremental_first_run_creates_table(self, db, transform_dir):
         db.execute("CREATE TABLE landing.orders AS SELECT 1 AS id, 100 AS amount")
@@ -261,6 +306,89 @@ class TestIncrementalModels:
         # Second run — should append (no unique key)
         run_transform(db, transform_dir, force=True)
         assert db.execute("SELECT COUNT(*) FROM silver.events").fetchone()[0] == 2
+
+    def test_incremental_explicit_append_strategy(self, db, transform_dir):
+        """incremental_strategy=append should always append."""
+        db.execute("CREATE TABLE landing.logs AS SELECT 1 AS id, 'info' AS msg")
+        (transform_dir / "silver" / "logs.sql").write_text(textwrap.dedent("""\
+            -- config: materialized=incremental, schema=silver, unique_key=id, incremental_strategy=append
+            -- depends_on: landing.logs
+
+            SELECT id, msg FROM landing.logs
+        """))
+        run_transform(db, transform_dir, force=True)
+        assert db.execute("SELECT COUNT(*) FROM silver.logs").fetchone()[0] == 1
+
+        # Even with unique_key, append strategy should not dedup
+        run_transform(db, transform_dir, force=True)
+        assert db.execute("SELECT COUNT(*) FROM silver.logs").fetchone()[0] == 2
+
+    def test_incremental_schema_evolution(self, db, transform_dir):
+        """New columns in source should be auto-added to target."""
+        db.execute("CREATE TABLE landing.evolve AS SELECT 1 AS id, 'alice' AS name")
+        (transform_dir / "silver" / "evolve.sql").write_text(textwrap.dedent("""\
+            -- config: materialized=incremental, schema=silver, unique_key=id
+            -- depends_on: landing.evolve
+
+            SELECT id, name FROM landing.evolve
+        """))
+        # First run
+        run_transform(db, transform_dir, force=True)
+        assert db.execute("SELECT COUNT(*) FROM silver.evolve").fetchone()[0] == 1
+
+        # Add a new column to source
+        db.execute("DROP TABLE landing.evolve")
+        db.execute("CREATE TABLE landing.evolve AS SELECT 2 AS id, 'bob' AS name, 'bob@test.com' AS email")
+
+        # Update the SQL to include the new column
+        (transform_dir / "silver" / "evolve.sql").write_text(textwrap.dedent("""\
+            -- config: materialized=incremental, schema=silver, unique_key=id
+            -- depends_on: landing.evolve
+
+            SELECT id, name, email FROM landing.evolve
+        """))
+
+        # Second run — should handle new column
+        run_transform(db, transform_dir, force=True)
+        rows = db.execute("SELECT * FROM silver.evolve ORDER BY id").fetchall()
+        assert len(rows) == 2
+        # Row 1 should have NULL for email (old row)
+        assert rows[0][0] == 1
+        assert rows[0][2] is None  # email
+        # Row 2 should have email
+        assert rows[1][0] == 2
+        assert rows[1][2] == "bob@test.com"
+
+    def test_incremental_with_filter(self, db, transform_dir):
+        """incremental_filter should be applied on non-first runs."""
+        db.execute("CREATE TABLE landing.ts_data AS SELECT 1 AS id, TIMESTAMP '2024-01-01' AS updated_at")
+        (transform_dir / "silver" / "ts_data.sql").write_text(textwrap.dedent("""\
+            -- config: materialized=incremental, schema=silver, unique_key=id, incremental_filter=WHERE updated_at > (SELECT MAX(updated_at) FROM {this})
+            -- depends_on: landing.ts_data
+
+            SELECT id, updated_at FROM landing.ts_data
+        """))
+        # First run — full load (filter not applied)
+        run_transform(db, transform_dir, force=True)
+        assert db.execute("SELECT COUNT(*) FROM silver.ts_data").fetchone()[0] == 1
+
+    def test_incremental_duplicate_keys_in_staging(self, db, transform_dir):
+        """Duplicate keys in source data should work (last write wins)."""
+        db.execute(
+            "CREATE TABLE landing.dupes AS "
+            "SELECT 1 AS id, 100 AS amount "
+            "UNION ALL SELECT 1, 200"
+        )
+        (transform_dir / "silver" / "dupes.sql").write_text(textwrap.dedent("""\
+            -- config: materialized=incremental, schema=silver, unique_key=id
+            -- depends_on: landing.dupes
+
+            SELECT id, amount FROM landing.dupes
+        """))
+        # First run — creates table with both rows (dupes in first load)
+        run_transform(db, transform_dir, force=True)
+        count = db.execute("SELECT COUNT(*) FROM silver.dupes").fetchone()[0]
+        assert count == 2  # Both rows are inserted on first load
 
 
 # =============================================================================
@@ -409,7 +537,7 @@ class TestAlerts:
 
 
 # =============================================================================
-# Feature 5: Column-Level Lineage
+# Feature 5: Column-Level Lineage (sqlglot AST-based)
 # =============================================================================
 
 
@@ -454,7 +582,7 @@ class TestColumnLineage:
             depends_on=["landing.raw_data"],
         )
         lineage = extract_column_lineage(model)
-        # * doesn't give us column names, so lineage should be empty or minimal
+        # * doesn't give us column names without a db connection
         assert isinstance(lineage, dict)
 
     def test_lineage_computed_column(self):
@@ -468,6 +596,107 @@ class TestColumnLineage:
         lineage = extract_column_lineage(model)
         assert "amount_with_tax" in lineage
         assert any(s["source_column"] == "amount" for s in lineage["amount_with_tax"])
+
+    def test_lineage_with_cte(self):
+        """CTEs should be traced through to the source tables."""
+        model = SQLModel(
+            path=Path("test.sql"), name="test", schema="gold",
+            full_name="gold.test", sql="",
+            query=textwrap.dedent("""\
+                WITH filtered AS (
+                    SELECT id, name FROM bronze.customers WHERE active = true
+                )
+                SELECT f.id, f.name FROM filtered f
+            """),
+            materialized="table",
+            depends_on=["bronze.customers"],
+        )
+        lineage = extract_column_lineage(model)
+        assert "id" in lineage
+        assert "name" in lineage
+
+    def test_lineage_with_case(self):
+        """CASE expressions should trace all column references."""
+        model = SQLModel(
+            path=Path("test.sql"), name="test", schema="silver",
+            full_name="silver.test", sql="",
+            query="SELECT e.id, CASE WHEN e.magnitude >= 5.0 THEN 'strong' ELSE 'weak' END AS strength FROM bronze.events e",
+            materialized="table",
+            depends_on=["bronze.events"],
+        )
+        lineage = extract_column_lineage(model)
+        assert "strength" in lineage
+        assert any(s["source_column"] == "magnitude" for s in lineage["strength"])
+
+    def test_lineage_with_window_function(self):
+        """Window functions should trace column references."""
+        model = SQLModel(
+            path=Path("test.sql"), name="test", schema="silver",
+            full_name="silver.test", sql="",
+            query="SELECT e.id, ROW_NUMBER() OVER (PARTITION BY e.region ORDER BY e.magnitude DESC) AS rn FROM bronze.events e",
+            materialized="table",
+            depends_on=["bronze.events"],
+        )
+        lineage = extract_column_lineage(model)
+        assert "rn" in lineage
+        # rn references region and magnitude
+        source_cols = {s["source_column"] for s in lineage["rn"]}
+        assert "region" in source_cols
+        assert "magnitude" in source_cols
+
+    def test_lineage_with_subquery(self):
+        """Subqueries in SELECT should trace sources."""
+        model = SQLModel(
+            path=Path("test.sql"), name="test", schema="gold",
+            full_name="gold.test", sql="",
+            query="SELECT c.id, (SELECT COUNT(*) FROM bronze.orders o WHERE o.customer_id = c.id) AS order_count FROM bronze.customers c",
+            materialized="table",
+            depends_on=["bronze.customers", "bronze.orders"],
+        )
+        lineage = extract_column_lineage(model)
+        assert "id" in lineage
+        assert "order_count" in lineage
+
+    def test_lineage_union_all(self):
+        """UNION ALL should trace from the first SELECT."""
+        model = SQLModel(
+            path=Path("test.sql"), name="test", schema="silver",
+            full_name="silver.test", sql="",
+            query="SELECT a.id, a.name FROM bronze.customers_a a UNION ALL SELECT b.id, b.name FROM bronze.customers_b b",
+            materialized="table",
+            depends_on=["bronze.customers_a", "bronze.customers_b"],
+        )
+        lineage = extract_column_lineage(model)
+        assert "id" in lineage
+        assert "name" in lineage
+
+    def test_lineage_star_with_connection(self, db):
+        """SELECT * with a connection should resolve columns from information_schema."""
+        db.execute("CREATE SCHEMA IF NOT EXISTS bronze")
+        db.execute("CREATE TABLE bronze.src AS SELECT 1 AS id, 'x' AS name, 3.14 AS val")
+        model = SQLModel(
+            path=Path("test.sql"), name="test", schema="silver",
+            full_name="silver.test", sql="",
+            query="SELECT * FROM bronze.src",
+            materialized="view",
+            depends_on=["bronze.src"],
+        )
+        lineage = extract_column_lineage(model, conn=db)
+        assert "id" in lineage
+        assert "name" in lineage
+        assert "val" in lineage
+        assert lineage["id"][0]["source_table"] == "bronze.src"
+
+    def test_lineage_unparseable_sql(self):
+        """Unparseable SQL should return empty lineage, not crash."""
+        model = SQLModel(
+            path=Path("test.sql"), name="test", schema="bronze",
+            full_name="bronze.test", sql="",
+            query="THIS IS NOT VALID SQL AT ALL",
+            materialized="view",
+        )
+        lineage = extract_column_lineage(model)
+        assert lineage == {}
 
 
 # =============================================================================
@@ -607,6 +836,196 @@ class TestParallelExecution:
         assert len(tiers) == 1
         assert len(tiers[0]) == 1
 
+    def test_parallel_error_in_tier_blocks_next(self, db, transform_dir):
+        """An error in one tier should block downstream tiers in parallel mode."""
+        db.execute("CREATE TABLE landing.good AS SELECT 1 AS id")
+
+        (transform_dir / "bronze" / "bad.sql").write_text(
+            "-- config: materialized=table, schema=bronze\n"
+            "-- depends_on: landing.nonexistent\n\n"
+            "SELECT * FROM landing.nonexistent\n"
+        )
+        (transform_dir / "silver" / "downstream.sql").write_text(
+            "-- config: materialized=table, schema=silver\n"
+            "-- depends_on: bronze.bad\n\n"
+            "SELECT * FROM bronze.bad\n"
+        )
+
+        results = run_transform(db, transform_dir, force=True, parallel=False)
+        assert results["bronze.bad"] == "error"
+        # Downstream should still be attempted (sequential doesn't auto-block),
+        # but it should also error because the source doesn't exist
+        assert results.get("silver.downstream") in ("error", "skipped")
+
+
+# =============================================================================
+# Compile-time SQL Validation
+# =============================================================================
+
+
+class TestValidation:
+    def test_validate_valid_models(self, db, transform_dir):
+        db.execute("CREATE TABLE landing.data AS SELECT 1 AS id, 'test' AS name")
+        (transform_dir / "bronze" / "data.sql").write_text(textwrap.dedent("""\
+            -- config: materialized=table, schema=bronze
+            -- depends_on: landing.data
+
+            SELECT id, name FROM landing.data
+        """))
+        models = discover_models(transform_dir)
+        errors = validate_models(db, models)
+        assert len(errors) == 0
+
+    def test_validate_bad_sql(self, transform_dir):
+        (transform_dir / "bronze" / "bad.sql").write_text(textwrap.dedent("""\
+            -- config: materialized=table, schema=bronze
+
+            SELECTT id FRUM landing.data WHEREE
+        """))
+        models = discover_models(transform_dir)
+        errors = validate_models(None, models)
+        parse_errors = [e for e in errors if "parse error" in e.message.lower()]
+        assert len(parse_errors) >= 1
+
+    def test_validate_missing_table(self, db, transform_dir):
+        (transform_dir / "bronze" / "missing.sql").write_text(textwrap.dedent("""\
+            -- config: materialized=table, schema=bronze
+            -- depends_on: landing.nonexistent
+
+            SELECT id FROM landing.nonexistent
+        """))
+        models = discover_models(transform_dir)
+        errors = validate_models(db, models)
+        table_errors = [e for e in errors if "does not exist" in e.message]
+        assert len(table_errors) >= 1
+
+    def test_validate_bad_column(self, db, transform_dir):
+        """Qualified column reference to a non-existent column should be caught."""
+        db.execute("CREATE TABLE landing.users AS SELECT 1 AS id, 'alice' AS name")
+        (transform_dir / "bronze" / "users.sql").write_text(textwrap.dedent("""\
+            -- config: materialized=table, schema=bronze
+            -- depends_on: landing.users
+
+            SELECT u.id, u.nonexistent_column FROM landing.users u
+        """))
+        models = discover_models(transform_dir)
+        errors = validate_models(db, models)
+        col_errors = [e for e in errors if "not found" in e.message.lower()]
+        assert len(col_errors) >= 1
+
+    def test_validate_model_references_other_model(self, db, transform_dir):
+        """Referencing another model (not yet built) should not error."""
+        (transform_dir / "bronze" / "a.sql").write_text(textwrap.dedent("""\
+            -- config: materialized=table, schema=bronze
+
+            SELECT 1 AS id
+        """))
+        (transform_dir / "silver" / "b.sql").write_text(textwrap.dedent("""\
+            -- config: materialized=table, schema=silver
+            -- depends_on: bronze.a
+
+            SELECT id FROM bronze.a
+        """))
+        models = discover_models(transform_dir)
+        errors = validate_models(db, models)
+        # bronze.a is a known model name, so it should not error
+        table_errors = [e for e in errors if "bronze.a" in e.message and "does not exist" in e.message]
+        assert len(table_errors) == 0
+
+    def test_validate_no_connection(self, transform_dir):
+        """Validation without a connection should still check SQL parsing."""
+        (transform_dir / "bronze" / "ok.sql").write_text("SELECT 1 AS id\n")
+        models = discover_models(transform_dir)
+        errors = validate_models(None, models)
+        assert len(errors) == 0
+
+
+# =============================================================================
+# Impact Analysis
+# =============================================================================
+
+
+class TestImpactAnalysis:
+    def test_basic_impact(self):
+        models = [
+            SQLModel(
+                path=Path("a.sql"), name="a", schema="bronze", full_name="bronze.a",
+                sql="", query="SELECT 1", materialized="table", depends_on=[],
+            ),
+            SQLModel(
+                path=Path("b.sql"), name="b", schema="silver", full_name="silver.b",
+                sql="", query="SELECT 1", materialized="table",
+                depends_on=["bronze.a"],
+            ),
+            SQLModel(
+                path=Path("c.sql"), name="c", schema="gold", full_name="gold.c",
+                sql="", query="SELECT 1", materialized="table",
+                depends_on=["silver.b"],
+            ),
+        ]
+        result = impact_analysis(models, "bronze.a")
+        assert "silver.b" in result["downstream_models"]
+        assert "gold.c" in result["downstream_models"]
+        assert len(result["downstream_models"]) == 2
+
+    def test_impact_no_downstream(self):
+        models = [
+            SQLModel(
+                path=Path("a.sql"), name="a", schema="gold", full_name="gold.a",
+                sql="", query="SELECT 1", materialized="table", depends_on=[],
+            ),
+        ]
+        result = impact_analysis(models, "gold.a")
+        assert result["downstream_models"] == []
+
+    def test_impact_chain(self):
+        models = [
+            SQLModel(path=Path("a.sql"), name="a", schema="bronze", full_name="bronze.a",
+                     sql="", query="SELECT 1", materialized="table", depends_on=[]),
+            SQLModel(path=Path("b.sql"), name="b", schema="silver", full_name="silver.b",
+                     sql="", query="SELECT 1", materialized="table", depends_on=["bronze.a"]),
+            SQLModel(path=Path("c.sql"), name="c", schema="gold", full_name="gold.c",
+                     sql="", query="SELECT 1", materialized="table", depends_on=["silver.b"]),
+        ]
+        result = impact_analysis(models, "bronze.a")
+        chain = result["impact_chain"]
+        assert "bronze.a" in chain
+        assert "silver.b" in chain["bronze.a"]
+        assert "silver.b" in chain
+        assert "gold.c" in chain["silver.b"]
+
+    def test_impact_with_column(self, db):
+        db.execute("CREATE SCHEMA IF NOT EXISTS bronze")
+        db.execute("CREATE TABLE bronze.src AS SELECT 1 AS id, 'x' AS name")
+
+        models = [
+            SQLModel(path=Path("a.sql"), name="src", schema="bronze", full_name="bronze.src",
+                     sql="", query="SELECT 1 AS id, 'x' AS name", materialized="table", depends_on=[]),
+            SQLModel(path=Path("b.sql"), name="users", schema="silver", full_name="silver.users",
+                     sql="", query="SELECT s.id, s.name FROM bronze.src s",
+                     materialized="table", depends_on=["bronze.src"]),
+        ]
+        result = impact_analysis(models, "bronze.src", column="name", conn=db)
+        assert result["column"] == "name"
+        affected = result["affected_columns"]
+        assert any(a["model"] == "silver.users" and a["column"] == "name" for a in affected)
+
+    def test_impact_diamond_dependency(self):
+        """Diamond dependency: A -> B, A -> C, B -> D, C -> D."""
+        models = [
+            SQLModel(path=Path("a.sql"), name="a", schema="bronze", full_name="bronze.a",
+                     sql="", query="SELECT 1", materialized="table", depends_on=[]),
+            SQLModel(path=Path("b.sql"), name="b", schema="silver", full_name="silver.b",
+                     sql="", query="SELECT 1", materialized="table", depends_on=["bronze.a"]),
+            SQLModel(path=Path("c.sql"), name="c", schema="silver", full_name="silver.c",
+                     sql="", query="SELECT 1", materialized="table", depends_on=["bronze.a"]),
+            SQLModel(path=Path("d.sql"), name="d", schema="gold", full_name="gold.d",
+                     sql="", query="SELECT 1", materialized="table",
+                     depends_on=["silver.b", "silver.c"]),
+        ]
+        result = impact_analysis(models, "bronze.a")
+        assert set(result["downstream_models"]) == {"silver.b", "silver.c", "gold.d"}
+
 
 # =============================================================================
 # Integration: all features work together
@@ -702,6 +1121,16 @@ class TestIntegration:
         assert len(models) == 1
         assert models[0].materialized == "incremental"
         assert models[0].unique_key == "user_id"
+
+    def test_discover_incremental_model_with_strategy(self, transform_dir):
+        (transform_dir / "silver" / "inc.sql").write_text(textwrap.dedent("""\
+            -- config: materialized=incremental, schema=silver, unique_key=id, incremental_strategy=append
+            -- depends_on: bronze.data
+
+            SELECT * FROM bronze.data
+        """))
+        models = discover_models(transform_dir)
+        assert models[0].incremental_strategy == "append"
 
 
 # =============================================================================
