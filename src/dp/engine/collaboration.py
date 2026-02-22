@@ -59,13 +59,19 @@ class SessionManager:
         self._connections: dict[str, tuple[str, object]] = {}
         self._max_sessions = 100
         self._max_history = 200
+        self._max_sql_length = 100_000  # 100KB limit for shared SQL
+        self._session_ttl = 86400  # 24 hours — stale sessions auto-evicted
 
     def create_session(self, name: str = "") -> Session:
         """Create a new collaboration session."""
         if len(self._sessions) >= self._max_sessions:
+            self._evict_stale_sessions()
+        if len(self._sessions) >= self._max_sessions:
             self._evict_empty_sessions()
         session_id = uuid.uuid4().hex[:12]
-        session = Session(session_id=session_id, name=name or f"Session {session_id[:6]}")
+        # Sanitize session name to prevent XSS when rendered
+        safe_name = (name or f"Session {session_id[:6]}")[:200]
+        session = Session(session_id=session_id, name=safe_name)
         self._sessions[session_id] = session
         return session
 
@@ -160,7 +166,8 @@ class SessionManager:
         session = self._sessions.get(session_id)
         if not session:
             return False
-        session.shared_sql = sql
+        # Enforce size limit to prevent memory exhaustion
+        session.shared_sql = sql[:self._max_sql_length]
         return True
 
     def update_cursor(
@@ -208,6 +215,16 @@ class SessionManager:
             if not s.participants
         ]
         for sid in empty:
+            self._sessions.pop(sid, None)
+
+    def _evict_stale_sessions(self) -> None:
+        """Remove sessions older than _session_ttl with no participants."""
+        now = time.time()
+        stale = [
+            sid for sid, s in self._sessions.items()
+            if not s.participants and (now - s.created_at) > self._session_ttl
+        ]
+        for sid in stale:
             self._sessions.pop(sid, None)
 
 

@@ -2711,7 +2711,7 @@ def list_sessions(request: Request) -> list[dict]:
 
 
 class CreateSessionRequest(BaseModel):
-    name: str = ""
+    name: str = Field("", max_length=200)
 
 
 @app.post("/api/sessions")
@@ -2756,8 +2756,8 @@ def delete_session_endpoint(request: Request, session_id: str) -> dict:
 
 
 class SessionQueryRequest(BaseModel):
-    sql: str
-    user_id: str = "local"
+    sql: str = Field(..., max_length=100_000)
+    user_id: str = Field("local", max_length=200)
 
 
 @app.post("/api/sessions/{session_id}/query")
@@ -2826,7 +2826,12 @@ try:
 
         try:
             while True:
-                data = await websocket.receive_json()
+                raw = await websocket.receive_text()
+                # Limit message size to prevent memory exhaustion
+                if len(raw) > 200_000:
+                    await websocket.send_json({"type": "error", "message": "Message too large"})
+                    continue
+                data = json.loads(raw)
                 msg_type = data.get("type", "")
 
                 if msg_type == "cursor":
@@ -2837,17 +2842,18 @@ try:
                         "position": data.get("position", {}),
                     })
                 elif msg_type == "sql_update":
-                    session_manager.update_shared_sql(session_id, data.get("sql", ""))
+                    sql_content = data.get("sql", "")[:100_000]
+                    session_manager.update_shared_sql(session_id, sql_content)
                     await broadcast_to_session(session_id, {
                         "type": "sql_update",
                         "user_id": user_id,
-                        "sql": data.get("sql", ""),
+                        "sql": sql_content,
                     })
                 elif msg_type == "message":
                     await broadcast_to_session(session_id, {
                         "type": "message",
                         "user_id": user_id,
-                        "text": data.get("text", ""),
+                        "text": data.get("text", "")[:10_000],
                     })
 
         except WebSocketDisconnect:

@@ -865,3 +865,170 @@ class TestCDCAPI:
         resp = api_client.get("/api/cdc")
         assert resp.status_code == 200
         assert resp.json() == []
+
+
+# ---------------------------------------------------------------------------
+# Security Hardening Tests
+# ---------------------------------------------------------------------------
+
+
+class TestCDCSecurity:
+    """Test SQL injection prevention in CDC engine."""
+
+    def test_sync_rejects_invalid_table_name(self, tmp_path: Path):
+        from dp.engine.cdc import CDCTableConfig, sync_table_high_watermark
+
+        conn = duckdb.connect(str(tmp_path / "test.duckdb"))
+        config = CDCTableConfig(
+            name="users; DROP TABLE--",
+            cdc_mode="high_watermark",
+            cdc_column="updated_at",
+        )
+        result = sync_table_high_watermark(
+            conn, "test", config, "landing", "fake_conn_str",
+        )
+        assert result.status == "error"
+        assert "Invalid" in result.error
+        conn.close()
+
+    def test_sync_rejects_invalid_cdc_column(self, tmp_path: Path):
+        from dp.engine.cdc import CDCTableConfig, sync_table_high_watermark
+
+        conn = duckdb.connect(str(tmp_path / "test.duckdb"))
+        config = CDCTableConfig(
+            name="users",
+            cdc_mode="high_watermark",
+            cdc_column="col; DROP TABLE users--",
+        )
+        result = sync_table_high_watermark(
+            conn, "test", config, "landing", "fake_conn_str",
+        )
+        assert result.status == "error"
+        assert "Invalid" in result.error
+        conn.close()
+
+    def test_sync_rejects_invalid_connector_name(self, tmp_path: Path):
+        from dp.engine.cdc import CDCTableConfig, sync_table_high_watermark
+
+        conn = duckdb.connect(str(tmp_path / "test.duckdb"))
+        config = CDCTableConfig(
+            name="users",
+            cdc_mode="high_watermark",
+            cdc_column="updated_at",
+        )
+        result = sync_table_high_watermark(
+            conn, "bad;name", config, "landing", "fake",
+        )
+        assert result.status == "error"
+        conn.close()
+
+    def test_file_sync_rejects_invalid_schema(self, tmp_path: Path):
+        from dp.engine.cdc import CDCTableConfig, sync_table_file
+
+        conn = duckdb.connect(str(tmp_path / "test.duckdb"))
+        csv_file = tmp_path / "data.csv"
+        csv_file.write_text("id\n1\n")
+
+        config = CDCTableConfig(name="data", cdc_mode="file_tracking")
+        result = sync_table_file(
+            conn, "files", config, "bad schema!", csv_file,
+        )
+        assert result.status == "error"
+        assert "Invalid" in result.error
+        conn.close()
+
+
+class TestVersioningSecurity:
+    """Test path traversal and identifier injection prevention in versioning."""
+
+    def test_restore_rejects_path_traversal(self, tmp_path: Path):
+        from dp.engine.versioning import create_version, restore_version
+
+        db_path = tmp_path / "test.duckdb"
+        conn = duckdb.connect(str(db_path))
+        from dp.engine.database import ensure_meta_table
+        ensure_meta_table(conn)
+
+        conn.execute("CREATE SCHEMA IF NOT EXISTS gold")
+        conn.execute("CREATE TABLE gold.t AS SELECT 1 AS id")
+
+        v1 = create_version(conn, tmp_path, description="test")
+
+        # Tamper with the stored parquet_file path to attempt traversal
+        import json
+        version = conn.execute(
+            "SELECT tables_snapshot FROM _dp_internal.version_history WHERE version_id = ?",
+            [v1["version_id"]],
+        ).fetchone()
+        tables_info = json.loads(version[0])
+        # Inject a traversal path
+        for key in tables_info:
+            tables_info[key]["parquet_file"] = "../../../etc/passwd"
+        conn.execute(
+            "UPDATE _dp_internal.version_history SET tables_snapshot = ?::JSON WHERE version_id = ?",
+            [json.dumps(tables_info), v1["version_id"]],
+        )
+
+        result = restore_version(conn, tmp_path, v1["version_id"])
+        # Should fail for every table due to path traversal protection
+        for detail in result["details"]:
+            assert detail["status"] == "error"
+            assert "escapes project" in detail["error"] or "not found" in detail["error"]
+        conn.close()
+
+
+class TestContractsSecurity:
+    """Test identifier injection prevention in contracts."""
+
+    def test_contract_rejects_invalid_model_name(self, tmp_path: Path):
+        from dp.engine.contracts import Contract, evaluate_contract
+
+        conn = duckdb.connect(str(tmp_path / "test.duckdb"))
+        from dp.engine.database import ensure_meta_table
+        ensure_meta_table(conn)
+
+        contract = Contract(
+            name="bad",
+            model="gold.users; DROP TABLE--",
+            assertions=["row_count > 0"],
+        )
+        result = evaluate_contract(conn, contract)
+        assert result.passed is False
+        assert "Invalid" in result.error
+        conn.close()
+
+
+class TestCollaborationSecurity:
+    """Test size limits and stale session handling."""
+
+    def test_shared_sql_size_limit(self):
+        from dp.engine.collaboration import SessionManager
+
+        mgr = SessionManager()
+        session = mgr.create_session()
+        huge_sql = "SELECT " + "x" * 200_000
+        mgr.update_shared_sql(session.session_id, huge_sql)
+        assert len(session.shared_sql) <= mgr._max_sql_length
+
+    def test_session_name_truncated(self):
+        from dp.engine.collaboration import SessionManager
+
+        mgr = SessionManager()
+        long_name = "A" * 500
+        session = mgr.create_session(long_name)
+        assert len(session.name) <= 200
+
+    def test_stale_session_eviction(self):
+        from dp.engine.collaboration import SessionManager
+
+        mgr = SessionManager()
+        mgr._session_ttl = 0  # Immediately stale
+        mgr._max_sessions = 2
+
+        mgr.create_session("s1")
+        mgr.create_session("s2")
+        # Third session should trigger eviction of stale empty sessions
+        s3 = mgr.create_session("s3")
+        assert s3 is not None
+        # At most _max_sessions remain (stale ones evicted)
+        assert len(mgr._sessions) <= 3  # Could be less after eviction

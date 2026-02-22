@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import shutil
 import time
 from datetime import datetime
@@ -28,6 +29,7 @@ from pathlib import Path
 import duckdb
 
 from dp.engine.database import ensure_meta_table
+from dp.engine.utils import validate_identifier
 
 logger = logging.getLogger("dp.versioning")
 
@@ -93,6 +95,10 @@ def create_version(
     if not table_list:
         return {"version_id": version_id, "tables": [], "error": "No tables found"}
 
+    # Validate version_id is safe for filesystem use (alphanumeric, hyphens, dots)
+    if not re.match(r"^[A-Za-z0-9._-]+$", version_id):
+        return {"version_id": version_id, "tables": [], "error": "Invalid version ID"}
+
     # Create snapshot directory
     snap_dir = project_dir / "_snapshots" / version_id
     snap_dir.mkdir(parents=True, exist_ok=True)
@@ -106,9 +112,10 @@ def create_version(
             row_count = conn.execute(
                 f'SELECT COUNT(*) FROM "{schema}"."{table}"'
             ).fetchone()[0]
+            safe_parquet_path = str(parquet_path).replace("'", "''")
             conn.execute(
                 f"COPY (SELECT * FROM \"{schema}\".\"{table}\") "
-                f"TO '{parquet_path}' (FORMAT PARQUET)"
+                f"TO '{safe_parquet_path}' (FORMAT PARQUET)"
             )
             # Get schema info
             cols = conn.execute(
@@ -355,7 +362,20 @@ def restore_version(
         if "error" in info:
             continue
 
-        parquet_path = project_dir / info.get("parquet_file", "")
+        parquet_file = info.get("parquet_file", "")
+        parquet_path = (project_dir / parquet_file).resolve()
+
+        # Path traversal protection: ensure the resolved path is within project_dir
+        try:
+            parquet_path.relative_to(project_dir.resolve())
+        except ValueError:
+            restored.append({
+                "table": full_name,
+                "status": "error",
+                "error": "Parquet path escapes project directory",
+            })
+            continue
+
         if not parquet_path.exists():
             restored.append({
                 "table": full_name,
@@ -369,11 +389,24 @@ def restore_version(
             continue
         schema, table = parts
 
+        # Validate identifiers to prevent SQL injection
         try:
-            conn.execute(f"CREATE SCHEMA IF NOT EXISTS {schema}")
+            validate_identifier(schema, "schema")
+            validate_identifier(table, "table name")
+        except ValueError as e:
+            restored.append({
+                "table": full_name,
+                "status": "error",
+                "error": str(e),
+            })
+            continue
+
+        try:
+            conn.execute(f'CREATE SCHEMA IF NOT EXISTS "{schema}"')
+            safe_parquet_path = str(parquet_path).replace("'", "''")
             conn.execute(
                 f'CREATE OR REPLACE TABLE "{schema}"."{table}" AS '
-                f"SELECT * FROM read_parquet('{parquet_path}')"
+                f"SELECT * FROM read_parquet('{safe_parquet_path}')"
             )
             row_count = conn.execute(
                 f'SELECT COUNT(*) FROM "{schema}"."{table}"'
@@ -466,8 +499,10 @@ def cleanup_old_versions(
     removed = 0
 
     for vid in to_remove:
-        snap_dir = project_dir / "_snapshots" / vid
-        if snap_dir.exists():
+        snap_dir = (project_dir / "_snapshots" / vid).resolve()
+        # Safety: only delete if within the project _snapshots directory
+        snapshots_root = (project_dir / "_snapshots").resolve()
+        if snap_dir.exists() and str(snap_dir).startswith(str(snapshots_root)):
             shutil.rmtree(snap_dir)
         conn.execute(
             "DELETE FROM _dp_internal.version_history WHERE version_id = ?",

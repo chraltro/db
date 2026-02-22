@@ -36,6 +36,7 @@ import duckdb
 import yaml
 
 from dp.engine.database import ensure_meta_table, log_run
+from dp.engine.utils import validate_identifier
 
 logger = logging.getLogger("dp.contracts")
 
@@ -120,6 +121,21 @@ def evaluate_contract(
         )
 
     schema, name = parts
+
+    # Validate identifiers to prevent SQL injection via crafted YAML
+    try:
+        validate_identifier(schema, "contract model schema")
+        validate_identifier(name, "contract model name")
+    except ValueError as e:
+        return ContractResult(
+            contract_name=contract.name,
+            model=contract.model,
+            passed=False,
+            severity=contract.severity,
+            results=[],
+            error=str(e),
+        )
+
     exists = conn.execute(
         "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = ? AND table_name = ?",
         [schema, name],
@@ -255,18 +271,22 @@ def get_contract_history(
 
 
 def _ensure_contracts_table(conn: duckdb.DuckDBPyConnection) -> None:
-    """Create the contract results metadata table."""
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS _dp_internal.contract_results (
-            id              VARCHAR DEFAULT gen_random_uuid()::VARCHAR,
-            contract_name   VARCHAR NOT NULL,
-            model           VARCHAR NOT NULL,
-            passed          BOOLEAN NOT NULL,
-            severity        VARCHAR NOT NULL DEFAULT 'error',
-            detail          JSON,
-            checked_at      TIMESTAMP DEFAULT current_timestamp
-        )
-    """)
+    """Create the contract results metadata table (no-op on read-only connections)."""
+    try:
+        conn.execute("CREATE SCHEMA IF NOT EXISTS _dp_internal")
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS _dp_internal.contract_results (
+                id              VARCHAR DEFAULT gen_random_uuid()::VARCHAR,
+                contract_name   VARCHAR NOT NULL,
+                model           VARCHAR NOT NULL,
+                passed          BOOLEAN NOT NULL,
+                severity        VARCHAR NOT NULL DEFAULT 'error',
+                detail          JSON,
+                checked_at      TIMESTAMP DEFAULT current_timestamp
+            )
+        """)
+    except Exception:
+        pass  # Read-only connection — table may already exist
 
 
 def _save_contract_result(

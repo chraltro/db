@@ -352,6 +352,8 @@ def _execute_incremental(
         elif model.partition_by:
             # Partition-based pruning: delete entire affected partitions, then insert
             part_col = model.partition_by.strip()
+            # Validate partition column is a safe identifier
+            validate_identifier(part_col, "partition_by column")
             conn.execute(
                 f'DELETE FROM {model.full_name} '
                 f'WHERE "{part_col}" IN (SELECT DISTINCT "{part_col}" FROM {staging_name})'

@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -39,6 +40,7 @@ from pathlib import Path
 import duckdb
 
 from dp.engine.database import ensure_meta_table, log_run
+from dp.engine.utils import validate_identifier
 
 logger = logging.getLogger("dp.cdc")
 
@@ -183,27 +185,46 @@ def sync_table_high_watermark(
             error="cdc_column is required for high_watermark mode",
         )
 
+    # Validate all identifiers to prevent SQL injection
+    try:
+        validate_identifier(connector_name, "connector name")
+        validate_identifier(table_name, "table name")
+        validate_identifier(cdc_column, "cdc_column")
+        validate_identifier(target_schema, "target schema")
+        validate_identifier(source_type, "source type")
+    except ValueError as e:
+        return CDCSyncResult(
+            table=table_name,
+            status="error",
+            cdc_mode="high_watermark",
+            error=str(e),
+        )
+
     # Get current watermark
     watermark_before = get_watermark(conn, connector_name, table_name)
 
     try:
-        # Attach external database
+        # Attach external database — escape single quotes in connection string
         attach_alias = f"_cdc_src_{connector_name}"
+        safe_conn_str = source_conn_str.replace("'", "''")
         conn.execute(
-            f"ATTACH '{source_conn_str}' AS {attach_alias} (TYPE {source_type}, READ_ONLY)"
+            f"ATTACH '{safe_conn_str}' AS {attach_alias} (TYPE {source_type}, READ_ONLY)"
         )
 
         try:
             # Build query with watermark filter
-            base_query = table_config.source_query or f"SELECT * FROM {attach_alias}.{table_name}"
+            base_query = table_config.source_query or f'SELECT * FROM {attach_alias}."{table_name}"'
             if watermark_before:
-                query = f"{base_query} WHERE {cdc_column} > '{watermark_before}'"
+                # Use parameterized comparison via a subquery to avoid string interpolation
+                # of the watermark value directly into SQL
+                safe_wm = watermark_before.replace("'", "''")
+                query = f"{base_query} WHERE \"{cdc_column}\" > '{safe_wm}'"
             else:
                 query = base_query
 
             # Create target table if it doesn't exist
-            target_table = f"{target_schema}.{table_name}"
-            conn.execute(f"CREATE SCHEMA IF NOT EXISTS {target_schema}")
+            target_table = f'"{target_schema}"."{table_name}"'
+            conn.execute(f'CREATE SCHEMA IF NOT EXISTS "{target_schema}"')
 
             exists = conn.execute(
                 "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = ? AND table_name = ?",
@@ -217,7 +238,7 @@ def sync_table_high_watermark(
 
             # Get new watermark
             new_watermark_row = conn.execute(
-                f"SELECT MAX({cdc_column})::VARCHAR FROM {target_table}"
+                f'SELECT MAX("{cdc_column}")::VARCHAR FROM {target_table}'
             ).fetchone()
             watermark_after = new_watermark_row[0] if new_watermark_row else watermark_before
 
@@ -287,18 +308,31 @@ def sync_table_file(
             cdc_mode="file_tracking",
         )
 
+    # Validate identifiers
     try:
-        conn.execute(f"CREATE SCHEMA IF NOT EXISTS {target_schema}")
-        target_table = f"{target_schema}.{table_name}"
+        validate_identifier(target_schema, "target schema")
+        validate_identifier(table_name, "table name")
+    except ValueError as e:
+        return CDCSyncResult(
+            table=table_name,
+            status="error",
+            cdc_mode="file_tracking",
+            error=str(e),
+        )
 
-        # Determine reader based on file extension
+    try:
+        conn.execute(f'CREATE SCHEMA IF NOT EXISTS "{target_schema}"')
+        target_table = f'"{target_schema}"."{table_name}"'
+
+        # Determine reader based on file extension — escape single quotes in path
         ext = file_path.suffix.lower()
+        safe_path = str(file_path).replace("'", "''")
         if ext == ".csv":
-            reader = f"read_csv('{file_path}', auto_detect=true)"
+            reader = f"read_csv('{safe_path}', auto_detect=true)"
         elif ext in (".parquet", ".pq"):
-            reader = f"read_parquet('{file_path}')"
+            reader = f"read_parquet('{safe_path}')"
         elif ext in (".json", ".jsonl", ".ndjson"):
-            reader = f"read_json('{file_path}', auto_detect=true)"
+            reader = f"read_json('{safe_path}', auto_detect=true)"
         else:
             return CDCSyncResult(
                 table=table_name,
