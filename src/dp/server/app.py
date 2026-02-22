@@ -200,6 +200,22 @@ DbConn = Annotated[duckdb.DuckDBPyConnection, Depends(get_db)]
 DbConnReadOnly = Annotated[duckdb.DuckDBPyConnection, Depends(get_db_readonly)]
 
 
+def get_db_readonly_optional() -> Generator[duckdb.DuckDBPyConnection | None, None, None]:
+    """FastAPI dependency: yields a read-only DuckDB connection, or None if DB doesn't exist."""
+    db_path = _get_db_path()
+    if not db_path.exists():
+        yield None
+        return
+    conn = connect(db_path, read_only=True)
+    try:
+        yield conn
+    finally:
+        conn.close()
+
+
+DbConnReadOnlyOptional = Annotated[duckdb.DuckDBPyConnection | None, Depends(get_db_readonly_optional)]
+
+
 # --- Rate limiting ---
 
 _login_attempts: dict[str, list[float]] = {}
@@ -1919,7 +1935,7 @@ def get_freshness(request: Request, conn: DbConnReadOnly, max_hours: float = 24.
 
 
 @app.get("/api/lineage/{model_name}")
-def get_lineage(request: Request, model_name: str) -> dict:
+def get_lineage(request: Request, model_name: str, conn: DbConnReadOnlyOptional = None) -> dict:
     """Get column-level lineage for a model (AST-based via sqlglot)."""
     _require_permission(request, "read")
     from dp.engine.transform import extract_column_lineage
@@ -1936,22 +1952,16 @@ def get_lineage(request: Request, model_name: str) -> dict:
         else:
             raise HTTPException(404, f"Model '{model_name}' not found")
 
-    db_path = _get_db_path()
-    conn = connect(db_path, read_only=True) if db_path.exists() else None
-    try:
-        lineage = extract_column_lineage(target, conn)
-        return {
-            "model": target.full_name,
-            "columns": lineage,
-            "depends_on": target.depends_on,
-        }
-    finally:
-        if conn:
-            conn.close()
+    lineage = extract_column_lineage(target, conn)
+    return {
+        "model": target.full_name,
+        "columns": lineage,
+        "depends_on": target.depends_on,
+    }
 
 
 @app.get("/api/lineage")
-def get_all_lineage(request: Request) -> list[dict]:
+def get_all_lineage(request: Request, conn: DbConnReadOnlyOptional = None) -> list[dict]:
     """Get column-level lineage for all models."""
     _require_permission(request, "read")
     from dp.engine.transform import extract_column_lineage
@@ -1959,28 +1969,22 @@ def get_all_lineage(request: Request) -> list[dict]:
     transform_dir = _get_project_dir() / "transform"
     models = _discover_models_cached(transform_dir)
 
-    db_path = _get_db_path()
-    conn = connect(db_path, read_only=True) if db_path.exists() else None
-    try:
-        results = []
-        for model in models:
-            lineage = extract_column_lineage(model, conn)
-            results.append({
-                "model": model.full_name,
-                "columns": lineage,
-                "depends_on": model.depends_on,
-            })
-        return results
-    finally:
-        if conn:
-            conn.close()
+    results = []
+    for model in models:
+        lineage = extract_column_lineage(model, conn)
+        results.append({
+            "model": model.full_name,
+            "columns": lineage,
+            "depends_on": model.depends_on,
+        })
+    return results
 
 
 # --- Compile-time validation ---
 
 
 @app.post("/api/check")
-def run_check(request: Request) -> dict:
+def run_check(request: Request, conn_opt: DbConnReadOnlyOptional = None) -> dict:
     """Validate all SQL models without executing them."""
     _require_permission(request, "read")
     from dp.engine.seeds import discover_seeds
@@ -2007,29 +2011,24 @@ def run_check(request: Request) -> dict:
             full = f"{src.schema}.{t.name}"
             source_columns[full] = {c.name for c in t.columns}
 
-    db_path = _get_db_path()
-    conn = connect(db_path, read_only=True) if db_path.exists() else None
-    try:
-        ensure_meta_table(conn) if conn else None
-        errors = validate_models(conn, models, known_tables=known_tables, source_columns=source_columns)
-        return {
-            "models_checked": len(models),
-            "errors": [
-                {"model": e.model, "severity": e.severity, "message": e.message}
-                for e in errors
-            ],
-            "passed": not any(e.severity == "error" for e in errors),
-        }
-    finally:
-        if conn:
-            conn.close()
+    conn = conn_opt
+    ensure_meta_table(conn) if conn else None
+    errors = validate_models(conn, models, known_tables=known_tables, source_columns=source_columns)
+    return {
+        "models_checked": len(models),
+        "errors": [
+            {"model": e.model, "severity": e.severity, "message": e.message}
+            for e in errors
+        ],
+        "passed": not any(e.severity == "error" for e in errors),
+    }
 
 
 # --- Impact analysis ---
 
 
 @app.get("/api/impact/{model_name}")
-def get_impact(request: Request, model_name: str, column: str | None = None) -> dict:
+def get_impact(request: Request, model_name: str, conn: DbConnReadOnlyOptional = None, column: str | None = None) -> dict:
     """Analyze downstream impact of changing a model or column."""
     _require_permission(request, "read")
     from dp.engine.transform import discover_models, impact_analysis
@@ -2045,13 +2044,7 @@ def get_impact(request: Request, model_name: str, column: str | None = None) -> 
         else:
             raise HTTPException(404, f"Model '{model_name}' not found")
 
-    db_path = _get_db_path()
-    conn = connect(db_path, read_only=True) if db_path.exists() else None
-    try:
-        return impact_analysis(models, model_name, column=column, conn=conn)
-    finally:
-        if conn:
-            conn.close()
+    return impact_analysis(models, model_name, column=column, conn=conn)
 
 
 # --- Model profiles ---
@@ -2542,7 +2535,7 @@ def get_full_dag(request: Request) -> dict:
 
 
 @app.get("/api/models/{model_name:path}/notebook-view")
-def get_model_notebook_view(request: Request, model_name: str) -> dict:
+def get_model_notebook_view(request: Request, model_name: str, conn: DbConnReadOnlyOptional = None) -> dict:
     """Get a notebook-style view for a SQL model.
 
     Returns the SQL source (cell 1) and sample output (cell 2),
@@ -2569,10 +2562,7 @@ def get_model_notebook_view(request: Request, model_name: str) -> dict:
 
     # Try to get sample data
     sample_data = None
-    db_path = _get_db_path()
-    conn = None
-    if db_path.exists():
-        conn = connect(db_path, read_only=True)
+    if conn:
         try:
             quoted = f'"{target.schema}"."{target.name}"'
             result = conn.execute(f"SELECT * FROM {quoted} LIMIT 50")
@@ -2591,9 +2581,6 @@ def get_model_notebook_view(request: Request, model_name: str) -> dict:
         lineage = extract_column_lineage(target, conn)
     except Exception:
         pass
-
-    if conn:
-        conn.close()
 
     # Get upstream/downstream
     upstream = target.depends_on
