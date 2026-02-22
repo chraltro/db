@@ -2640,6 +2640,325 @@ def create_model_endpoint(request: Request, req: CreateModelRequest) -> dict:
     }
 
 
+# --- Data Contracts ---
+
+
+@app.get("/api/contracts")
+def list_contracts(request: Request) -> list[dict]:
+    """List all discovered contracts."""
+    _require_permission(request, "read")
+    from dp.engine.contracts import discover_contracts
+
+    contracts_dir = _get_project_dir() / "contracts"
+    contracts = discover_contracts(contracts_dir)
+    return [
+        {
+            "name": c.name,
+            "model": c.model,
+            "description": c.description,
+            "severity": c.severity,
+            "assertions": c.assertions,
+            "path": str(c.path) if c.path else None,
+        }
+        for c in contracts
+    ]
+
+
+@app.post("/api/contracts/run")
+def run_contracts_endpoint(request: Request, conn: DbConn) -> dict:
+    """Run all data contracts and return results."""
+    _require_permission(request, "read")
+    from dp.engine.contracts import run_contracts
+
+    contracts_dir = _get_project_dir() / "contracts"
+    results = run_contracts(conn, contracts_dir)
+    return {
+        "total": len(results),
+        "passed": sum(1 for r in results if r.passed),
+        "failed": sum(1 for r in results if not r.passed),
+        "results": [
+            {
+                "contract_name": r.contract_name,
+                "model": r.model,
+                "passed": r.passed,
+                "severity": r.severity,
+                "duration_ms": r.duration_ms,
+                "error": r.error,
+                "assertions": r.results,
+            }
+            for r in results
+        ],
+    }
+
+
+@app.get("/api/contracts/history")
+def get_contracts_history(request: Request, conn: DbConnReadOnly) -> list[dict]:
+    """Get recent contract evaluation history."""
+    _require_permission(request, "read")
+    from dp.engine.contracts import get_contract_history
+    return get_contract_history(conn, limit=100)
+
+
+# --- Collaboration / Live Sessions ---
+
+
+@app.get("/api/sessions")
+def list_sessions(request: Request) -> list[dict]:
+    """List all active collaboration sessions."""
+    _require_permission(request, "read")
+    from dp.engine.collaboration import session_manager
+    return session_manager.list_sessions()
+
+
+class CreateSessionRequest(BaseModel):
+    name: str = Field("", max_length=200)
+
+
+@app.post("/api/sessions")
+def create_session(request: Request, req: CreateSessionRequest) -> dict:
+    """Create a new collaboration session."""
+    _require_permission(request, "write")
+    from dp.engine.collaboration import session_manager
+    session = session_manager.create_session(req.name)
+    return {
+        "session_id": session.session_id,
+        "name": session.name,
+        "created_at": session.created_at,
+    }
+
+
+@app.get("/api/sessions/{session_id}")
+def get_session_detail(request: Request, session_id: str) -> dict:
+    """Get details of a collaboration session."""
+    _require_permission(request, "read")
+    from dp.engine.collaboration import session_manager
+    session = session_manager.get_session(session_id)
+    if not session:
+        raise HTTPException(404, "Session not found")
+    return {
+        "session_id": session.session_id,
+        "name": session.name,
+        "created_at": session.created_at,
+        "participants": session_manager.get_participants(session_id),
+        "shared_sql": session.shared_sql,
+        "query_history": session.query_history[-20:],
+    }
+
+
+@app.delete("/api/sessions/{session_id}")
+def delete_session_endpoint(request: Request, session_id: str) -> dict:
+    """Delete a collaboration session."""
+    _require_permission(request, "write")
+    from dp.engine.collaboration import session_manager
+    if not session_manager.delete_session(session_id):
+        raise HTTPException(404, "Session not found")
+    return {"status": "deleted"}
+
+
+class SessionQueryRequest(BaseModel):
+    sql: str = Field(..., max_length=100_000)
+    user_id: str = Field("local", max_length=200)
+
+
+@app.post("/api/sessions/{session_id}/query")
+def session_query(request: Request, session_id: str, req: SessionQueryRequest, conn: DbConnReadOnly) -> dict:
+    """Execute a query within a collaboration session and record in history."""
+    _require_permission(request, "read")
+    from dp.engine.collaboration import session_manager
+
+    session = session_manager.get_session(session_id)
+    if not session:
+        raise HTTPException(404, "Session not found")
+
+    start = time.time()
+    try:
+        result = conn.execute(req.sql)
+        columns = [desc[0] for desc in result.description] if result.description else []
+        rows = [[_serialize(v) for v in row] for row in result.fetchall()]
+        duration_ms = int((time.time() - start) * 1000)
+
+        entry = session_manager.add_query_result(
+            session_id, req.user_id, req.sql, columns, rows, duration_ms,
+        )
+        return {
+            "columns": columns,
+            "rows": rows,
+            "duration_ms": duration_ms,
+            "history_id": entry["id"] if entry else None,
+        }
+    except Exception as e:
+        duration_ms = int((time.time() - start) * 1000)
+        session_manager.add_query_result(
+            session_id, req.user_id, req.sql, [], [], duration_ms, error=str(e),
+        )
+        return {"error": str(e), "duration_ms": duration_ms}
+
+
+# --- WebSocket for collaboration ---
+
+try:
+    from starlette.websockets import WebSocket, WebSocketDisconnect
+
+    @app.websocket("/ws/session/{session_id}")
+    async def websocket_session(websocket: WebSocket, session_id: str) -> None:
+        """WebSocket endpoint for real-time collaboration in a session."""
+        from dp.engine.collaboration import broadcast_to_session, session_manager
+
+        await websocket.accept()
+
+        # Extract user info from query params
+        user_id = websocket.query_params.get("user_id", "anonymous")
+        display_name = websocket.query_params.get("display_name", user_id)
+
+        session = session_manager.join_session(session_id, user_id, display_name, websocket)
+        if not session:
+            await websocket.send_json({"type": "error", "message": "Session not found"})
+            await websocket.close()
+            return
+
+        # Broadcast join
+        await broadcast_to_session(session_id, {
+            "type": "user_joined",
+            "user_id": user_id,
+            "display_name": display_name,
+            "participants": session_manager.get_participants(session_id),
+        })
+
+        try:
+            while True:
+                raw = await websocket.receive_text()
+                # Limit message size to prevent memory exhaustion
+                if len(raw) > 200_000:
+                    await websocket.send_json({"type": "error", "message": "Message too large"})
+                    continue
+                data = json.loads(raw)
+                msg_type = data.get("type", "")
+
+                if msg_type == "cursor":
+                    session_manager.update_cursor(session_id, user_id, data.get("position", {}))
+                    await broadcast_to_session(session_id, {
+                        "type": "cursor",
+                        "user_id": user_id,
+                        "position": data.get("position", {}),
+                    })
+                elif msg_type == "sql_update":
+                    sql_content = data.get("sql", "")[:100_000]
+                    session_manager.update_shared_sql(session_id, sql_content)
+                    await broadcast_to_session(session_id, {
+                        "type": "sql_update",
+                        "user_id": user_id,
+                        "sql": sql_content,
+                    })
+                elif msg_type == "message":
+                    await broadcast_to_session(session_id, {
+                        "type": "message",
+                        "user_id": user_id,
+                        "text": data.get("text", "")[:10_000],
+                    })
+
+        except WebSocketDisconnect:
+            pass
+        finally:
+            session_manager.leave_session(session_id, user_id, websocket)
+            await broadcast_to_session(session_id, {
+                "type": "user_left",
+                "user_id": user_id,
+                "participants": session_manager.get_participants(session_id),
+            })
+
+except ImportError:
+    pass  # starlette WebSocket support not available
+
+
+# --- CDC Status ---
+
+
+@app.get("/api/cdc")
+def get_cdc_status_endpoint(request: Request, conn: DbConnReadOnly) -> list[dict]:
+    """Get CDC state for all tracked connectors."""
+    _require_permission(request, "read")
+    from dp.engine.cdc import get_cdc_status
+    return get_cdc_status(conn)
+
+
+@app.get("/api/cdc/{connector_name}")
+def get_cdc_connector_status(request: Request, connector_name: str, conn: DbConnReadOnly) -> list[dict]:
+    """Get CDC state for a specific connector."""
+    _require_permission(request, "read")
+    from dp.engine.cdc import get_cdc_status
+    return get_cdc_status(conn, connector_name)
+
+
+@app.post("/api/cdc/{connector_name}/reset")
+def reset_cdc_state(request: Request, connector_name: str, conn: DbConn) -> dict:
+    """Reset CDC watermarks for a connector."""
+    _require_permission(request, "write")
+    from dp.engine.cdc import reset_watermark
+    reset_watermark(conn, connector_name)
+    return {"status": "reset", "connector": connector_name}
+
+
+# --- Versioning / Time Travel ---
+
+
+@app.get("/api/versions")
+def list_versions_endpoint(request: Request, conn: DbConnReadOnly) -> list[dict]:
+    """List all warehouse versions."""
+    _require_permission(request, "read")
+    from dp.engine.versioning import list_versions
+    return list_versions(conn)
+
+
+@app.post("/api/versions")
+def create_version_endpoint(request: Request, conn: DbConn) -> dict:
+    """Create a new version snapshot."""
+    _require_permission(request, "write")
+    from dp.engine.versioning import create_version
+    return create_version(conn, _get_project_dir())
+
+
+@app.get("/api/versions/{version_id}")
+def get_version_endpoint(request: Request, version_id: str, conn: DbConnReadOnly) -> dict:
+    """Get details of a specific version."""
+    _require_permission(request, "read")
+    from dp.engine.versioning import get_version
+    result = get_version(conn, version_id)
+    if not result:
+        raise HTTPException(404, f"Version '{version_id}' not found")
+    return result
+
+
+@app.get("/api/versions/{from_version}/diff")
+def diff_versions_endpoint(
+    request: Request,
+    from_version: str,
+    to_version: str | None = None,
+    conn: DbConnReadOnlyOptional = None,
+) -> dict:
+    """Diff two versions or a version against current state."""
+    _require_permission(request, "read")
+    from dp.engine.versioning import diff_versions
+    if not conn:
+        return {"error": "Database not found"}
+    return diff_versions(conn, _get_project_dir(), from_version, to_version)
+
+
+@app.post("/api/versions/{version_id}/restore")
+def restore_version_endpoint(request: Request, version_id: str, conn: DbConn) -> dict:
+    """Restore tables from a version snapshot."""
+    _require_permission(request, "write")
+    from dp.engine.versioning import restore_version
+    return restore_version(conn, _get_project_dir(), version_id)
+
+
+@app.get("/api/versions/timeline/{table_name}")
+def get_table_timeline(request: Request, table_name: str, conn: DbConnReadOnly) -> list[dict]:
+    """Get the version history timeline for a specific table."""
+    _require_permission(request, "read")
+    from dp.engine.versioning import table_timeline
+    return table_timeline(conn, table_name)
+
+
 # --- Serve frontend ---
 
 _FRONTEND_DIR = Path(__file__).parent.parent.parent.parent / "frontend" / "dist"

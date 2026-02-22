@@ -74,8 +74,9 @@ class SQLModel:
     upstream_hash: str = ""
     assertions: list[str] = field(default_factory=list)
     unique_key: str | None = None  # For incremental models
-    incremental_strategy: str = "delete+insert"  # "delete+insert" or "append"
+    incremental_strategy: str = "delete+insert"  # "delete+insert", "append", or "merge"
     incremental_filter: str | None = None  # e.g. "WHERE updated_at > (SELECT MAX(updated_at) FROM {this})"
+    partition_by: str | None = None  # e.g. "event_date" — enables partition-based pruning
 
     def __post_init__(self) -> None:
         self.content_hash = _hash_content(self.query)
@@ -135,6 +136,7 @@ def discover_models(transform_dir: Path) -> list[SQLModel]:
         unique_key = config.get("unique_key")
         incremental_strategy = config.get("incremental_strategy", "delete+insert")
         incremental_filter = config.get("incremental_filter")
+        partition_by = config.get("partition_by")
 
         models.append(
             SQLModel(
@@ -152,6 +154,7 @@ def discover_models(transform_dir: Path) -> list[SQLModel]:
                 unique_key=unique_key,
                 incremental_strategy=incremental_strategy,
                 incremental_filter=incremental_filter,
+                partition_by=partition_by,
             )
         )
 
@@ -255,10 +258,12 @@ def _execute_incremental(
     Strategies:
         delete+insert (default): Delete matching rows by unique_key, insert new.
         append: Always append, no deduplication.
+        merge: True upsert — update existing rows, insert new ones.
 
     If the target table doesn't exist yet, performs a full load regardless of strategy.
     Handles schema evolution: new columns in the source query are auto-added to the target.
     Supports incremental_filter for filtering the query on incremental runs.
+    Supports partition_by for partition-based pruning (deletes affected partitions before insert).
     """
     conn.execute(f"CREATE SCHEMA IF NOT EXISTS {model.schema}")
     start = time.perf_counter()
@@ -286,7 +291,7 @@ def _execute_incremental(
         # Append-only: just insert
         conn.execute(f"INSERT INTO {model.full_name}\n{query}")
     else:
-        # delete+insert strategy with unique_key
+        # Strategies that need staging: delete+insert, merge
         keys = [k.strip() for k in model.unique_key.split(",")]
         staging_name = f"_dp_staging_{model.name}"
 
@@ -318,17 +323,55 @@ def _execute_incremental(
         # Get the final column list from staging for explicit INSERT
         staging_col_names = [r[0] for r in staging_cols]
         staging_select = ", ".join(f'"{c}"' for c in staging_col_names)
-
-        # Delete matching rows, then insert with explicit columns
         key_cols = ", ".join(f'"{k}"' for k in keys)
-        conn.execute(
-            f"DELETE FROM {model.full_name} "
-            f"WHERE ({key_cols}) IN (SELECT {key_cols} FROM {staging_name})"
-        )
-        insert_cols = ", ".join(f'"{c}"' for c in staging_col_names)
-        conn.execute(
-            f"INSERT INTO {model.full_name} ({insert_cols}) SELECT {staging_select} FROM {staging_name}"
-        )
+
+        if strategy == "merge":
+            # True upsert: UPDATE existing rows, INSERT new ones
+            non_key_cols = [c for c in staging_col_names if c not in keys]
+            if non_key_cols:
+                set_clause = ", ".join(
+                    f'"{c}" = staging."{c}"' for c in non_key_cols
+                )
+                join_cond = " AND ".join(
+                    f'target."{k}" = staging."{k}"' for k in keys
+                )
+                conn.execute(
+                    f"UPDATE {model.full_name} AS target SET {set_clause} "
+                    f"FROM {staging_name} AS staging WHERE {join_cond}"
+                )
+            # Insert rows that don't already exist
+            not_exists_cond = " AND ".join(
+                f'staging."{k}" = target."{k}"' for k in keys
+            )
+            insert_cols = ", ".join(f'"{c}"' for c in staging_col_names)
+            conn.execute(
+                f"INSERT INTO {model.full_name} ({insert_cols}) "
+                f"SELECT {staging_select} FROM {staging_name} AS staging "
+                f"WHERE NOT EXISTS (SELECT 1 FROM {model.full_name} AS target WHERE {not_exists_cond})"
+            )
+        elif model.partition_by:
+            # Partition-based pruning: delete entire affected partitions, then insert
+            part_col = model.partition_by.strip()
+            # Validate partition column is a safe identifier
+            validate_identifier(part_col, "partition_by column")
+            conn.execute(
+                f'DELETE FROM {model.full_name} '
+                f'WHERE "{part_col}" IN (SELECT DISTINCT "{part_col}" FROM {staging_name})'
+            )
+            insert_cols = ", ".join(f'"{c}"' for c in staging_col_names)
+            conn.execute(
+                f"INSERT INTO {model.full_name} ({insert_cols}) SELECT {staging_select} FROM {staging_name}"
+            )
+        else:
+            # delete+insert strategy: delete by key, insert new
+            conn.execute(
+                f"DELETE FROM {model.full_name} "
+                f"WHERE ({key_cols}) IN (SELECT {key_cols} FROM {staging_name})"
+            )
+            insert_cols = ", ".join(f'"{c}"' for c in staging_col_names)
+            conn.execute(
+                f"INSERT INTO {model.full_name} ({insert_cols}) SELECT {staging_select} FROM {staging_name}"
+            )
         conn.execute(f"DROP TABLE IF EXISTS {staging_name}")
 
     duration_ms = int((time.perf_counter() - start) * 1000)

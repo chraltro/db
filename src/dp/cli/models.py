@@ -843,3 +843,98 @@ def assertions(
         console.print(table)
     finally:
         conn.close()
+
+
+# --- contracts ---
+
+
+@app.command()
+def contracts(
+    targets: Annotated[Optional[list[str]], typer.Argument(help="Contract names or model names to run")] = None,
+    history: Annotated[bool, typer.Option("--history", help="Show contract history instead of running")] = False,
+    project_dir: Annotated[Optional[Path], typer.Option("--project", "-p", help="Project directory")] = None,
+) -> None:
+    """Run data contracts from the contracts/ directory.
+
+    Contracts are YAML files that define assertions against specific models.
+    They complement inline -- assert: comments with standalone, reusable rules.
+
+    Example contracts/orders.yml:
+
+        contracts:
+          - name: orders_not_empty
+            model: gold.orders
+            assertions:
+              - row_count > 0
+              - unique(order_id)
+    """
+    from dp.config import load_project
+    from dp.engine.contracts import get_contract_history, run_contracts
+    from dp.engine.database import connect
+
+    project_dir = _resolve_project(project_dir)
+    config = load_project(project_dir)
+    db_path = project_dir / config.database.path
+
+    if not db_path.exists():
+        console.print("[yellow]No warehouse database found. Run a pipeline first.[/yellow]")
+        raise typer.Exit(1)
+
+    conn = connect(db_path)
+    try:
+        if history:
+            results = get_contract_history(conn, limit=50)
+            if not results:
+                console.print("[yellow]No contract history yet.[/yellow]")
+                return
+            table = Table(title="Contract History")
+            table.add_column("Contract", style="bold")
+            table.add_column("Model")
+            table.add_column("Status")
+            table.add_column("Severity")
+            table.add_column("Checked At")
+            for r in results:
+                status = "[green]PASS[/green]" if r["passed"] else "[red]FAIL[/red]"
+                sev = "[yellow]warn[/yellow]" if r["severity"] == "warn" else r["severity"]
+                table.add_row(r["contract_name"], r["model"], status, sev, r["checked_at"][:19])
+            console.print(table)
+            return
+
+        contracts_dir = project_dir / "contracts"
+        if not contracts_dir.exists():
+            console.print("[yellow]No contracts/ directory found.[/yellow]")
+            console.print("Create contracts/my_contract.yml to get started.")
+            return
+
+        results = run_contracts(conn, contracts_dir, targets=targets)
+        if not results:
+            console.print("[yellow]No contracts found.[/yellow]")
+            return
+
+        console.print(f"[bold]Running {len(results)} contract(s)...[/bold]")
+        console.print()
+
+        all_passed = True
+        for cr in results:
+            status = "[green]PASS[/green]" if cr.passed else "[red]FAIL[/red]"
+            console.print(f"  {status}  [bold]{cr.contract_name}[/bold] ({cr.model}) [{cr.duration_ms}ms]")
+            for ar in cr.results:
+                if ar["passed"]:
+                    console.print(f"         [green]pass[/green]  {ar['expression']}")
+                else:
+                    console.print(f"         [red]FAIL[/red]  {ar['expression']} ({ar['detail']})")
+            if not cr.passed:
+                all_passed = False
+            if cr.error:
+                console.print(f"         [red]Error:[/red] {cr.error}")
+
+        console.print()
+        passed = sum(1 for cr in results if cr.passed)
+        failed = len(results) - passed
+        if all_passed:
+            console.print(f"[green]All {passed} contract(s) passed.[/green]")
+        else:
+            console.print(f"[red]{failed} contract(s) failed[/red], {passed} passed.")
+            raise typer.Exit(1)
+    finally:
+        conn.close()
