@@ -48,3 +48,4 @@ from dp.cli import pipeline  # noqa: E402, F401
 from dp.cli import project  # noqa: E402, F401
 from dp.cli import quality  # noqa: E402, F401
 from dp.cli import query  # noqa: E402, F401
+from dp.cli import version  # noqa: E402, F401
