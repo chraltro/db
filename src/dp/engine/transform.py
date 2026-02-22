@@ -592,14 +592,22 @@ class ValidationError:
 def validate_models(
     conn: duckdb.DuckDBPyConnection | None,
     models: list[SQLModel],
+    known_tables: set[str] | None = None,
+    source_columns: dict[str, set[str]] | None = None,
 ) -> list[ValidationError]:
     """Validate all models without executing them.
 
     Checks:
     - SQL parses correctly (sqlglot)
-    - Referenced tables exist (in DuckDB catalog or as known model names)
-    - Column references exist in upstream models (when resolvable)
+    - Referenced tables exist (in DAG, DuckDB catalog, sources.yml, or seeds)
+    - Column references exist in upstream tables (when resolvable)
     - Ambiguous column references (column in multiple upstream tables without qualifier)
+
+    Args:
+        conn: DuckDB connection for catalog lookups.
+        models: List of SQL models to validate.
+        known_tables: Additional known table names (e.g. from seeds, sources).
+        source_columns: Column sets declared in sources.yml, keyed by table name.
     """
     import sqlglot
     from sqlglot import exp
@@ -607,19 +615,26 @@ def validate_models(
     model_names = {m.full_name for m in models}
     errors: list[ValidationError] = []
 
-    # Build catalog of known tables (existing in DuckDB + model names)
-    known_tables: set[str] = set(model_names)
+    # Build catalog of known tables (existing in DuckDB + model names + extra)
+    all_known_tables: set[str] = set(model_names)
+    if known_tables:
+        all_known_tables.update(t.lower() for t in known_tables)
     if conn:
         try:
             rows = conn.execute(
                 "SELECT table_schema || '.' || table_name FROM information_schema.tables"
             ).fetchall()
-            known_tables.update(r[0].lower() for r in rows)
+            all_known_tables.update(r[0].lower() for r in rows)
         except Exception:
             pass
 
     # Build column catalog: table -> set of columns
     column_catalog: dict[str, set[str]] = {}
+    if source_columns:
+        for table_name, cols in source_columns.items():
+            column_catalog.setdefault(table_name.lower(), set()).update(
+                c.lower() for c in cols
+            )
     if conn:
         try:
             rows = conn.execute(
@@ -651,7 +666,7 @@ def validate_models(
             if db_name and table_name:
                 fqn = f"{db_name}.{table_name}".lower()
                 from dp.engine.sql_analysis import SKIP_SCHEMAS
-                if fqn not in known_tables and fqn not in SKIP_SCHEMAS:
+                if fqn not in all_known_tables and db_name.lower() not in SKIP_SCHEMAS:
                     errors.append(ValidationError(
                         model=model.full_name,
                         severity="error",

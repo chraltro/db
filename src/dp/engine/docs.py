@@ -10,12 +10,19 @@ from pathlib import Path
 import duckdb
 
 
-def generate_docs(conn: duckdb.DuckDBPyConnection, transform_dir: Path) -> str:
+def generate_docs(
+    conn: duckdb.DuckDBPyConnection,
+    transform_dir: Path,
+    sources: list | None = None,
+    exposures: list | None = None,
+) -> str:
     """Generate markdown documentation for the warehouse.
 
     Combines:
     - information_schema for table/column metadata
     - SQL model files for dependencies and config
+    - sources.yml declarations
+    - exposures.yml declarations
     """
     from dp.engine.transform import discover_models
 
@@ -130,6 +137,45 @@ def generate_docs(conn: duckdb.DuckDBPyConnection, transform_dir: Path) -> str:
                 lines.append("```")
                 lines.append("</details>\n")
 
+    # Sources section
+    if sources:
+        lines.append("---\n")
+        lines.append("## Sources\n")
+        for src in sources:
+            lines.append(f"### {src.name}\n")
+            if src.description:
+                lines.append(f"{src.description}\n")
+            if src.freshness_hours is not None:
+                lines.append(f"**Freshness SLA:** {src.freshness_hours} hours\n")
+            if src.connection:
+                lines.append(f"**Connection:** `{src.connection}`\n")
+            for tbl in src.tables:
+                lines.append(f"#### `{src.schema}.{tbl.name}`\n")
+                if tbl.description:
+                    lines.append(f"{tbl.description}\n")
+                if tbl.columns:
+                    lines.append("| Column | Description |")
+                    lines.append("|--------|-------------|")
+                    for col in tbl.columns:
+                        lines.append(f"| `{col.name}` | {col.description} |")
+                    lines.append("")
+
+    # Exposures section
+    if exposures:
+        lines.append("---\n")
+        lines.append("## Exposures\n")
+        for exp in exposures:
+            lines.append(f"### {exp.name}\n")
+            if exp.description:
+                lines.append(f"{exp.description}\n")
+            if exp.owner:
+                lines.append(f"**Owner:** {exp.owner}\n")
+            if exp.type:
+                lines.append(f"**Type:** {exp.type}\n")
+            if exp.depends_on:
+                deps = ", ".join(f"`{d}`" for d in exp.depends_on)
+                lines.append(f"**Depends on:** {deps}\n")
+
     # Lineage summary
     if models:
         lines.append("---\n")
@@ -141,6 +187,10 @@ def generate_docs(conn: duckdb.DuckDBPyConnection, transform_dir: Path) -> str:
                     lines.append(f"{dep} --> {model.full_name}")
             else:
                 lines.append(f"(source) --> {model.full_name}")
+        if exposures:
+            for exp in exposures:
+                for dep in exp.depends_on:
+                    lines.append(f"{dep} --> [exposure:{exp.name}]")
         lines.append("```\n")
 
     return "\n".join(lines)

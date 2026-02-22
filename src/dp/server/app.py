@@ -24,6 +24,7 @@ logger = logging.getLogger("dp.server")
 # Set by CLI before starting uvicorn
 PROJECT_DIR: Path = Path.cwd()
 AUTH_ENABLED: bool = False  # Set by CLI --auth flag
+ACTIVE_ENV: str | None = None  # Set by CLI --env flag
 
 app = FastAPI(title="dp", version="0.2.0")
 
@@ -63,19 +64,20 @@ def _get_config_cached():
     try:
         mtime = config_path.stat().st_mtime
     except FileNotFoundError:
-        return load_project(_get_project_dir())
+        return load_project(_get_project_dir(), env=ACTIVE_ENV)
 
+    cache_key = f"{config_path}:{ACTIVE_ENV}"
     if (
         _config_cache["config"] is not None
-        and _config_cache["path"] == str(config_path)
+        and _config_cache["path"] == cache_key
         and _config_cache["mtime"] == mtime
     ):
         return _config_cache["config"]
 
-    config = load_project(_get_project_dir())
+    config = load_project(_get_project_dir(), env=ACTIVE_ENV)
     _config_cache["config"] = config
     _config_cache["mtime"] = mtime
-    _config_cache["path"] = str(config_path)
+    _config_cache["path"] = cache_key
     return config
 
 
@@ -394,7 +396,7 @@ def _scan_dir(base: Path, rel: Path | None = None) -> list[FileInfo]:
                 type="dir",
                 children=_scan_dir(base, entry.relative_to(base)),
             ))
-        elif entry.suffix in (".sql", ".py", ".yml", ".yaml", ".dpnb"):
+        elif entry.suffix in (".sql", ".py", ".yml", ".yaml", ".dpnb", ".csv"):
             items.append(FileInfo(name=entry.name, path=rel_path, type="file"))
     return items
 
@@ -672,6 +674,10 @@ def run_stream_endpoint(request: Request, stream_name: str, force: bool = False)
         elif step.action == "export":
             results = run_scripts_in_dir(conn, _get_project_dir() / "export", "export", step.targets)
             return {"action": "export", "results": results, "error": any(r["status"] == "error" for r in results)}
+        elif step.action == "seed":
+            from dp.engine.seeds import run_seeds
+            results = run_seeds(conn, _get_project_dir() / "seeds", force=force)
+            return {"action": "seed", "results": results, "error": any(s == "error" for s in results.values())}
         return {"action": step.action, "results": {}, "error": False}
 
     try:
@@ -1259,9 +1265,14 @@ def get_docs_markdown(request: Request) -> dict:
     db_path = _get_db_path()
     if not db_path.exists():
         return {"markdown": "*No warehouse database found. Run a pipeline first.*"}
+    config = _get_config()
     conn = connect(db_path, read_only=True)
     try:
-        md = generate_docs(conn, _get_project_dir() / "transform")
+        md = generate_docs(
+            conn, _get_project_dir() / "transform",
+            sources=config.sources,
+            exposures=config.exposures,
+        )
         return {"markdown": md}
     finally:
         conn.close()
@@ -2094,16 +2105,35 @@ def get_all_lineage(request: Request) -> list[dict]:
 def run_check(request: Request) -> dict:
     """Validate all SQL models without executing them."""
     _require_permission(request, "read")
+    from dp.engine.seeds import discover_seeds
     from dp.engine.transform import discover_models, validate_models
 
-    transform_dir = _get_project_dir() / "transform"
+    project_dir = _get_project_dir()
+    transform_dir = project_dir / "transform"
     models = discover_models(transform_dir)
+    config = _get_config()
+
+    # Gather known tables from seeds and sources
+    known_tables: set[str] = set()
+    seeds = discover_seeds(project_dir / "seeds")
+    for s in seeds:
+        known_tables.add(s["full_name"])
+    for src in config.sources:
+        for t in src.tables:
+            known_tables.add(f"{src.schema}.{t.name}")
+
+    # Gather source columns for column validation
+    source_columns: dict[str, set[str]] = {}
+    for src in config.sources:
+        for t in src.tables:
+            full = f"{src.schema}.{t.name}"
+            source_columns[full] = {c.name for c in t.columns}
 
     db_path = _get_db_path()
     conn = connect(db_path, read_only=True) if db_path.exists() else None
     try:
         ensure_meta_table(conn) if conn else None
-        errors = validate_models(conn, models)
+        errors = validate_models(conn, models, known_tables=known_tables, source_columns=source_columns)
         return {
             "models_checked": len(models),
             "errors": [
@@ -2341,6 +2371,461 @@ def test_alert(request: Request, req: TestAlertRequest) -> dict:
         return {"status": "sent", "channel": req.channel}
     error = results[0].get("error", "Unknown error") if results else "No channels configured"
     raise HTTPException(400, f"Alert test failed: {error}")
+
+
+# --- Environment management ---
+
+
+@app.get("/api/environment")
+def get_environment(request: Request) -> dict:
+    """Get current environment and available environments."""
+    _require_permission(request, "read")
+    config = _get_config()
+    return {
+        "active": config.active_environment,
+        "available": list(config.environments.keys()),
+        "database_path": config.database.path,
+    }
+
+
+@app.put("/api/environment/{env_name}")
+def switch_environment(request: Request, env_name: str) -> dict:
+    """Switch the active environment."""
+    _require_permission(request, "write")
+    global ACTIVE_ENV
+    config = _get_config()
+    if env_name not in config.environments:
+        raise HTTPException(404, f"Environment '{env_name}' not found")
+    ACTIVE_ENV = env_name
+    _config_cache["config"] = None  # Invalidate cache
+    new_config = _get_config()
+    return {
+        "active": new_config.active_environment,
+        "database_path": new_config.database.path,
+    }
+
+
+# --- Seeds ---
+
+
+@app.get("/api/seeds")
+def list_seeds_endpoint(request: Request) -> list[dict]:
+    """List all seed CSV files."""
+    _require_permission(request, "read")
+    from dp.engine.seeds import discover_seeds
+    seeds_dir = _get_project_dir() / "seeds"
+    seeds = discover_seeds(seeds_dir)
+    return [
+        {"name": s["name"], "full_name": s["full_name"], "schema": s["schema"],
+         "path": str(s["path"].relative_to(_get_project_dir()))}
+        for s in seeds
+    ]
+
+
+class SeedRequest(BaseModel):
+    force: bool = False
+    schema_name: str = Field(default="seeds", max_length=100, pattern=r"^[a-zA-Z_][a-zA-Z0-9_]*$")
+
+
+@app.post("/api/seeds")
+def run_seeds_endpoint(request: Request, req: SeedRequest) -> dict:
+    """Load all seeds."""
+    _require_permission(request, "execute")
+    from dp.engine.seeds import run_seeds
+    db_path = _get_db_path()
+    conn = connect(db_path)
+    try:
+        results = run_seeds(conn, _get_project_dir() / "seeds", schema=req.schema_name, force=req.force)
+        return {"results": results}
+    finally:
+        conn.close()
+
+
+# --- Sources ---
+
+
+@app.get("/api/sources")
+def list_sources_endpoint(request: Request) -> list[dict]:
+    """List declared sources from sources.yml."""
+    _require_permission(request, "read")
+    config = _get_config()
+    return [
+        {
+            "name": s.name,
+            "schema": s.schema,
+            "description": s.description,
+            "freshness_hours": s.freshness_hours,
+            "connection": s.connection,
+            "tables": [
+                {
+                    "name": t.name,
+                    "description": t.description,
+                    "columns": [{"name": c.name, "description": c.description} for c in t.columns],
+                    "loaded_at_column": t.loaded_at_column,
+                }
+                for t in s.tables
+            ],
+        }
+        for s in config.sources
+    ]
+
+
+@app.get("/api/sources/freshness")
+def check_sources_freshness(request: Request) -> list[dict]:
+    """Check source freshness against declared SLAs."""
+    _require_permission(request, "read")
+    config = _get_config()
+    db_path = _get_db_path()
+    if not db_path.exists():
+        return []
+
+    results = []
+    conn = connect(db_path, read_only=True)
+    try:
+        ensure_meta_table(conn)
+        for src in config.sources:
+            sla_hours = src.freshness_hours
+            if sla_hours is None:
+                continue
+            for tbl in src.tables:
+                full_name = f"{src.schema}.{tbl.name}"
+                # Try loaded_at_column first
+                last_loaded = None
+                if tbl.loaded_at_column:
+                    try:
+                        row = conn.execute(
+                            f'SELECT MAX("{tbl.loaded_at_column}") FROM "{src.schema}"."{tbl.name}"'
+                        ).fetchone()
+                        if row and row[0]:
+                            last_loaded = str(row[0])
+                    except Exception:
+                        pass
+                # Fall back to run_log
+                if not last_loaded:
+                    try:
+                        row = conn.execute(
+                            "SELECT MAX(started_at) FROM _dp_internal.run_log "
+                            "WHERE target = ? AND status = 'success'",
+                            [full_name],
+                        ).fetchone()
+                        if row and row[0]:
+                            last_loaded = str(row[0])
+                    except Exception:
+                        pass
+
+                hours_ago = None
+                is_stale = last_loaded is None
+                if last_loaded:
+                    try:
+                        row = conn.execute(
+                            "SELECT EXTRACT(EPOCH FROM (current_timestamp - ?::TIMESTAMP)) / 3600",
+                            [last_loaded],
+                        ).fetchone()
+                        if row:
+                            hours_ago = round(row[0], 1)
+                            is_stale = hours_ago > sla_hours
+                    except Exception:
+                        is_stale = True
+
+                results.append({
+                    "source": src.name,
+                    "table": full_name,
+                    "sla_hours": sla_hours,
+                    "last_loaded": last_loaded,
+                    "hours_ago": hours_ago,
+                    "is_stale": is_stale,
+                })
+    finally:
+        conn.close()
+    return results
+
+
+# --- Exposures ---
+
+
+@app.get("/api/exposures")
+def list_exposures_endpoint(request: Request) -> list[dict]:
+    """List declared exposures from exposures.yml."""
+    _require_permission(request, "read")
+    config = _get_config()
+    return [
+        {
+            "name": e.name,
+            "description": e.description,
+            "owner": e.owner,
+            "depends_on": e.depends_on,
+            "type": e.type,
+            "url": e.url,
+        }
+        for e in config.exposures
+    ]
+
+
+# --- Autocomplete for query panel ---
+
+
+@app.get("/api/autocomplete")
+def get_autocomplete(request: Request) -> dict:
+    """Get table and column names for query autocomplete."""
+    _require_permission(request, "read")
+    db_path = _get_db_path()
+    if not db_path.exists():
+        return {"tables": [], "columns": []}
+
+    conn = connect(db_path, read_only=True)
+    try:
+        tables = conn.execute(
+            """
+            SELECT table_schema, table_name
+            FROM information_schema.tables
+            WHERE table_schema NOT IN ('information_schema', '_dp_internal')
+            ORDER BY table_schema, table_name
+            """
+        ).fetchall()
+
+        columns = conn.execute(
+            """
+            SELECT table_schema, table_name, column_name, data_type
+            FROM information_schema.columns
+            WHERE table_schema NOT IN ('information_schema', '_dp_internal')
+            ORDER BY table_schema, table_name, ordinal_position
+            """
+        ).fetchall()
+
+        return {
+            "tables": [
+                {"schema": t[0], "name": t[1], "full_name": f"{t[0]}.{t[1]}"}
+                for t in tables
+            ],
+            "columns": [
+                {"schema": c[0], "table": c[1], "name": c[2], "type": c[3],
+                 "full_name": f"{c[0]}.{c[1]}.{c[2]}"}
+                for c in columns
+            ],
+        }
+    finally:
+        conn.close()
+
+
+# --- Enhanced DAG with seeds, sources, and exposures ---
+
+
+@app.get("/api/dag/full")
+def get_full_dag(request: Request) -> dict:
+    """Get the full DAG including seeds, sources, and exposures."""
+    _require_permission(request, "read")
+    project_dir = _get_project_dir()
+    transform_dir = project_dir / "transform"
+    models = _discover_models_cached(transform_dir)
+    ordered = build_dag(models)
+    config = _get_config()
+
+    nodes = []
+    edges = []
+    model_set = {m.full_name for m in models}
+
+    # Add source nodes
+    source_tables: set[str] = set()
+    for src in config.sources:
+        for tbl in src.tables:
+            full_name = f"{src.schema}.{tbl.name}"
+            source_tables.add(full_name)
+            nodes.append({
+                "id": full_name,
+                "label": tbl.name,
+                "schema": src.schema,
+                "type": "source",
+                "description": tbl.description or src.description,
+            })
+
+    # Add seed nodes
+    from dp.engine.seeds import discover_seeds
+    seeds_dir = project_dir / "seeds"
+    seeds = discover_seeds(seeds_dir)
+    seed_set: set[str] = set()
+    for s in seeds:
+        seed_set.add(s["full_name"])
+        nodes.append({
+            "id": s["full_name"],
+            "label": s["name"],
+            "schema": s["schema"],
+            "type": "seed",
+        })
+
+    # Add ingest nodes for remaining external deps
+    ingest_targets = _scan_ingest_targets(project_dir)
+    external_deps: set[str] = set()
+    for m in models:
+        for dep in m.depends_on:
+            if dep not in model_set and dep not in source_tables and dep not in seed_set:
+                external_deps.add(dep)
+
+    for dep in sorted(external_deps):
+        for script_path in ingest_targets.get(dep, []):
+            script_id = f"script:{script_path}"
+            nodes.append({
+                "id": script_id,
+                "label": Path(script_path).name,
+                "schema": "ingest",
+                "type": "ingest",
+                "path": script_path,
+            })
+            edges.append({"source": script_id, "target": dep})
+
+        if dep not in source_tables and dep not in seed_set:
+            schema = dep.split(".")[0] if "." in dep else "source"
+            nodes.append({
+                "id": dep,
+                "label": dep,
+                "schema": schema,
+                "type": "source",
+            })
+
+    # Add model nodes
+    for m in ordered:
+        nodes.append({
+            "id": m.full_name,
+            "label": m.path.name,
+            "schema": m.schema,
+            "type": m.materialized,
+            "path": str(m.path.relative_to(project_dir)),
+        })
+
+    # Add model edges
+    for m in models:
+        for dep in m.depends_on:
+            edges.append({"source": dep, "target": m.full_name})
+
+    # Add exposure nodes
+    for exp in config.exposures:
+        exp_id = f"exposure:{exp.name}"
+        nodes.append({
+            "id": exp_id,
+            "label": exp.name,
+            "schema": "exposure",
+            "type": "exposure",
+            "description": exp.description,
+            "owner": exp.owner,
+        })
+        for dep in exp.depends_on:
+            edges.append({"source": dep, "target": exp_id})
+
+    return {"nodes": nodes, "edges": edges}
+
+
+# --- Model notebook view ---
+
+
+@app.get("/api/models/{model_name:path}/notebook-view")
+def get_model_notebook_view(request: Request, model_name: str) -> dict:
+    """Get a notebook-style view for a SQL model.
+
+    Returns the SQL source (cell 1) and sample output (cell 2),
+    plus lineage info for the sidebar.
+    """
+    _require_permission(request, "read")
+    from dp.engine.transform import extract_column_lineage
+
+    transform_dir = _get_project_dir() / "transform"
+    models = _discover_models_cached(transform_dir)
+    model_map = {m.full_name: m for m in models}
+
+    target = model_map.get(model_name)
+    if not target:
+        matches = [m for m in models if m.name == model_name]
+        if matches:
+            target = matches[0]
+        else:
+            raise HTTPException(404, f"Model '{model_name}' not found")
+
+    # Read the SQL source
+    sql_source = target.path.read_text()
+    rel_path = str(target.path.relative_to(_get_project_dir()))
+
+    # Try to get sample data
+    sample_data = None
+    db_path = _get_db_path()
+    conn = None
+    if db_path.exists():
+        conn = connect(db_path, read_only=True)
+        try:
+            quoted = f'"{target.schema}"."{target.name}"'
+            result = conn.execute(f"SELECT * FROM {quoted} LIMIT 50")
+            columns = [desc[0] for desc in result.description]
+            rows = result.fetchall()
+            sample_data = {
+                "columns": columns,
+                "rows": [[_serialize(v) for v in row] for row in rows],
+            }
+        except Exception:
+            sample_data = None
+
+    # Get lineage
+    lineage = None
+    try:
+        lineage = extract_column_lineage(target, conn)
+    except Exception:
+        pass
+
+    if conn:
+        conn.close()
+
+    # Get upstream/downstream
+    upstream = target.depends_on
+    downstream = [m.full_name for m in models if target.full_name in m.depends_on]
+
+    return {
+        "model": target.full_name,
+        "path": rel_path,
+        "sql_source": sql_source,
+        "materialized": target.materialized,
+        "schema": target.schema,
+        "sample_data": sample_data,
+        "lineage": lineage,
+        "upstream": upstream,
+        "downstream": downstream,
+    }
+
+
+# --- Create new model ---
+
+
+class CreateModelRequest(BaseModel):
+    name: str = Field(..., min_length=1, max_length=200, pattern=r"^[a-zA-Z_][a-zA-Z0-9_]*$")
+    schema_name: str = Field(default="bronze", pattern=r"^[a-zA-Z_][a-zA-Z0-9_]*$")
+    materialized: str = Field(default="table", pattern=r"^(table|view)$")
+    sql: str = Field(default="", max_length=1_000_000)
+
+
+@app.post("/api/models/create")
+def create_model_endpoint(request: Request, req: CreateModelRequest) -> dict:
+    """Create a new SQL model file."""
+    _require_permission(request, "write")
+    project_dir = _get_project_dir()
+    transform_dir = project_dir / "transform"
+    schema_dir = transform_dir / req.schema_name
+
+    # Ensure path is within the transform directory
+    if not schema_dir.resolve().is_relative_to(transform_dir.resolve()):
+        raise HTTPException(400, "Invalid schema name")
+
+    schema_dir.mkdir(parents=True, exist_ok=True)
+
+    model_path = schema_dir / f"{req.name}.sql"
+    if model_path.exists():
+        raise HTTPException(409, f"Model '{req.schema_name}.{req.name}' already exists")
+
+    sql_content = req.sql or f"-- config: materialized={req.materialized}, schema={req.schema_name}\n\nSELECT 1 AS placeholder\n"
+    if not sql_content.startswith("-- config:"):
+        sql_content = f"-- config: materialized={req.materialized}, schema={req.schema_name}\n\n{sql_content}"
+
+    model_path.write_text(sql_content)
+
+    return {
+        "status": "created",
+        "path": str(model_path.relative_to(project_dir)),
+        "full_name": f"{req.schema_name}.{req.name}",
+    }
 
 
 # --- Serve frontend ---

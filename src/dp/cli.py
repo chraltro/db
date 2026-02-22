@@ -16,6 +16,9 @@ app = typer.Typer(
 )
 console = Console()
 
+# Global environment override, set by --env on commands that support it.
+_active_env: str | None = None
+
 
 def _resolve_project(project_dir: Path | None = None) -> Path:
     project_dir = project_dir or Path.cwd()
@@ -24,6 +27,12 @@ def _resolve_project(project_dir: Path | None = None) -> Path:
         console.print("Run [bold]dp init[/bold] to create a new project.")
         raise typer.Exit(1)
     return project_dir
+
+
+def _load_config(project_dir: Path, env: str | None = None):
+    """Load project config with optional environment override."""
+    from dp.config import load_project
+    return load_project(project_dir, env=env or _active_env)
 
 
 # --- init ---
@@ -139,6 +148,51 @@ def run(
         conn.close()
 
 
+# --- seed ---
+
+
+@app.command()
+def seed(
+    force: Annotated[bool, typer.Option("--force", "-f", help="Force reload all seeds")] = False,
+    schema: Annotated[str, typer.Option("--schema", "-s", help="Target schema for seeds")] = "seeds",
+    env: Annotated[Optional[str], typer.Option("--env", "-e", help="Environment to use")] = None,
+    project_dir: Annotated[Optional[Path], typer.Option("--project", "-p", help="Project directory (default: current dir)")] = None,
+) -> None:
+    """Load CSV files from seeds/ directory into DuckDB tables.
+
+    Seeds are change-detected: only modified CSVs are reloaded.
+    Use --force to reload everything.
+    """
+    from dp.engine.database import connect
+    from dp.engine.seeds import run_seeds
+
+    project_dir = _resolve_project(project_dir)
+    config = _load_config(project_dir, env)
+    seeds_dir = project_dir / "seeds"
+
+    if not seeds_dir.exists():
+        console.print("[yellow]No seeds/ directory found.[/yellow]")
+        console.print("Create a seeds/ directory with CSV files to load as seed data.")
+        return
+
+    env_label = f" [dim](env={config.active_environment})[/dim]" if config.active_environment else ""
+    console.print(f"[bold]Loading seeds{env_label}:[/bold]")
+
+    db_path = project_dir / config.database.path
+    conn = connect(db_path)
+    try:
+        results = run_seeds(conn, seeds_dir, schema=schema, force=force)
+        if results:
+            built = sum(1 for s in results.values() if s == "built")
+            skipped = sum(1 for s in results.values() if s == "skipped")
+            errors = sum(1 for s in results.values() if s == "error")
+            console.print(f"\n  {built} loaded, {skipped} skipped, {errors} errors")
+            if errors:
+                raise typer.Exit(1)
+    finally:
+        conn.close()
+
+
 # --- transform ---
 
 
@@ -148,6 +202,8 @@ def transform(
     force: Annotated[bool, typer.Option("--force", "-f", help="Force rebuild all models")] = False,
     parallel: Annotated[bool, typer.Option("--parallel", help="Run independent models in parallel")] = False,
     workers: Annotated[int, typer.Option("--workers", "-w", help="Max parallel workers")] = 4,
+    env: Annotated[Optional[str], typer.Option("--env", "-e", help="Environment to use (e.g. dev, prod)")] = None,
+    skip_check: Annotated[bool, typer.Option("--skip-check", help="Skip pre-transform validation")] = False,
     project_dir: Annotated[Optional[Path], typer.Option("--project", "-p", help="Project directory (default: current dir)")] = None,
 ) -> None:
     """Parse SQL models, resolve DAG, execute in dependency order.
@@ -155,12 +211,11 @@ def transform(
     Supports incremental models, data quality assertions, auto-profiling,
     and parallel execution of independent models.
     """
-    from dp.config import load_project
     from dp.engine.database import connect
     from dp.engine.transform import run_transform
 
     project_dir = _resolve_project(project_dir)
-    config = load_project(project_dir)
+    config = _load_config(project_dir, env)
     transform_dir = project_dir / "transform"
 
     mode = "parallel" if parallel else "sequential"
@@ -451,18 +506,18 @@ def _print_snapshot_diff(snap_results: dict) -> None:
 def stream(
     name: Annotated[str, typer.Argument(help="Stream name from project.yml")],
     force: Annotated[bool, typer.Option("--force", "-f", help="Force rebuild all models")] = False,
+    env: Annotated[Optional[str], typer.Option("--env", "-e", help="Environment to use")] = None,
     project_dir: Annotated[Optional[Path], typer.Option("--project", "-p", help="Project directory (default: current dir)")] = None,
 ) -> None:
     """Run a full stream: ingest -> transform -> export as defined in project.yml."""
     import time as _time
 
-    from dp.config import load_project
     from dp.engine.database import connect
     from dp.engine.runner import run_scripts_in_dir
     from dp.engine.transform import run_transform
 
     project_dir = _resolve_project(project_dir)
-    config = load_project(project_dir)
+    config = _load_config(project_dir, env)
 
     if name not in config.streams:
         console.print(f"[red]Stream '{name}' not found in project.yml[/red]")
@@ -499,6 +554,12 @@ def stream(
             console.print("[bold]Export:[/bold]")
             results = run_scripts_in_dir(conn_, project_dir / "export", "export", step.targets)
             if any(r["status"] == "error" for r in results):
+                return False
+        elif step.action == "seed":
+            console.print("[bold]Seeds:[/bold]")
+            from dp.engine.seeds import run_seeds
+            results = run_seeds(conn_, project_dir / "seeds", force=force)
+            if any(s == "error" for s in results.values()):
                 return False
         console.print()
         return True
@@ -615,16 +676,16 @@ def query(
     csv: Annotated[bool, typer.Option("--csv", help="Output as CSV")] = False,
     json_output: Annotated[bool, typer.Option("--json", help="Output as JSON")] = False,
     limit: Annotated[int, typer.Option("--limit", "-n", help="Max rows to return")] = 0,
+    env: Annotated[Optional[str], typer.Option("--env", "-e", help="Environment to use")] = None,
     project_dir: Annotated[Optional[Path], typer.Option("--project", "-p", help="Project directory (default: current dir)")] = None,
 ) -> None:
     """Run an ad-hoc SQL query against the warehouse."""
     import json as json_mod
 
-    from dp.config import load_project
     from dp.engine.database import connect
 
     project_dir = _resolve_project(project_dir)
-    config = load_project(project_dir)
+    config = _load_config(project_dir, env)
 
     sql = sql.strip()
     if not sql:
@@ -692,14 +753,14 @@ def _json_safe(v):
 @app.command()
 def tables(
     schema: Annotated[Optional[str], typer.Argument(help="Schema to list (all if omitted)")] = None,
+    env: Annotated[Optional[str], typer.Option("--env", "-e", help="Environment to use")] = None,
     project_dir: Annotated[Optional[Path], typer.Option("--project", "-p", help="Project directory (default: current dir)")] = None,
 ) -> None:
     """List tables and views in the warehouse."""
-    from dp.config import load_project
     from dp.engine.database import connect
 
     project_dir = _resolve_project(project_dir)
-    config = load_project(project_dir)
+    config = _load_config(project_dir, env)
 
     db_path = project_dir / config.database.path
     if not db_path.exists():
@@ -1266,6 +1327,7 @@ def serve(
     watch_files: Annotated[bool, typer.Option("--watch", "-w", help="Watch files for changes")] = False,
     scheduler_on: Annotated[bool, typer.Option("--schedule", "-s", help="Enable cron scheduler")] = False,
     auth: Annotated[bool, typer.Option("--auth", help="Enable authentication")] = False,
+    env: Annotated[Optional[str], typer.Option("--env", "-e", help="Environment to use")] = None,
     project_dir: Annotated[Optional[Path], typer.Option("--project", "-p", help="Project directory (default: current dir)")] = None,
 ) -> None:
     """Start the web UI server."""
@@ -1281,6 +1343,7 @@ def serve(
 
     server_app.PROJECT_DIR = project_dir
     server_app.AUTH_ENABLED = auth
+    server_app.ACTIVE_ENV = env
 
     # Start optional background services
     threads = []
@@ -1300,6 +1363,9 @@ def serve(
         console.print("[bold]Authentication enabled[/bold]")
     else:
         console.print("[dim]Auth disabled (use --auth to enable)[/dim]")
+
+    if env:
+        console.print(f"[bold]Environment: {env}[/bold]")
 
     console.print(f"[bold]Starting dp server at http://{host}:{port}[/bold]")
     uvicorn.run(server_app.app, host=host, port=port)
@@ -2277,20 +2343,23 @@ def connectors_available() -> None:
 @app.command()
 def check(
     targets: Annotated[Optional[list[str]], typer.Argument(help="Specific models to check")] = None,
+    env: Annotated[Optional[str], typer.Option("--env", "-e", help="Environment to use")] = None,
     project_dir: Annotated[Optional[Path], typer.Option("--project", "-p", help="Project directory (default: current dir)")] = None,
 ) -> None:
     """Validate all SQL models without executing them.
 
-    Checks that SQL parses correctly, referenced tables exist, column references
-    are valid, and flags ambiguous column references.
+    Checks that SQL parses correctly, referenced tables exist in the DAG,
+    sources.yml, the DuckDB catalog, or seeds. Validates column references
+    against upstream tables. Reports all errors at once.
     """
-    from dp.config import load_project
     from dp.engine.database import connect, ensure_meta_table
+    from dp.engine.seeds import discover_seeds
     from dp.engine.transform import discover_models, validate_models
 
     project_dir = _resolve_project(project_dir)
-    config = load_project(project_dir)
+    config = _load_config(project_dir, env)
     transform_dir = project_dir / "transform"
+    seeds_dir = project_dir / "seeds"
     db_path = project_dir / config.database.path
 
     models = discover_models(transform_dir)
@@ -2302,14 +2371,31 @@ def check(
         target_set = set(targets)
         models = [m for m in models if m.full_name in target_set or m.name in target_set]
 
+    # Gather known table names from seeds and sources
+    known_tables: set[str] = set()
+    seeds = discover_seeds(seeds_dir)
+    for s in seeds:
+        known_tables.add(s["full_name"])
+    for src in config.sources:
+        for t in src.tables:
+            known_tables.add(f"{src.schema}.{t.name}")
+
+    # Gather declared source columns for column validation
+    source_columns: dict[str, set[str]] = {}
+    for src in config.sources:
+        for t in src.tables:
+            full = f"{src.schema}.{t.name}"
+            source_columns[full] = {c.name for c in t.columns}
+
     conn = None
     if db_path.exists():
         conn = connect(db_path, read_only=True)
         ensure_meta_table(conn)
 
     try:
-        console.print(f"[bold]Checking {len(models)} model(s)...[/bold]")
-        errors = validate_models(conn, models)
+        env_label = f" [dim](env={config.active_environment})[/dim]" if config.active_environment else ""
+        console.print(f"[bold]Checking {len(models)} model(s)...{env_label}[/bold]")
+        errors = validate_models(conn, models, known_tables=known_tables, source_columns=source_columns)
 
         if not errors:
             console.print(f"[green]All {len(models)} models passed validation.[/green]")
@@ -2420,15 +2506,20 @@ def impact(
 def freshness(
     hours: Annotated[float, typer.Option("--hours", "-h", help="Max age in hours before a model is stale")] = 24.0,
     alert: Annotated[bool, typer.Option("--alert", help="Send alerts for stale models")] = False,
+    sources_only: Annotated[bool, typer.Option("--sources", help="Only check source freshness from sources.yml")] = False,
+    env: Annotated[Optional[str], typer.Option("--env", "-e", help="Environment to use")] = None,
     project_dir: Annotated[Optional[Path], typer.Option("--project", "-p", help="Project directory (default: current dir)")] = None,
 ) -> None:
-    """Check model freshness: which models haven't been updated recently?"""
-    from dp.config import load_project
+    """Check model and source freshness.
+
+    Without --sources, checks model freshness as before.
+    With --sources, checks source freshness against SLAs declared in sources.yml.
+    """
     from dp.engine.database import connect, ensure_meta_table
     from dp.engine.transform import check_freshness
 
     project_dir = _resolve_project(project_dir)
-    config = load_project(project_dir)
+    config = _load_config(project_dir, env)
     db_path = project_dir / config.database.path
 
     if not db_path.exists():
