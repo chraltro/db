@@ -27,6 +27,7 @@ class PostgresConnector(BaseConnector):
         ParamSpec("user", "Username", default="postgres"),
         ParamSpec("password", "Password", secret=True),
         ParamSpec("schema", "Schema to import from", required=False, default="public"),
+        ParamSpec("cdc_column", "Column for incremental sync (e.g. updated_at)", required=False),
     ]
 
     def _conn_string(self, config: dict[str, Any]) -> str:
@@ -95,6 +96,10 @@ class PostgresConnector(BaseConnector):
         src_schema = config.get("schema", "public")
         validate_identifier(src_schema, "source schema")
 
+        cdc_column = config.get("cdc_column", "")
+        if cdc_column:
+            validate_identifier(cdc_column, "cdc_column")
+
         # Password comes from .env via the connector framework
         password_env = config.get("password", "")
         if isinstance(password_env, str) and password_env.startswith("${") and password_env.endswith("}"):
@@ -105,32 +110,139 @@ class PostgresConnector(BaseConnector):
 
         table_list = ", ".join(f'"{t}"' for t in tables)
 
+        # Build incremental sync block if cdc_column is set
+        if cdc_column:
+            sync_block = _incremental_sync_block(
+                target_schema, src_schema, cdc_column, "pg_src",
+            )
+        else:
+            sync_block = _full_refresh_sync_block(
+                target_schema, src_schema, "pg_src",
+            )
+
         return f'''\
 """Auto-generated PostgreSQL ingest script.
 
 Syncs tables from {database} into {target_schema}.* via DuckDB's postgres extension.
+Includes retry logic and per-table error handling.
 """
 
 import os
+import time
 
 {password_line}
 conn_str = f"host={host} port={port} dbname={database} user={user} password={{password}}"
 
 db.execute("INSTALL postgres; LOAD postgres;")
-db.execute(f"ATTACH '{{conn_str}}' AS pg_src (TYPE POSTGRES, READ_ONLY)")
+
+
+def _attach_with_retry(conn_str, max_retries=3):
+    """Attach PostgreSQL with retry and exponential backoff."""
+    for attempt in range(max_retries + 1):
+        try:
+            db.execute(f"ATTACH '{{conn_str}}' AS pg_src (TYPE POSTGRES, READ_ONLY)")
+            return
+        except Exception as e:
+            if attempt == max_retries:
+                raise
+            wait = 2 ** attempt
+            print(f"  Connection failed ({{e}}), retrying in {{wait}}s... ({{attempt + 1}}/{{max_retries}})")
+            time.sleep(wait)
+
+
+_attach_with_retry(conn_str)
 db.execute("CREATE SCHEMA IF NOT EXISTS {target_schema}")
 
 tables = [{table_list}]
 
-total_rows = 0
-for table in tables:
-    src = f"pg_src.{src_schema}.{{table}}"
-    dest = f"{target_schema}.{{table}}"
-    db.execute(f"CREATE OR REPLACE TABLE {{dest}} AS SELECT * FROM {{src}}")
-    rows = db.execute(f"SELECT COUNT(*) FROM {{dest}}").fetchone()[0]
-    total_rows += rows
-    print(f"Loaded {{rows}} rows into {{dest}}")
+{sync_block}
 
 db.execute("DETACH pg_src")
-print(f"Loaded {{total_rows}} rows total from PostgreSQL")
+
+if errors:
+    print(f"\\nCompleted with {{len(errors)}} error(s):")
+    for table, err in errors:
+        print(f"  {{table}}: {{err}}")
+    raise RuntimeError(f"{{len(errors)}} table(s) failed to sync")
+else:
+    print(f"Loaded {{total_rows}} rows total from PostgreSQL ({{len(tables)}} tables)")
 '''
+
+
+def _full_refresh_sync_block(
+    target_schema: str,
+    src_schema: str,
+    attach_alias: str,
+) -> str:
+    return f'''\
+total_rows = 0
+errors = []
+for table in tables:
+    src = f"{attach_alias}.{src_schema}.{{table}}"
+    dest = f"{target_schema}.{{table}}"
+    try:
+        db.execute(f"CREATE OR REPLACE TABLE {{dest}} AS SELECT * FROM {{src}}")
+        rows = db.execute(f"SELECT COUNT(*) FROM {{dest}}").fetchone()[0]
+        total_rows += rows
+        print(f"Loaded {{rows}} rows into {{dest}}")
+    except Exception as e:
+        print(f"  ERROR syncing {{table}}: {{e}}")
+        errors.append((table, str(e)))'''
+
+
+def _incremental_sync_block(
+    target_schema: str,
+    src_schema: str,
+    cdc_column: str,
+    attach_alias: str,
+) -> str:
+    return f'''\
+# Incremental sync via high-watermark on "{cdc_column}"
+from dp.engine.cdc import ensure_cdc_table, get_watermark, update_watermark
+ensure_cdc_table(db)
+
+CONNECTOR_NAME = "postgres_sync"
+
+total_rows = 0
+errors = []
+for table in tables:
+    src = f"{attach_alias}.{src_schema}.{{table}}"
+    dest = f"{target_schema}.{{table}}"
+    full_name = f"{target_schema}.{{table}}"
+    try:
+        watermark = get_watermark(db, CONNECTOR_NAME, full_name)
+
+        if watermark:
+            # Incremental: only rows newer than watermark
+            safe_wm = watermark.replace("'", "''")
+            query = f"SELECT * FROM {{src}} WHERE \\"{cdc_column}\\" > '{{safe_wm}}'"
+
+            # Ensure target table exists
+            exists = db.execute(
+                "SELECT COUNT(*) FROM information_schema.tables "
+                "WHERE table_schema = '{target_schema}' AND table_name = '" + table + "'"
+            ).fetchone()[0] > 0
+
+            if exists:
+                db.execute(f"INSERT INTO {{dest}} {{query}}")
+            else:
+                db.execute(f"CREATE TABLE {{dest}} AS {{query}}")
+        else:
+            # First run: full refresh
+            db.execute(f"CREATE OR REPLACE TABLE {{dest}} AS SELECT * FROM {{src}}")
+
+        rows = db.execute(f"SELECT COUNT(*) FROM {{dest}}").fetchone()[0]
+        total_rows += rows
+
+        # Update watermark to max value of cdc_column
+        new_wm = db.execute(
+            f'SELECT MAX(\\"{cdc_column}\\")::VARCHAR FROM {{dest}}'
+        ).fetchone()
+        if new_wm and new_wm[0]:
+            update_watermark(db, CONNECTOR_NAME, full_name, "high_watermark", new_wm[0], rows_synced=rows)
+
+        suffix = " (incremental)" if watermark else " (full)"
+        print(f"Loaded {{rows}} rows into {{dest}}{{suffix}}")
+    except Exception as e:
+        print(f"  ERROR syncing {{table}}: {{e}}")
+        errors.append((table, str(e)))'''
