@@ -5,9 +5,12 @@ Generates markdown docs from DuckDB information_schema + SQL model files.
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 import duckdb
+
+logger = logging.getLogger("dp.docs")
 
 
 def generate_docs(
@@ -100,8 +103,8 @@ def generate_docs(
                 try:
                     count = conn.execute(f"SELECT count(*) FROM {full_name}").fetchone()[0]
                     lines.append(f"**Row count:** {count:,}\n")
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug("Could not get table stats: %s", e)
 
             # Columns
             cols = conn.execute("""
@@ -249,8 +252,8 @@ def generate_structured_docs(
                     row_count = conn.execute(
                         f"SELECT count(*) FROM {full_name}"
                     ).fetchone()[0]
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug("Could not get table stats for JSON: %s", e)
 
             # Columns
             cols_raw = conn.execute("""

@@ -101,8 +101,8 @@ def _run_notebook_as_script(
         try:
             count = conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
             rows_affected += count
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Could not get result metadata: %s", e)
 
     if errors:
         error_msg = "\n".join(errors)

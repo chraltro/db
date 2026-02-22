@@ -5,55 +5,55 @@ from __future__ import annotations
 import json
 import os
 import re
-from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 import yaml
+from pydantic import BaseModel, ConfigDict, Field, PrivateAttr
 
 
-@dataclass
-class DatabaseConfig:
+class DatabaseConfig(BaseModel):
+    model_config = ConfigDict(extra="ignore")
     path: str = "warehouse.duckdb"
 
 
-@dataclass
-class ConnectionConfig:
+class ConnectionConfig(BaseModel):
+    model_config = ConfigDict(extra="ignore")
     type: str = ""
-    params: dict[str, Any] = field(default_factory=dict)
+    params: dict[str, Any] = Field(default_factory=dict)
 
 
-@dataclass
-class StreamStep:
+class StreamStep(BaseModel):
     """A single step in a stream: ingest, transform, or export."""
+    model_config = ConfigDict(extra="ignore")
 
     action: str  # "ingest", "transform", "export"
     targets: list[str]  # script names or model paths, ["all"] for everything
 
 
-@dataclass
-class StreamConfig:
+class StreamConfig(BaseModel):
+    model_config = ConfigDict(extra="ignore")
     description: str = ""
-    steps: list[StreamStep] = field(default_factory=list)
+    steps: list[StreamStep] = Field(default_factory=list)
     schedule: str | None = None  # cron expression or None for on-demand
     retries: int = 0  # number of retry attempts for failed steps
     retry_delay: int = 5  # seconds between retries
     webhook_url: str | None = None  # POST notification on completion/failure
 
 
-@dataclass
-class LintConfig:
+class LintConfig(BaseModel):
+    model_config = ConfigDict(extra="ignore")
     dialect: str = "duckdb"
-    rules: list[str] = field(default_factory=list)
+    rules: list[str] = Field(default_factory=list)
 
 
-@dataclass
-class AlertsConfig:
+class AlertsConfig(BaseModel):
     """Configuration for pipeline alerts and notifications."""
+    model_config = ConfigDict(extra="ignore")
 
     slack_webhook_url: str | None = None
     webhook_url: str | None = None
-    channels: list[str] = field(default_factory=list)  # ["slack", "webhook", "log"]
+    channels: list[str] = Field(default_factory=list)  # ["slack", "webhook", "log"]
     on_success: bool = True
     on_failure: bool = True
     on_assertion_failure: bool = True
@@ -61,71 +61,76 @@ class AlertsConfig:
     freshness_hours: float = 24.0  # Max hours before a model is considered stale
 
 
-@dataclass
-class EnvironmentConfig:
+class EnvironmentConfig(BaseModel):
     """A single environment override (e.g. dev, prod)."""
+    model_config = ConfigDict(extra="ignore")
 
-    database: dict[str, Any] = field(default_factory=dict)  # {"path": "dev.duckdb"}
-    connections: dict[str, dict[str, Any]] = field(default_factory=dict)
+    database: dict[str, Any] = Field(default_factory=dict)  # {"path": "dev.duckdb"}
+    connections: dict[str, dict[str, Any]] = Field(default_factory=dict)
 
 
-@dataclass
-class SourceColumn:
+class SourceColumn(BaseModel):
     """A column in a source table."""
+    model_config = ConfigDict(extra="ignore")
 
     name: str
     description: str = ""
 
 
-@dataclass
-class SourceTable:
+class SourceTable(BaseModel):
     """A declared external source table."""
+    model_config = ConfigDict(extra="ignore")
 
     name: str
     description: str = ""
-    columns: list[SourceColumn] = field(default_factory=list)
+    columns: list[SourceColumn] = Field(default_factory=list)
     loaded_at_column: str | None = None
 
 
-@dataclass
-class SourceConfig:
+class SourceConfig(BaseModel):
     """An external data source declaration."""
+    model_config = ConfigDict(extra="ignore", populate_by_name=True)
 
     name: str
-    schema: str = "landing"
+    schema_name: str = Field(default="landing", alias="schema")
     description: str = ""
-    tables: list[SourceTable] = field(default_factory=list)
+    tables: list[SourceTable] = Field(default_factory=list)
     freshness_hours: float | None = None  # max age SLA
     connection: str | None = None
 
+    @property
+    def schema(self) -> str:
+        return self.schema_name
 
-@dataclass
-class ExposureConfig:
+
+class ExposureConfig(BaseModel):
     """A downstream consumer declaration."""
+    model_config = ConfigDict(extra="ignore")
 
     name: str
     description: str = ""
     owner: str = ""
-    depends_on: list[str] = field(default_factory=list)
+    depends_on: list[str] = Field(default_factory=list)
     type: str = ""  # "dashboard", "report", "ml_model", etc.
     url: str = ""
 
 
-@dataclass
-class ProjectConfig:
+class ProjectConfig(BaseModel):
+    model_config = ConfigDict(extra="ignore", arbitrary_types_allowed=True)
+
     name: str = "default"
     description: str = ""
-    database: DatabaseConfig = field(default_factory=DatabaseConfig)
-    connections: dict[str, ConnectionConfig] = field(default_factory=dict)
-    streams: dict[str, StreamConfig] = field(default_factory=dict)
-    lint: LintConfig = field(default_factory=LintConfig)
-    alerts: AlertsConfig = field(default_factory=AlertsConfig)
-    environments: dict[str, EnvironmentConfig] = field(default_factory=dict)
+    database: DatabaseConfig = Field(default_factory=DatabaseConfig)
+    connections: dict[str, ConnectionConfig] = Field(default_factory=dict)
+    streams: dict[str, StreamConfig] = Field(default_factory=dict)
+    lint: LintConfig = Field(default_factory=LintConfig)
+    alerts: AlertsConfig = Field(default_factory=AlertsConfig)
+    environments: dict[str, EnvironmentConfig] = Field(default_factory=dict)
     active_environment: str | None = None
-    sources: list[SourceConfig] = field(default_factory=list)
-    exposures: list[ExposureConfig] = field(default_factory=list)
-    project_dir: Path = field(default_factory=Path.cwd)
-    _raw: dict[str, Any] = field(default_factory=dict)
+    sources: list[SourceConfig] = Field(default_factory=list)
+    exposures: list[ExposureConfig] = Field(default_factory=list)
+    project_dir: Path = Field(default_factory=Path.cwd)
+    _raw: dict[str, Any] = PrivateAttr(default_factory=dict)
 
 
 def _expand_env_vars(value: Any) -> Any:
@@ -298,7 +303,7 @@ def load_project(project_dir: Path | None = None, env: str | None = None) -> Pro
     sources = _parse_sources(project_dir)
     exposures = _parse_exposures(project_dir)
 
-    return ProjectConfig(
+    config = ProjectConfig(
         name=raw.get("name", project_dir.name),
         description=raw.get("description", ""),
         database=database,
@@ -311,8 +316,9 @@ def load_project(project_dir: Path | None = None, env: str | None = None) -> Pro
         sources=sources,
         exposures=exposures,
         project_dir=project_dir,
-        _raw=raw,
     )
+    config._raw = raw
+    return config
 
 
 # --- Scaffold templates ---

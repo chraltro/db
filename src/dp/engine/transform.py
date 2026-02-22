@@ -8,6 +8,7 @@ assertions, auto-profiling, freshness monitoring, and parallel execution.
 from __future__ import annotations
 
 import hashlib
+import logging
 import re
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -19,19 +20,20 @@ import duckdb
 from rich.console import Console
 
 from dp.engine.database import ensure_meta_table, log_run
+from dp.engine.utils import validate_identifier
 
 console = Console()
+logger = logging.getLogger("dp.transform")
 
-# Import shared SQL analysis functions (replaces regex-based parsing)
 from dp.engine.sql_analysis import (
-    extract_table_refs,
     extract_column_lineage as _extract_column_lineage_impl,
-    parse_config as _sa_parse_config,
-    parse_depends as _sa_parse_depends,
-    parse_assertions as _sa_parse_assertions,
-    parse_description as _sa_parse_description,
-    parse_column_docs as _sa_parse_column_docs,
-    strip_config_comments as _sa_strip_config_comments,
+    extract_table_refs,
+    parse_assertions,
+    parse_column_docs,
+    parse_config,
+    parse_depends,
+    parse_description,
+    strip_config_comments,
 )
 
 
@@ -97,41 +99,6 @@ def _hash_content(content: str) -> str:
     return hashlib.sha256(normalized.encode()).hexdigest()[:16]
 
 
-def _parse_config(sql: str) -> dict[str, str]:
-    """Parse -- config: key=value, key=value from SQL header."""
-    return _sa_parse_config(sql)
-
-
-def _parse_depends(sql: str) -> list[str]:
-    """Parse -- depends_on: schema.table, schema.table from SQL header."""
-    return _sa_parse_depends(sql)
-
-
-def _parse_assertions(sql: str) -> list[str]:
-    """Parse -- assert: expression lines from SQL header."""
-    return _sa_parse_assertions(sql)
-
-
-def _infer_depends(query: str, own_full_name: str) -> list[str]:
-    """Infer upstream table dependencies from SQL using AST parsing."""
-    return extract_table_refs(query, exclude=own_full_name)
-
-
-def _parse_description(sql: str) -> str:
-    """Parse -- description: text from SQL header."""
-    return _sa_parse_description(sql)
-
-
-def _parse_column_docs(sql: str) -> dict[str, str]:
-    """Parse -- col: name: description lines from SQL header."""
-    return _sa_parse_column_docs(sql)
-
-
-def _strip_config_comments(sql: str) -> str:
-    """Remove config/depends/description/col/assert comments, return the query."""
-    return _sa_strip_config_comments(sql)
-
-
 def discover_models(transform_dir: Path) -> list[SQLModel]:
     """Discover all SQL models in the transform directory.
 
@@ -144,23 +111,26 @@ def discover_models(transform_dir: Path) -> list[SQLModel]:
 
     for sql_file in sorted(transform_dir.rglob("*.sql")):
         sql = sql_file.read_text()
-        config = _parse_config(sql)
-        depends = _parse_depends(sql)
-        description = _parse_description(sql)
-        column_docs = _parse_column_docs(sql)
-        assertions = _parse_assertions(sql)
-        query = _strip_config_comments(sql)
+        config = parse_config(sql)
+        depends = parse_depends(sql)
+        description = parse_description(sql)
+        column_docs = parse_column_docs(sql)
+        assertions = parse_assertions(sql)
+        query = strip_config_comments(sql)
         if not depends:
             folder_schema_tmp = sql_file.relative_to(transform_dir).parent.name or "public"
             own_schema_tmp = config.get("schema", folder_schema_tmp)
             own_name_tmp = sql_file.stem
-            depends = _infer_depends(query, f"{own_schema_tmp}.{own_name_tmp}")
+            depends = extract_table_refs(query, exclude=f"{own_schema_tmp}.{own_name_tmp}")
 
         # Schema from folder name (convention) or config override
         rel = sql_file.relative_to(transform_dir)
         folder_schema = rel.parent.name if rel.parent.name else "public"
         schema = config.get("schema", folder_schema)
         name = sql_file.stem
+        # Validate identifiers at discovery time to prevent SQL injection downstream
+        validate_identifier(schema, f"schema for {sql_file.name}")
+        validate_identifier(name, f"model name for {sql_file.name}")
         materialized = config.get("materialized", "view")
         unique_key = config.get("unique_key")
         incremental_strategy = config.get("incremental_strategy", "delete+insert")
@@ -625,8 +595,8 @@ def validate_models(
                 "SELECT table_schema || '.' || table_name FROM information_schema.tables"
             ).fetchall()
             all_known_tables.update(r[0].lower() for r in rows)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Could not get table columns from catalog: %s", e)
 
     # Build column catalog: table -> set of columns
     column_catalog: dict[str, set[str]] = {}
@@ -644,8 +614,8 @@ def validate_models(
             for table_fqn, col_name in rows:
                 table_fqn = table_fqn.lower()
                 column_catalog.setdefault(table_fqn, set()).add(col_name.lower())
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Could not describe table columns: %s", e)
 
     for model in models:
         # 1. Parse check
@@ -817,7 +787,8 @@ def check_freshness(
             ORDER BY last_run_at ASC
             """
         ).fetchall()
-    except Exception:
+    except Exception as e:
+        logger.warning("Failed to check freshness: %s", e)
         return []
 
     results = []
@@ -910,8 +881,8 @@ def _execute_single_model(
     except Exception as e:
         try:
             log_run(conn, "transform", model.full_name, "error", error=str(e))
-        except Exception:
-            pass
+        except Exception as e2:
+            logger.debug("Failed to log run error: %s", e2)
         return model.full_name, ModelResult(status="error", error=str(e))
     finally:
         conn.close()
@@ -1062,8 +1033,8 @@ def _run_transform_parallel(
         try:
             result = conn.execute("SELECT current_setting('duckdb_database_file')").fetchone()
             db_path_str = result[0] if result and result[0] else None
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Could not extract db path from connection: %s", e)
     if not db_path_str:
         console.print("[yellow]Cannot determine database path, falling back to sequential[/yellow]")
         return _run_transform_sequential(conn, models, force)

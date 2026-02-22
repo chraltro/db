@@ -7,6 +7,7 @@ contract: a class that can test, discover, and generate scripts.
 
 from __future__ import annotations
 
+import logging
 import re
 import time
 from dataclasses import dataclass, field
@@ -16,6 +17,8 @@ from typing import Any
 import yaml
 
 from dp.engine.database import connect, ensure_meta_table, log_run
+
+logger = logging.getLogger("dp.connector")
 
 
 # ---------------------------------------------------------------------------
@@ -361,7 +364,8 @@ def regenerate_connector(
     try:
         discovered = connector.discover(config)
         tables = [r.name for r in discovered]
-    except Exception:
+    except Exception as e:
+        logger.warning("Failed to discover connector tables: %s", e)
         tables = []
 
     if not tables:

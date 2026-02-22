@@ -15,13 +15,15 @@ import duckdb
 import pytest
 
 from dp.engine.database import ensure_meta_table
+from dp.engine.sql_analysis import (
+    parse_assertions as _parse_assertions,
+    parse_config as _parse_config,
+)
 from dp.engine.transform import (
     AssertionResult,
     ProfileResult,
     SQLModel,
     ValidationError,
-    _parse_assertions,
-    _parse_config,
     build_dag,
     build_dag_tiers,
     check_freshness,
