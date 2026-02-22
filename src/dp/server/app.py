@@ -48,6 +48,7 @@ app.add_middleware(
 from dp.server.routes.auth import router as auth_router  # noqa: E402
 from dp.server.routes.files import router as files_router  # noqa: E402
 from dp.server.routes.models import router as models_router  # noqa: E402
+from dp.server.routes.dag import router as dag_router  # noqa: E402
 from dp.server.routes.query import router as query_router  # noqa: E402
 from dp.server.routes.notebooks import router as notebooks_router  # noqa: E402
 from dp.server.routes.connectors import router as connectors_router  # noqa: E402
@@ -63,6 +64,7 @@ from dp.server.routes.lint import router as lint_router  # noqa: E402
 app.include_router(auth_router)
 app.include_router(files_router)
 app.include_router(models_router)
+app.include_router(dag_router)
 app.include_router(query_router)
 app.include_router(notebooks_router)
 app.include_router(connectors_router)

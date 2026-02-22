@@ -42,7 +42,9 @@ def _load_config(project_dir: Path, env: str | None = None):
 # Order doesn't matter for registration, but keep alphabetical for clarity.
 from dp.cli import admin  # noqa: E402, F401
 from dp.cli import connectors  # noqa: E402, F401
+from dp.cli import diff  # noqa: E402, F401
 from dp.cli import models  # noqa: E402, F401
 from dp.cli import pipeline  # noqa: E402, F401
 from dp.cli import project  # noqa: E402, F401
+from dp.cli import quality  # noqa: E402, F401
 from dp.cli import query  # noqa: E402, F401
