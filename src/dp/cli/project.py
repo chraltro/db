@@ -20,11 +20,14 @@ def init(
         CLAUDE_MD_TEMPLATE,
         PROJECT_YML_TEMPLATE,
         SAMPLE_BRONZE_SQL,
+        SAMPLE_CONTRACTS_YML,
+        SAMPLE_EXPLORE_NOTEBOOK,
         SAMPLE_EXPORT_SCRIPT,
         SAMPLE_GOLD_REGIONS_SQL,
         SAMPLE_GOLD_SUMMARY_SQL,
         SAMPLE_GOLD_TOP_SQL,
         SAMPLE_INGEST_NOTEBOOK,
+        SAMPLE_SEED_CSV,
         SAMPLE_SILVER_DAILY_SQL,
         SAMPLE_SILVER_EVENTS_SQL,
     )
@@ -33,13 +36,16 @@ def init(
     target = directory or Path.cwd() / name
     target.mkdir(parents=True, exist_ok=True)
 
-    dirs = ["ingest", "transform/bronze", "transform/silver", "transform/gold", "export"]
+    dirs = [
+        "ingest", "transform/bronze", "transform/silver", "transform/gold",
+        "export", "seeds", "contracts", "notebooks",
+    ]
     for d in dirs:
         (target / d).mkdir(parents=True, exist_ok=True)
 
     # project.yml
     (target / "project.yml").write_text(PROJECT_YML_TEMPLATE.format(name=name))
-    # Sample pipeline: earthquake data from USGS API
+    # Sample pipeline: earthquake data from USGS API (with offline fallback)
     (target / "ingest" / "earthquakes.dpnb").write_text(SAMPLE_INGEST_NOTEBOOK)
     (target / "transform" / "bronze" / "earthquakes.sql").write_text(SAMPLE_BRONZE_SQL)
     (target / "transform" / "silver" / "earthquake_events.sql").write_text(SAMPLE_SILVER_EVENTS_SQL)
@@ -48,13 +54,17 @@ def init(
     (target / "transform" / "gold" / "top_earthquakes.sql").write_text(SAMPLE_GOLD_TOP_SQL)
     (target / "transform" / "gold" / "region_risk.sql").write_text(SAMPLE_GOLD_REGIONS_SQL)
     (target / "export" / "earthquake_report.py").write_text(SAMPLE_EXPORT_SCRIPT)
+    # Seed data: magnitude scale reference table
+    (target / "seeds" / "magnitude_scale.csv").write_text(SAMPLE_SEED_CSV)
+    # Data quality contracts
+    (target / "contracts" / "quality.yml").write_text(SAMPLE_CONTRACTS_YML)
+    # Interactive exploration notebook
+    (target / "notebooks" / "explore.dpnb").write_text(SAMPLE_EXPLORE_NOTEBOOK)
     # .env secrets file
     (target / ".env").write_text(ENV_TEMPLATE)
-    # Notebooks directory
-    (target / "notebooks").mkdir(parents=True, exist_ok=True)
     # .gitignore
     (target / ".gitignore").write_text(
-        "warehouse.duckdb\nwarehouse.duckdb.wal\n__pycache__/\n*.pyc\n.venv/\n.env\noutput/\n"
+        "warehouse.duckdb\nwarehouse.duckdb.wal\n__pycache__/\n*.pyc\n.venv/\n.env\noutput/\n_snapshots/\n"
     )
     # Agent instructions for LLM tools (Claude Code, Cursor, etc.)
     (target / "CLAUDE.md").write_text(CLAUDE_MD_TEMPLATE.format(name=name))
@@ -67,11 +77,13 @@ def init(
     console.print()
     console.print("Quick start:")
     console.print(f"  cd {name}")
-    console.print("  dp stream full-refresh    # fetch earthquake data & build pipeline")
+    console.print("  dp stream full-refresh    # run the full earthquake pipeline")
+    console.print("  dp tables                 # see what was built")
     console.print("  dp serve                  # open web UI")
+    console.print("  dp contracts              # check data quality")
     console.print()
-    console.print("[dim]AI assistant ready:[/dim] CLAUDE.md included for Claude Code, Cursor, and others.")
-    console.print("[dim]Run [bold]dp context[/bold] to generate a project summary for any AI chat.[/dim]")
+    console.print("[dim]Works offline — the ingest notebook falls back to sample data if the USGS API is unavailable.[/dim]")
+    console.print("[dim]AI assistant ready — CLAUDE.md included for Claude Code, Cursor, and others.[/dim]")
 
 
 @app.command()
