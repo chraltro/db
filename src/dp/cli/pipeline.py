@@ -377,3 +377,74 @@ def schedule(
     except KeyboardInterrupt:
         scheduler.stop()
         console.print("\n[dim]Scheduler stopped.[/dim]")
+
+
+# --- cdc ---
+
+
+@app.command()
+def cdc(
+    action: Annotated[str, typer.Argument(help="Action: status, reset")] = "status",
+    connector: Annotated[Optional[str], typer.Option("--connector", "-c", help="Connector name")] = None,
+    table_name: Annotated[Optional[str], typer.Option("--table", "-t", help="Table name (for reset)")] = None,
+    project_dir: Annotated[Optional[Path], typer.Option("--project", "-p", help="Project directory")] = None,
+) -> None:
+    """View and manage CDC (Change Data Capture) state.
+
+    Examples:
+      dp cdc status                         # Show all CDC state
+      dp cdc status --connector prod_users  # Show state for one connector
+      dp cdc reset --connector prod_users   # Reset all watermarks for a connector
+      dp cdc reset --connector prod --table users  # Reset one table
+    """
+    from dp.config import load_project
+    from dp.engine.cdc import get_cdc_status, reset_watermark
+    from dp.engine.database import connect
+
+    project_dir = _resolve_project(project_dir)
+    config = load_project(project_dir)
+    db_path = project_dir / config.database.path
+
+    if not db_path.exists():
+        console.print("[yellow]No warehouse database found. Run a pipeline first.[/yellow]")
+        raise typer.Exit(1)
+
+    conn = connect(db_path)
+    try:
+        if action == "status":
+            entries = get_cdc_status(conn, connector)
+            if not entries:
+                console.print("[yellow]No CDC state tracked yet.[/yellow]")
+                return
+            tbl = Table(title="CDC State")
+            tbl.add_column("Connector", style="bold")
+            tbl.add_column("Table")
+            tbl.add_column("Mode")
+            tbl.add_column("Watermark")
+            tbl.add_column("Last Sync")
+            tbl.add_column("Rows", justify="right")
+            for e in entries:
+                tbl.add_row(
+                    e["connector"],
+                    e["table"],
+                    e["cdc_mode"],
+                    e["watermark"] or "-",
+                    e["last_sync_at"][:19] if e["last_sync_at"] else "-",
+                    str(e["rows_synced"]),
+                )
+            console.print(tbl)
+
+        elif action == "reset":
+            if not connector:
+                console.print("[red]--connector is required for reset[/red]")
+                raise typer.Exit(1)
+            reset_watermark(conn, connector, table_name)
+            target = f"{connector}.{table_name}" if table_name else connector
+            console.print(f"[green]CDC state reset for {target}[/green]")
+
+        else:
+            console.print(f"[red]Unknown action: {action}[/red]")
+            console.print("Available: status, reset")
+            raise typer.Exit(1)
+    finally:
+        conn.close()
