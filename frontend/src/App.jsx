@@ -468,15 +468,7 @@ function AppContent() {
     if (!activeFile) return;
     if (dirty) await saveFile();
     if (activeFile.endsWith(".sql")) {
-      addOutput("info", "Running transform...");
-      try {
-        const data = await api.runTransform(null, false);
-        for (const [model, status] of Object.entries(data.results || {})) {
-          addOutput(status === "error" ? "error" : "info", `${model}: ${status}`);
-        }
-      } catch (e) {
-        addOutput("error", e.message);
-      }
+      await runTransformAll(false);
     } else if (activeFile.endsWith(".py")) {
       await runCurrentScript(activeFile);
     }

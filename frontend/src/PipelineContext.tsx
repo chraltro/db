@@ -13,7 +13,6 @@ interface PipelineState {
   runLint: (fix?: boolean) => Promise<void>;
   runCurrentScript: (scriptPath: string) => Promise<void>;
   runSingleModel: (modelName: string) => Promise<void>;
-  onPipelineComplete?: () => void;
 }
 
 const PipelineContext = createContext<PipelineState | null>(null);
