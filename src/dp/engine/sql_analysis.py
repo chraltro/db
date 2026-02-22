@@ -8,11 +8,14 @@ complex expressions.
 
 from __future__ import annotations
 
+import logging
 import re
 from typing import Any
 
 import sqlglot
 from sqlglot import exp
+
+logger = logging.getLogger("dp.sql_analysis")
 
 # Schemas that are never real upstream dependencies
 SKIP_SCHEMAS = frozenset({"information_schema", "_dp_internal", "pg_catalog", "sys"})
@@ -236,8 +239,8 @@ def extract_column_lineage(
                         [parts[0], parts[1]],
                     ).fetchall()
                     star_columns[dep] = [c[0] for c in cols]
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug("Failed to resolve table reference: %s", e)
 
     # Find the outermost SELECT
     main_select = _find_main_select(parsed)

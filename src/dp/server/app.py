@@ -9,7 +9,10 @@ import time
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, HTTPException, Request
+from typing import Annotated, Generator
+
+import duckdb
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel, Field
@@ -43,14 +46,14 @@ app.add_middleware(
 
 # --- Identifier validation ---
 
-_IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
-
 
 def _validate_identifier(value: str, label: str = "identifier") -> str:
     """Validate that a value is a safe SQL identifier (no injection)."""
-    if not _IDENTIFIER_RE.match(value):
+    from dp.engine.utils import validate_identifier
+    try:
+        return validate_identifier(value, label)
+    except ValueError:
         raise HTTPException(400, f"Invalid {label}: {value!r}")
-    return value
 
 
 # --- Config cache ---
@@ -168,6 +171,51 @@ def _require_permission(request: Request, permission: str) -> dict:
     return user
 
 
+# --- Connection dependency injection ---
+
+
+def get_db() -> Generator[duckdb.DuckDBPyConnection, None, None]:
+    """FastAPI dependency: yields a read-write DuckDB connection."""
+    db_path = _get_db_path()
+    _require_db(db_path)
+    conn = connect(db_path)
+    try:
+        yield conn
+    finally:
+        conn.close()
+
+
+def get_db_readonly() -> Generator[duckdb.DuckDBPyConnection, None, None]:
+    """FastAPI dependency: yields a read-only DuckDB connection."""
+    db_path = _get_db_path()
+    _require_db(db_path)
+    conn = connect(db_path, read_only=True)
+    try:
+        yield conn
+    finally:
+        conn.close()
+
+
+DbConn = Annotated[duckdb.DuckDBPyConnection, Depends(get_db)]
+DbConnReadOnly = Annotated[duckdb.DuckDBPyConnection, Depends(get_db_readonly)]
+
+
+def get_db_readonly_optional() -> Generator[duckdb.DuckDBPyConnection | None, None, None]:
+    """FastAPI dependency: yields a read-only DuckDB connection, or None if DB doesn't exist."""
+    db_path = _get_db_path()
+    if not db_path.exists():
+        yield None
+        return
+    conn = connect(db_path, read_only=True)
+    try:
+        yield conn
+    finally:
+        conn.close()
+
+
+DbConnReadOnlyOptional = Annotated[duckdb.DuckDBPyConnection | None, Depends(get_db_readonly_optional)]
+
+
 # --- Rate limiting ---
 
 _login_attempts: dict[str, list[float]] = {}
@@ -216,20 +264,15 @@ class UpdateUserRequest(BaseModel):
 
 
 @app.post("/api/auth/login")
-def login(request: Request, req: LoginRequest) -> dict:
+def login(request: Request, req: LoginRequest, conn: DbConn) -> dict:
     """Authenticate and get a token (rate-limited)."""
     client_ip = request.client.host if request.client else "unknown"
     _check_rate_limit(f"login:{client_ip}")
     from dp.engine.auth import authenticate
-    db_path = _get_db_path()
-    conn = connect(db_path)
-    try:
-        token = authenticate(conn, req.username, req.password)
-        if not token:
-            raise HTTPException(401, "Invalid credentials")
-        return {"token": token, "username": req.username}
-    finally:
-        conn.close()
+    token = authenticate(conn, req.username, req.password)
+    if not token:
+        raise HTTPException(401, "Invalid credentials")
+    return {"token": token, "username": req.username}
 
 
 @app.get("/api/auth/me")
@@ -239,73 +282,52 @@ def get_current_user(request: Request) -> dict:
 
 
 @app.get("/api/auth/status")
-def get_auth_status() -> dict:
+def get_auth_status(conn: DbConn) -> dict:
     """Check if auth is enabled and if initial setup is needed."""
     if not AUTH_ENABLED:
         return {"auth_enabled": False, "needs_setup": False}
-    db_path = _get_db_path()
-    conn = connect(db_path)
-    try:
-        from dp.engine.auth import has_any_users
-        return {"auth_enabled": True, "needs_setup": not has_any_users(conn)}
-    finally:
-        conn.close()
+    from dp.engine.auth import has_any_users
+    return {"auth_enabled": True, "needs_setup": not has_any_users(conn)}
 
 
 @app.post("/api/auth/setup")
-def initial_setup(req: CreateUserRequest) -> dict:
+def initial_setup(req: CreateUserRequest, conn: DbConn) -> dict:
     """Create the first admin user (only works when no users exist)."""
     from dp.engine.auth import create_user, has_any_users, authenticate
-    db_path = _get_db_path()
-    conn = connect(db_path)
-    try:
-        if has_any_users(conn):
-            raise HTTPException(400, "Setup already completed")
-        create_user(conn, req.username, req.password, "admin", req.display_name)
-        token = authenticate(conn, req.username, req.password)
-        return {"token": token, "username": req.username, "role": "admin"}
-    finally:
-        conn.close()
+    if has_any_users(conn):
+        raise HTTPException(400, "Setup already completed")
+    create_user(conn, req.username, req.password, "admin", req.display_name)
+    token = authenticate(conn, req.username, req.password)
+    return {"token": token, "username": req.username, "role": "admin"}
 
 
 # --- User management ---
 
 
 @app.get("/api/users")
-def list_users(request: Request) -> list[dict]:
+def list_users(request: Request, conn: DbConn) -> list[dict]:
     """List all users (admin only)."""
     _require_permission(request, "manage_users")
     from dp.engine.auth import list_users as _list_users
-    db_path = _get_db_path()
-    conn = connect(db_path)
-    try:
-        return _list_users(conn)
-    finally:
-        conn.close()
+    return _list_users(conn)
 
 
 @app.post("/api/users")
-def create_user_endpoint(request: Request, req: CreateUserRequest) -> dict:
+def create_user_endpoint(request: Request, req: CreateUserRequest, conn: DbConn) -> dict:
     """Create a new user (admin only)."""
     _require_permission(request, "manage_users")
     from dp.engine.auth import create_user
-    db_path = _get_db_path()
-    conn = connect(db_path)
     try:
         return create_user(conn, req.username, req.password, req.role, req.display_name)
     except ValueError as e:
         raise HTTPException(400, str(e))
-    finally:
-        conn.close()
 
 
 @app.put("/api/users/{username}")
-def update_user_endpoint(request: Request, username: str, req: UpdateUserRequest) -> dict:
+def update_user_endpoint(request: Request, username: str, req: UpdateUserRequest, conn: DbConn) -> dict:
     """Update a user (admin only)."""
     _require_permission(request, "manage_users")
     from dp.engine.auth import update_user
-    db_path = _get_db_path()
-    conn = connect(db_path)
     try:
         found = update_user(conn, username, req.role, req.password, req.display_name)
         if not found:
@@ -313,24 +335,17 @@ def update_user_endpoint(request: Request, username: str, req: UpdateUserRequest
         return {"status": "updated"}
     except ValueError as e:
         raise HTTPException(400, str(e))
-    finally:
-        conn.close()
 
 
 @app.delete("/api/users/{username}")
-def delete_user_endpoint(request: Request, username: str) -> dict:
+def delete_user_endpoint(request: Request, username: str, conn: DbConn) -> dict:
     """Delete a user (admin only)."""
     _require_permission(request, "manage_users")
     from dp.engine.auth import delete_user
-    db_path = _get_db_path()
-    conn = connect(db_path)
-    try:
-        found = delete_user(conn, username)
-        if not found:
-            raise HTTPException(404, f"User '{username}' not found")
-        return {"status": "deleted"}
-    finally:
-        conn.close()
+    found = delete_user(conn, username)
+    if not found:
+        raise HTTPException(404, f"User '{username}' not found")
+    return {"status": "deleted"}
 
 
 # --- Secrets management ---
@@ -502,12 +517,10 @@ class TransformRequest(BaseModel):
 
 
 @app.post("/api/transform")
-def run_transform_endpoint(request: Request, req: TransformRequest) -> dict:
+def run_transform_endpoint(request: Request, req: TransformRequest, conn: DbConn) -> dict:
     """Run the SQL transformation pipeline."""
     _require_permission(request, "execute")
     logger.info("Transform requested: targets=%s force=%s", req.targets, req.force)
-    db_path = _get_db_path()
-    conn = connect(db_path)
     try:
         results = run_transform(
             conn,
@@ -519,8 +532,6 @@ def run_transform_endpoint(request: Request, req: TransformRequest) -> dict:
     except Exception as e:
         logger.exception("Transform failed")
         raise HTTPException(400, f"Transform failed: {e}")
-    finally:
-        conn.close()
 
 
 # --- Diff ---
@@ -533,14 +544,12 @@ class DiffRequest(BaseModel):
 
 
 @app.post("/api/diff")
-def run_diff_endpoint(request: Request, req: DiffRequest) -> list[dict]:
+def run_diff_endpoint(request: Request, req: DiffRequest, conn: DbConn) -> list[dict]:
     """Diff models: compare SQL output against materialized tables."""
     _require_permission(request, "read")
     from dp.engine.diff import diff_models
 
     config = _get_config()
-    db_path = _get_db_path()
-    conn = connect(db_path)
     try:
         ensure_meta_table(conn)
         results = diff_models(
@@ -575,8 +584,6 @@ def run_diff_endpoint(request: Request, req: DiffRequest) -> list[dict]:
     except Exception as e:
         logger.exception("Diff failed")
         raise HTTPException(400, f"Diff failed: {e}")
-    finally:
-        conn.close()
 
 
 # --- Git status ---
@@ -620,7 +627,7 @@ class RunScriptRequest(BaseModel):
 
 
 @app.post("/api/run")
-def run_script_endpoint(request: Request, req: RunScriptRequest) -> dict:
+def run_script_endpoint(request: Request, req: RunScriptRequest, conn: DbConn) -> dict:
     """Run an ingest or export script."""
     _require_permission(request, "execute")
     logger.info("Script run requested: %s", req.script_path)
@@ -628,24 +635,19 @@ def run_script_endpoint(request: Request, req: RunScriptRequest) -> dict:
     if not script_path.exists():
         raise HTTPException(404, f"Script not found: {req.script_path}")
     script_type = "ingest" if "ingest" in req.script_path else "export"
-    db_path = _get_db_path()
-    conn = connect(db_path)
-    try:
-        result = run_script(conn, script_path, script_type)
-        # Mask secrets in output
-        from dp.engine.secrets import mask_output
-        if result.get("log_output"):
-            result["log_output"] = mask_output(result["log_output"], _get_project_dir())
-        return result
-    finally:
-        conn.close()
+    result = run_script(conn, script_path, script_type)
+    # Mask secrets in output
+    from dp.engine.secrets import mask_output
+    if result.get("log_output"):
+        result["log_output"] = mask_output(result["log_output"], _get_project_dir())
+    return result
 
 
 # --- Stream execution ---
 
 
 @app.post("/api/stream/{stream_name}")
-def run_stream_endpoint(request: Request, stream_name: str, force: bool = False) -> dict:
+def run_stream_endpoint(request: Request, stream_name: str, conn: DbConn, force: bool = False) -> dict:
     """Run a full stream with retry support."""
     _require_permission(request, "execute")
     logger.info("Stream run requested: %s (force=%s)", stream_name, force)
@@ -654,8 +656,6 @@ def run_stream_endpoint(request: Request, stream_name: str, force: bool = False)
         raise HTTPException(404, f"Stream '{stream_name}' not found")
     stream_config = config.streams[stream_name]
 
-    db_path = _get_db_path()
-    conn = connect(db_path)
     step_results = []
     has_error = False
     start = time.perf_counter()
@@ -680,32 +680,29 @@ def run_stream_endpoint(request: Request, stream_name: str, force: bool = False)
             return {"action": "seed", "results": results, "error": any(s == "error" for s in results.values())}
         return {"action": step.action, "results": {}, "error": False}
 
-    try:
-        import time as _time
-        for step in stream_config.steps:
-            result = _run_step(step)
-            if result["error"] and stream_config.retries > 0:
-                for attempt in range(1, stream_config.retries + 1):
-                    logger.info("Retrying %s step (attempt %d/%d)", step.action, attempt, stream_config.retries)
-                    _time.sleep(stream_config.retry_delay)
-                    result = _run_step(step)
-                    if not result["error"]:
-                        break
-            step_results.append({"action": result["action"], "results": result["results"]})
-            if result["error"]:
-                has_error = True
-                break
+    import time as _time
+    for step in stream_config.steps:
+        result = _run_step(step)
+        if result["error"] and stream_config.retries > 0:
+            for attempt in range(1, stream_config.retries + 1):
+                logger.info("Retrying %s step (attempt %d/%d)", step.action, attempt, stream_config.retries)
+                _time.sleep(stream_config.retry_delay)
+                result = _run_step(step)
+                if not result["error"]:
+                    break
+        step_results.append({"action": result["action"], "results": result["results"]})
+        if result["error"]:
+            has_error = True
+            break
 
-        duration_s = round(time.perf_counter() - start, 1)
-        status = "failed" if has_error else "success"
+    duration_s = round(time.perf_counter() - start, 1)
+    status = "failed" if has_error else "success"
 
-        # Webhook notification
-        if stream_config.webhook_url:
-            _send_webhook_notification(stream_config.webhook_url, stream_name, status, duration_s)
+    # Webhook notification
+    if stream_config.webhook_url:
+        _send_webhook_notification(stream_config.webhook_url, stream_name, status, duration_s)
 
-        return {"stream": stream_name, "steps": step_results, "status": status, "duration_seconds": duration_s}
-    finally:
-        conn.close()
+    return {"stream": stream_name, "steps": step_results, "status": status, "duration_seconds": duration_s}
 
 
 def _send_webhook_notification(url: str, stream_name: str, status: str, duration_s: float) -> None:
@@ -741,12 +738,9 @@ _QUERY_TIMEOUT_SECONDS = 30
 
 
 @app.post("/api/query")
-def run_query(request: Request, req: QueryRequest) -> dict:
+def run_query(request: Request, req: QueryRequest, conn: DbConnReadOnly) -> dict:
     """Run an ad-hoc SQL query with a timeout."""
     _require_permission(request, "read")
-    db_path = _get_db_path()
-    _require_db(db_path)
-    conn = connect(db_path, read_only=True)
     try:
         import threading
 
@@ -787,8 +781,6 @@ def run_query(request: Request, req: QueryRequest) -> dict:
     except Exception as e:
         logger.warning("Query failed: %s", e)
         raise HTTPException(400, str(e))
-    finally:
-        conn.close()
 
 
 def _serialize(value: Any) -> Any:
@@ -804,66 +796,53 @@ def _serialize(value: Any) -> Any:
 
 
 @app.get("/api/tables")
-def list_tables(request: Request, schema: str | None = None) -> list[dict]:
+def list_tables(request: Request, conn: DbConnReadOnly, schema: str | None = None) -> list[dict]:
     """List warehouse tables and views."""
     _require_permission(request, "read")
-    db_path = _get_db_path()
-    if not db_path.exists():
-        return []
-    conn = connect(db_path, read_only=True)
-    try:
-        if schema:
-            _validate_identifier(schema, "schema")
-            rows = conn.execute(
-                """
-                SELECT table_schema, table_name, table_type
-                FROM information_schema.tables
-                WHERE table_schema NOT IN ('information_schema', '_dp_internal')
-                  AND table_schema = ?
-                ORDER BY table_schema, table_name
-                """,
-                [schema],
-            ).fetchall()
-        else:
-            rows = conn.execute(
-                """
-                SELECT table_schema, table_name, table_type
-                FROM information_schema.tables
-                WHERE table_schema NOT IN ('information_schema', '_dp_internal')
-                ORDER BY table_schema, table_name
-                """
-            ).fetchall()
-        return [{"schema": r[0], "name": r[1], "type": r[2]} for r in rows]
-    finally:
-        conn.close()
+    if schema:
+        _validate_identifier(schema, "schema")
+        rows = conn.execute(
+            """
+            SELECT table_schema, table_name, table_type
+            FROM information_schema.tables
+            WHERE table_schema NOT IN ('information_schema', '_dp_internal')
+              AND table_schema = ?
+            ORDER BY table_schema, table_name
+            """,
+            [schema],
+        ).fetchall()
+    else:
+        rows = conn.execute(
+            """
+            SELECT table_schema, table_name, table_type
+            FROM information_schema.tables
+            WHERE table_schema NOT IN ('information_schema', '_dp_internal')
+            ORDER BY table_schema, table_name
+            """
+        ).fetchall()
+    return [{"schema": r[0], "name": r[1], "type": r[2]} for r in rows]
 
 
 @app.get("/api/tables/{schema}/{table}")
-def describe_table(request: Request, schema: str, table: str) -> dict:
+def describe_table(request: Request, schema: str, table: str, conn: DbConnReadOnly) -> dict:
     """Get column info for a table."""
     _require_permission(request, "read")
     _validate_identifier(schema, "schema")
     _validate_identifier(table, "table")
-    db_path = _get_db_path()
-    _require_db(db_path)
-    conn = connect(db_path, read_only=True)
-    try:
-        cols = conn.execute(
-            """
-            SELECT column_name, data_type, is_nullable
-            FROM information_schema.columns
-            WHERE table_schema = ? AND table_name = ?
-            ORDER BY ordinal_position
-            """,
-            [schema, table],
-        ).fetchall()
-        return {
-            "schema": schema,
-            "name": table,
-            "columns": [{"name": c[0], "type": c[1], "nullable": c[2] == "YES"} for c in cols],
-        }
-    finally:
-        conn.close()
+    cols = conn.execute(
+        """
+        SELECT column_name, data_type, is_nullable
+        FROM information_schema.columns
+        WHERE table_schema = ? AND table_name = ?
+        ORDER BY ordinal_position
+        """,
+        [schema, table],
+    ).fetchall()
+    return {
+        "schema": schema,
+        "name": table,
+        "columns": [{"name": c[0], "type": c[1], "nullable": c[2] == "YES"} for c in cols],
+    }
 
 
 @app.get("/api/tables/{schema}/{table}/sample")
@@ -871,6 +850,7 @@ def sample_table(
     request: Request,
     schema: str,
     table: str,
+    conn: DbConnReadOnly,
     limit: int = 100,
     offset: int = 0,
 ) -> dict:
@@ -880,9 +860,6 @@ def sample_table(
     _validate_identifier(table, "table")
     limit = max(1, min(limit, 10_000))
     offset = max(0, offset)
-    db_path = _get_db_path()
-    _require_db(db_path)
-    conn = connect(db_path, read_only=True)
     try:
         quoted = f'"{schema}"."{table}"'
         result = conn.execute(f"SELECT * FROM {quoted} LIMIT {limit} OFFSET {offset}")
@@ -899,19 +876,14 @@ def sample_table(
     except Exception as e:
         logger.warning("Sample query failed for %s.%s: %s", schema, table, e)
         raise HTTPException(400, str(e))
-    finally:
-        conn.close()
 
 
 @app.get("/api/tables/{schema}/{table}/profile")
-def profile_table(request: Request, schema: str, table: str) -> dict:
+def profile_table(request: Request, schema: str, table: str, conn: DbConnReadOnly) -> dict:
     """Get column-level statistics for a table."""
     _require_permission(request, "read")
     _validate_identifier(schema, "schema")
     _validate_identifier(table, "table")
-    db_path = _get_db_path()
-    _require_db(db_path)
-    conn = connect(db_path, read_only=True)
     try:
         quoted = f'"{schema}"."{table}"'
         # Get row count
@@ -966,8 +938,6 @@ def profile_table(request: Request, schema: str, table: str) -> dict:
     except Exception as e:
         logger.warning("Profile failed for %s.%s: %s", schema, table, e)
         raise HTTPException(400, str(e))
-    finally:
-        conn.close()
 
 
 # --- Streams config ---
@@ -992,39 +962,32 @@ def list_streams(request: Request) -> dict:
 
 
 @app.get("/api/history")
-def get_history(request: Request, limit: int = 50) -> list[dict]:
+def get_history(request: Request, conn: DbConn, limit: int = 50) -> list[dict]:
     """Get run history."""
     _require_permission(request, "read")
-    db_path = _get_db_path()
-    if not db_path.exists():
-        return []
-    conn = connect(db_path)
     ensure_meta_table(conn)
-    try:
-        rows = conn.execute(
-            """
-            SELECT run_id, run_type, target, status, started_at, duration_ms, rows_affected, error
-            FROM _dp_internal.run_log
-            ORDER BY started_at DESC
-            LIMIT ?
-            """,
-            [limit],
-        ).fetchall()
-        return [
-            {
-                "run_id": r[0],
-                "run_type": r[1],
-                "target": r[2],
-                "status": r[3],
-                "started_at": str(r[4]) if r[4] else None,
-                "duration_ms": r[5],
-                "rows_affected": r[6],
-                "error": r[7],
-            }
-            for r in rows
-        ]
-    finally:
-        conn.close()
+    rows = conn.execute(
+        """
+        SELECT run_id, run_type, target, status, started_at, duration_ms, rows_affected, error
+        FROM _dp_internal.run_log
+        ORDER BY started_at DESC
+        LIMIT ?
+        """,
+        [limit],
+    ).fetchall()
+    return [
+        {
+            "run_id": r[0],
+            "run_type": r[1],
+            "target": r[2],
+            "status": r[3],
+            "started_at": str(r[4]) if r[4] else None,
+            "duration_ms": r[5],
+            "rows_affected": r[6],
+            "error": r[7],
+        }
+        for r in rows
+    ]
 
 
 # --- Lint ---
@@ -1257,41 +1220,27 @@ def get_dag(request: Request) -> dict:
 
 
 @app.get("/api/docs/markdown")
-def get_docs_markdown(request: Request) -> dict:
+def get_docs_markdown(request: Request, conn: DbConnReadOnly) -> dict:
     """Generate markdown documentation."""
     _require_permission(request, "read")
     from dp.engine.docs import generate_docs
 
-    db_path = _get_db_path()
-    if not db_path.exists():
-        return {"markdown": "*No warehouse database found. Run a pipeline first.*"}
     config = _get_config()
-    conn = connect(db_path, read_only=True)
-    try:
-        md = generate_docs(
-            conn, _get_project_dir() / "transform",
-            sources=config.sources,
-            exposures=config.exposures,
-        )
-        return {"markdown": md}
-    finally:
-        conn.close()
+    md = generate_docs(
+        conn, _get_project_dir() / "transform",
+        sources=config.sources,
+        exposures=config.exposures,
+    )
+    return {"markdown": md}
 
 
 @app.get("/api/docs/structured")
-def get_docs_structured(request: Request) -> dict:
+def get_docs_structured(request: Request, conn: DbConnReadOnly) -> dict:
     """Generate structured documentation for two-pane UI."""
     _require_permission(request, "read")
     from dp.engine.docs import generate_structured_docs
 
-    db_path = _get_db_path()
-    if not db_path.exists():
-        return {"schemas": []}
-    conn = connect(db_path, read_only=True)
-    try:
-        return generate_structured_docs(conn, _get_project_dir() / "transform")
-    finally:
-        conn.close()
+    return generate_structured_docs(conn, _get_project_dir() / "transform")
 
 
 # --- Scheduler status ---
@@ -1408,7 +1357,7 @@ def create_notebook_endpoint(request: Request, name: str, title: str = "") -> di
 
 
 @app.post("/api/notebooks/run/{name:path}")
-def run_notebook_endpoint(request: Request, name: str) -> dict:
+def run_notebook_endpoint(request: Request, name: str, conn: DbConn) -> dict:
     """Execute all cells in a notebook (code, sql, and ingest)."""
     _require_permission(request, "execute")
     from dp.engine.notebook import load_notebook, run_notebook, save_notebook
@@ -1416,14 +1365,9 @@ def run_notebook_endpoint(request: Request, name: str) -> dict:
     if not nb_path.exists():
         raise HTTPException(404, f"Notebook '{name}' not found")
     nb = load_notebook(nb_path)
-    db_path = _get_db_path()
-    conn = connect(db_path)
-    try:
-        result = run_notebook(conn, nb, project_dir=_get_project_dir())
-        save_notebook(nb_path, result)
-        return result
-    finally:
-        conn.close()
+    result = run_notebook(conn, nb, project_dir=_get_project_dir())
+    save_notebook(nb_path, result)
+    return result
 
 
 class NotebookRunCellRequest(BaseModel):
@@ -1434,7 +1378,7 @@ class NotebookRunCellRequest(BaseModel):
 
 
 @app.post("/api/notebooks/run-cell/{name:path}")
-def run_cell_endpoint(request: Request, name: str, req: NotebookRunCellRequest) -> dict:
+def run_cell_endpoint(request: Request, name: str, req: NotebookRunCellRequest, conn: DbConn) -> dict:
     """Execute a single notebook cell (code, sql, or ingest).
 
     Namespaces are persisted per notebook so variables defined in one cell
@@ -1444,25 +1388,20 @@ def run_cell_endpoint(request: Request, name: str, req: NotebookRunCellRequest) 
     _require_permission(request, "execute")
     if req.reset:
         _notebook_namespaces.pop(name, None)
-    db_path = _get_db_path()
-    conn = connect(db_path)
-    try:
-        if req.cell_type == "sql":
-            from dp.engine.notebook import execute_sql_cell
-            result = execute_sql_cell(conn, req.source)
-            return {"outputs": result["outputs"], "duration_ms": result["duration_ms"], "config": result.get("config", {})}
-        elif req.cell_type == "ingest":
-            from dp.engine.notebook import execute_ingest_cell
-            result = execute_ingest_cell(conn, req.source, _get_project_dir())
-            return {"outputs": result["outputs"], "duration_ms": result["duration_ms"]}
-        else:
-            from dp.engine.notebook import execute_cell
-            namespace = _notebook_namespaces.get(name)
-            result = execute_cell(conn, req.source, namespace)
-            _notebook_ns_set(name, result["namespace"])
-            return {"outputs": result["outputs"], "duration_ms": result["duration_ms"]}
-    finally:
-        conn.close()
+    if req.cell_type == "sql":
+        from dp.engine.notebook import execute_sql_cell
+        result = execute_sql_cell(conn, req.source)
+        return {"outputs": result["outputs"], "duration_ms": result["duration_ms"], "config": result.get("config", {})}
+    elif req.cell_type == "ingest":
+        from dp.engine.notebook import execute_ingest_cell
+        result = execute_ingest_cell(conn, req.source, _get_project_dir())
+        return {"outputs": result["outputs"], "duration_ms": result["duration_ms"]}
+    else:
+        from dp.engine.notebook import execute_cell
+        namespace = _notebook_namespaces.get(name)
+        result = execute_cell(conn, req.source, namespace)
+        _notebook_ns_set(name, result["namespace"])
+        return {"outputs": result["outputs"], "duration_ms": result["duration_ms"]}
 
 
 # --- Promote to model ---
@@ -1522,15 +1461,13 @@ def promote_to_model_endpoint(request: Request, req: PromoteToModelRequest) -> d
 
 
 @app.post("/api/notebooks/model-to-notebook/{model_name:path}")
-def model_to_notebook_endpoint(request: Request, model_name: str) -> dict:
+def model_to_notebook_endpoint(request: Request, model_name: str, conn: DbConn) -> dict:
     """Create a notebook from a transform model for interactive debugging."""
     _require_permission(request, "write")
     from dp.engine.notebook import model_to_notebook, save_notebook
 
     project_dir = _get_project_dir()
     transform_dir = project_dir / "transform"
-    db_path = _get_db_path()
-    conn = connect(db_path)
     try:
         nb = model_to_notebook(conn, model_name, transform_dir, project_dir / "notebooks")
 
@@ -1546,15 +1483,13 @@ def model_to_notebook_endpoint(request: Request, model_name: str) -> dict:
         }
     except ValueError as e:
         raise HTTPException(404, str(e))
-    finally:
-        conn.close()
 
 
 # --- Debug notebook ---
 
 
 @app.post("/api/notebooks/debug/{model_name:path}")
-def debug_notebook_endpoint(request: Request, model_name: str) -> dict:
+def debug_notebook_endpoint(request: Request, model_name: str, conn: DbConn) -> dict:
     """Generate a debug notebook for a failed model.
 
     Optionally looks up the most recent failure from run_log.
@@ -1564,37 +1499,35 @@ def debug_notebook_endpoint(request: Request, model_name: str) -> dict:
 
     project_dir = _get_project_dir()
     transform_dir = project_dir / "transform"
-    db_path = _get_db_path()
-    conn = connect(db_path)
+    # Look up most recent error from run log
+    error_message = None
+    assertion_failures = None
     try:
-        # Look up most recent error from run log
-        error_message = None
-        assertion_failures = None
-        try:
-            ensure_meta_table(conn)
-            row = conn.execute(
-                "SELECT error FROM _dp_internal.run_log "
-                "WHERE target = ? AND status IN ('error', 'assertion_failed') "
-                "ORDER BY started_at DESC LIMIT 1",
-                [model_name],
-            ).fetchone()
-            if row and row[0]:
-                error_message = row[0]
+        ensure_meta_table(conn)
+        row = conn.execute(
+            "SELECT error FROM _dp_internal.run_log "
+            "WHERE target = ? AND status IN ('error', 'assertion_failed') "
+            "ORDER BY started_at DESC LIMIT 1",
+            [model_name],
+        ).fetchone()
+        if row and row[0]:
+            error_message = row[0]
 
-            # Check for assertion failures
-            assertion_rows = conn.execute(
-                "SELECT expression, detail FROM _dp_internal.assertion_results "
-                "WHERE model_path = ? AND passed = false "
-                "ORDER BY checked_at DESC LIMIT 10",
-                [model_name],
-            ).fetchall()
-            if assertion_rows:
-                assertion_failures = [
-                    {"expression": r[0], "detail": r[1]} for r in assertion_rows
-                ]
-        except Exception:
-            pass
+        # Check for assertion failures
+        assertion_rows = conn.execute(
+            "SELECT expression, detail FROM _dp_internal.assertion_results "
+            "WHERE model_path = ? AND passed = false "
+            "ORDER BY checked_at DESC LIMIT 10",
+            [model_name],
+        ).fetchall()
+        if assertion_rows:
+            assertion_failures = [
+                {"expression": r[0], "detail": r[1]} for r in assertion_rows
+            ]
+    except Exception:
+        pass
 
+    try:
         nb = generate_debug_notebook(
             conn, model_name, transform_dir,
             error_message=error_message,
@@ -1612,8 +1545,6 @@ def debug_notebook_endpoint(request: Request, model_name: str) -> dict:
         }
     except ValueError as e:
         raise HTTPException(404, str(e))
-    finally:
-        conn.close()
 
 
 # --- Data import ---
@@ -1650,16 +1581,11 @@ def preview_file_endpoint(request: Request, req: ImportFileRequest) -> dict:
 
 
 @app.post("/api/import/file")
-def import_file_endpoint(request: Request, req: ImportFileRequest) -> dict:
+def import_file_endpoint(request: Request, req: ImportFileRequest, conn: DbConn) -> dict:
     """Import a file into the warehouse."""
     _require_permission(request, "execute")
     from dp.engine.importer import import_file
-    db_path = _get_db_path()
-    conn = connect(db_path)
-    try:
-        return import_file(conn, req.file_path, req.target_schema, req.target_table)
-    finally:
-        conn.close()
+    return import_file(conn, req.file_path, req.target_schema, req.target_table)
 
 
 @app.post("/api/import/test-connection")
@@ -1671,19 +1597,14 @@ def test_connection_endpoint(request: Request, req: TestConnectionRequest) -> di
 
 
 @app.post("/api/import/from-connection")
-def import_from_connection_endpoint(request: Request, req: ImportFromConnectionRequest) -> dict:
+def import_from_connection_endpoint(request: Request, req: ImportFromConnectionRequest, conn: DbConn) -> dict:
     """Import from an external database."""
     _require_permission(request, "execute")
     from dp.engine.importer import import_from_connection
-    db_path = _get_db_path()
-    conn = connect(db_path)
-    try:
-        return import_from_connection(
-            conn, req.connection_type, req.params,
-            req.source_table, req.target_schema, req.target_table,
-        )
-    finally:
-        conn.close()
+    return import_from_connection(
+        conn, req.connection_type, req.params,
+        req.source_table, req.target_schema, req.target_table,
+    )
 
 
 # --- Upload file for import ---
@@ -1845,13 +1766,9 @@ def remove_connector_endpoint(request: Request, connection_name: str) -> dict:
 
 
 @app.get("/api/connectors/health")
-def connector_health_endpoint(request: Request) -> list:
+def connector_health_endpoint(request: Request, conn: DbConnReadOnly) -> list:
     """Get last sync status for each connector from run_log."""
     _require_permission(request, "read")
-    db_path = _get_db_path()
-    if not db_path.exists():
-        return []
-    conn = connect(db_path, read_only=True)
     try:
         rows = conn.execute(
             """
@@ -1863,8 +1780,6 @@ def connector_health_endpoint(request: Request) -> list:
         ).fetchall()
     except Exception:
         return []
-    finally:
-        conn.close()
 
     # Deduplicate: keep only the latest run per target
     seen: dict[str, dict] = {}
@@ -1881,7 +1796,7 @@ def connector_health_endpoint(request: Request) -> list:
 
 
 @app.post("/api/webhook/{webhook_name}")
-async def receive_webhook(request: Request, webhook_name: str) -> dict:
+async def receive_webhook(request: Request, webhook_name: str, conn: DbConn) -> dict:
     """Receive webhook data and store it in the inbox table."""
     _validate_identifier(webhook_name, "webhook name")
 
@@ -1891,35 +1806,29 @@ async def receive_webhook(request: Request, webhook_name: str) -> dict:
     except Exception:
         raise HTTPException(400, "Invalid JSON payload")
 
-    db_path = _get_db_path()
-    conn = connect(db_path)
-    try:
-        table = f"landing.{webhook_name}_inbox"
-        conn.execute("CREATE SCHEMA IF NOT EXISTS landing")
-        conn.execute(f"""
-            CREATE TABLE IF NOT EXISTS {table} (
-                id VARCHAR DEFAULT gen_random_uuid()::VARCHAR,
-                received_at TIMESTAMP DEFAULT current_timestamp,
-                payload JSON
-            )
-        """)
-        conn.execute(
-            f"INSERT INTO {table} (payload) VALUES (?::JSON)",
-            [json.dumps(payload)],
+    table = f"landing.{webhook_name}_inbox"
+    conn.execute("CREATE SCHEMA IF NOT EXISTS landing")
+    conn.execute(f"""
+        CREATE TABLE IF NOT EXISTS {table} (
+            id VARCHAR DEFAULT gen_random_uuid()::VARCHAR,
+            received_at TIMESTAMP DEFAULT current_timestamp,
+            payload JSON
         )
-        return {"status": "received", "table": table}
-    finally:
-        conn.close()
+    """)
+    conn.execute(
+        f"INSERT INTO {table} (payload) VALUES (?::JSON)",
+        [json.dumps(payload)],
+    )
+    return {"status": "received", "table": table}
 
 
 # --- Overview ---
 
 
 @app.get("/api/overview")
-def get_overview(request: Request) -> dict:
+def get_overview(request: Request, conn: DbConnReadOnly) -> dict:
     """Get an overview of the platform: pipeline health, warehouse stats, recent activity."""
     _require_permission(request, "read")
-    db_path = _get_db_path()
 
     result: dict[str, Any] = {
         "recent_runs": [],
@@ -1946,73 +1855,65 @@ def get_overview(request: Request) -> dict:
     except Exception:
         pass
 
-    if not db_path.exists():
-        return result
-
-    conn = connect(db_path, read_only=True)
+    # Recent runs (last 20) — may fail if meta table doesn't exist yet
     try:
-        # Recent runs (last 20) — may fail if meta table doesn't exist yet
-        try:
-            rows = conn.execute(
-                """
-                SELECT run_id, run_type, target, status, started_at, duration_ms, rows_affected, error
-                FROM _dp_internal.run_log
-                ORDER BY started_at DESC
-                LIMIT 20
-                """
-            ).fetchall()
-            result["recent_runs"] = [
-                {
-                    "run_id": r[0], "run_type": r[1], "target": r[2], "status": r[3],
-                    "started_at": str(r[4]) if r[4] else None,
-                    "duration_ms": r[5], "rows_affected": r[6], "error": r[7],
-                }
-                for r in rows
-            ]
-        except Exception:
-            pass
+        rows = conn.execute(
+            """
+            SELECT run_id, run_type, target, status, started_at, duration_ms, rows_affected, error
+            FROM _dp_internal.run_log
+            ORDER BY started_at DESC
+            LIMIT 20
+            """
+        ).fetchall()
+        result["recent_runs"] = [
+            {
+                "run_id": r[0], "run_type": r[1], "target": r[2], "status": r[3],
+                "started_at": str(r[4]) if r[4] else None,
+                "duration_ms": r[5], "rows_affected": r[6], "error": r[7],
+            }
+            for r in rows
+        ]
+    except Exception:
+        pass
 
-        # Schema summary with table counts and row counts
-        try:
-            tables = conn.execute(
-                """
-                SELECT table_schema, table_name, table_type
-                FROM information_schema.tables
-                WHERE table_schema NOT IN ('information_schema', '_dp_internal')
-                ORDER BY table_schema, table_name
-                """
-            ).fetchall()
+    # Schema summary with table counts and row counts
+    try:
+        tables = conn.execute(
+            """
+            SELECT table_schema, table_name, table_type
+            FROM information_schema.tables
+            WHERE table_schema NOT IN ('information_schema', '_dp_internal')
+            ORDER BY table_schema, table_name
+            """
+        ).fetchall()
 
-            schema_map: dict[str, dict] = {}
-            for schema, table_name, table_type in tables:
-                if schema not in schema_map:
-                    schema_map[schema] = {"name": schema, "tables": 0, "views": 0, "total_rows": 0}
-                if table_type == "VIEW":
-                    schema_map[schema]["views"] += 1
-                else:
-                    schema_map[schema]["tables"] += 1
-                    try:
-                        row_count = conn.execute(
-                            f'SELECT COUNT(*) FROM "{schema}"."{table_name}"'
-                        ).fetchone()[0]
-                        schema_map[schema]["total_rows"] += row_count
-                    except Exception:
-                        pass
+        schema_map: dict[str, dict] = {}
+        for schema, table_name, table_type in tables:
+            if schema not in schema_map:
+                schema_map[schema] = {"name": schema, "tables": 0, "views": 0, "total_rows": 0}
+            if table_type == "VIEW":
+                schema_map[schema]["views"] += 1
+            else:
+                schema_map[schema]["tables"] += 1
+                try:
+                    row_count = conn.execute(
+                        f'SELECT COUNT(*) FROM "{schema}"."{table_name}"'
+                    ).fetchone()[0]
+                    schema_map[schema]["total_rows"] += row_count
+                except Exception:
+                    pass
 
-            SCHEMA_ORDER = ["landing", "bronze", "silver", "gold"]
-            sorted_schemas = sorted(
-                schema_map.values(),
-                key=lambda s: (SCHEMA_ORDER.index(s["name"]) if s["name"] in SCHEMA_ORDER else 100, s["name"]),
-            )
-            result["schemas"] = sorted_schemas
-            result["total_tables"] = sum(s["tables"] + s["views"] for s in sorted_schemas)
-            result["total_rows"] = sum(s["total_rows"] for s in sorted_schemas)
-            result["has_data"] = result["total_tables"] > 0
-        except Exception:
-            pass
-
-    finally:
-        conn.close()
+        SCHEMA_ORDER = ["landing", "bronze", "silver", "gold"]
+        sorted_schemas = sorted(
+            schema_map.values(),
+            key=lambda s: (SCHEMA_ORDER.index(s["name"]) if s["name"] in SCHEMA_ORDER else 100, s["name"]),
+        )
+        result["schemas"] = sorted_schemas
+        result["total_tables"] = sum(s["tables"] + s["views"] for s in sorted_schemas)
+        result["total_rows"] = sum(s["total_rows"] for s in sorted_schemas)
+        result["has_data"] = result["total_tables"] > 0
+    except Exception:
+        pass
 
     return result
 
@@ -2021,27 +1922,20 @@ def get_overview(request: Request) -> dict:
 
 
 @app.get("/api/freshness")
-def get_freshness(request: Request, max_hours: float = 24.0) -> list[dict]:
+def get_freshness(request: Request, conn: DbConnReadOnly, max_hours: float = 24.0) -> list[dict]:
     """Check model freshness: which models are stale?"""
     _require_permission(request, "read")
     from dp.engine.transform import check_freshness
 
-    db_path = _get_db_path()
-    if not db_path.exists():
-        return []
-    conn = connect(db_path, read_only=True)
-    try:
-        ensure_meta_table(conn)
-        return check_freshness(conn, max_age_hours=max_hours)
-    finally:
-        conn.close()
+    ensure_meta_table(conn)
+    return check_freshness(conn, max_age_hours=max_hours)
 
 
 # --- Column-level lineage ---
 
 
 @app.get("/api/lineage/{model_name}")
-def get_lineage(request: Request, model_name: str) -> dict:
+def get_lineage(request: Request, model_name: str, conn: DbConnReadOnlyOptional = None) -> dict:
     """Get column-level lineage for a model (AST-based via sqlglot)."""
     _require_permission(request, "read")
     from dp.engine.transform import extract_column_lineage
@@ -2058,22 +1952,16 @@ def get_lineage(request: Request, model_name: str) -> dict:
         else:
             raise HTTPException(404, f"Model '{model_name}' not found")
 
-    db_path = _get_db_path()
-    conn = connect(db_path, read_only=True) if db_path.exists() else None
-    try:
-        lineage = extract_column_lineage(target, conn)
-        return {
-            "model": target.full_name,
-            "columns": lineage,
-            "depends_on": target.depends_on,
-        }
-    finally:
-        if conn:
-            conn.close()
+    lineage = extract_column_lineage(target, conn)
+    return {
+        "model": target.full_name,
+        "columns": lineage,
+        "depends_on": target.depends_on,
+    }
 
 
 @app.get("/api/lineage")
-def get_all_lineage(request: Request) -> list[dict]:
+def get_all_lineage(request: Request, conn: DbConnReadOnlyOptional = None) -> list[dict]:
     """Get column-level lineage for all models."""
     _require_permission(request, "read")
     from dp.engine.transform import extract_column_lineage
@@ -2081,28 +1969,22 @@ def get_all_lineage(request: Request) -> list[dict]:
     transform_dir = _get_project_dir() / "transform"
     models = _discover_models_cached(transform_dir)
 
-    db_path = _get_db_path()
-    conn = connect(db_path, read_only=True) if db_path.exists() else None
-    try:
-        results = []
-        for model in models:
-            lineage = extract_column_lineage(model, conn)
-            results.append({
-                "model": model.full_name,
-                "columns": lineage,
-                "depends_on": model.depends_on,
-            })
-        return results
-    finally:
-        if conn:
-            conn.close()
+    results = []
+    for model in models:
+        lineage = extract_column_lineage(model, conn)
+        results.append({
+            "model": model.full_name,
+            "columns": lineage,
+            "depends_on": model.depends_on,
+        })
+    return results
 
 
 # --- Compile-time validation ---
 
 
 @app.post("/api/check")
-def run_check(request: Request) -> dict:
+def run_check(request: Request, conn_opt: DbConnReadOnlyOptional = None) -> dict:
     """Validate all SQL models without executing them."""
     _require_permission(request, "read")
     from dp.engine.seeds import discover_seeds
@@ -2129,29 +2011,24 @@ def run_check(request: Request) -> dict:
             full = f"{src.schema}.{t.name}"
             source_columns[full] = {c.name for c in t.columns}
 
-    db_path = _get_db_path()
-    conn = connect(db_path, read_only=True) if db_path.exists() else None
-    try:
-        ensure_meta_table(conn) if conn else None
-        errors = validate_models(conn, models, known_tables=known_tables, source_columns=source_columns)
-        return {
-            "models_checked": len(models),
-            "errors": [
-                {"model": e.model, "severity": e.severity, "message": e.message}
-                for e in errors
-            ],
-            "passed": not any(e.severity == "error" for e in errors),
-        }
-    finally:
-        if conn:
-            conn.close()
+    conn = conn_opt
+    ensure_meta_table(conn) if conn else None
+    errors = validate_models(conn, models, known_tables=known_tables, source_columns=source_columns)
+    return {
+        "models_checked": len(models),
+        "errors": [
+            {"model": e.model, "severity": e.severity, "message": e.message}
+            for e in errors
+        ],
+        "passed": not any(e.severity == "error" for e in errors),
+    }
 
 
 # --- Impact analysis ---
 
 
 @app.get("/api/impact/{model_name}")
-def get_impact(request: Request, model_name: str, column: str | None = None) -> dict:
+def get_impact(request: Request, model_name: str, conn: DbConnReadOnlyOptional = None, column: str | None = None) -> dict:
     """Analyze downstream impact of changing a model or column."""
     _require_permission(request, "read")
     from dp.engine.transform import discover_models, impact_analysis
@@ -2167,180 +2044,141 @@ def get_impact(request: Request, model_name: str, column: str | None = None) -> 
         else:
             raise HTTPException(404, f"Model '{model_name}' not found")
 
-    db_path = _get_db_path()
-    conn = connect(db_path, read_only=True) if db_path.exists() else None
-    try:
-        return impact_analysis(models, model_name, column=column, conn=conn)
-    finally:
-        if conn:
-            conn.close()
+    return impact_analysis(models, model_name, column=column, conn=conn)
 
 
 # --- Model profiles ---
 
 
 @app.get("/api/profiles")
-def get_profiles(request: Request) -> list[dict]:
+def get_profiles(request: Request, conn: DbConnReadOnly) -> list[dict]:
     """Get auto-computed profile stats for all models."""
     _require_permission(request, "read")
-    db_path = _get_db_path()
-    if not db_path.exists():
-        return []
-    conn = connect(db_path, read_only=True)
-    try:
-        ensure_meta_table(conn)
-        rows = conn.execute(
-            "SELECT model_path, row_count, column_count, null_percentages, distinct_counts, profiled_at "
-            "FROM _dp_internal.model_profiles ORDER BY model_path"
-        ).fetchall()
-        return [
-            {
-                "model": r[0],
-                "row_count": r[1],
-                "column_count": r[2],
-                "null_percentages": json.loads(r[3]) if r[3] else {},
-                "distinct_counts": json.loads(r[4]) if r[4] else {},
-                "profiled_at": str(r[5]) if r[5] else None,
-            }
-            for r in rows
-        ]
-    finally:
-        conn.close()
+    ensure_meta_table(conn)
+    rows = conn.execute(
+        "SELECT model_path, row_count, column_count, null_percentages, distinct_counts, profiled_at "
+        "FROM _dp_internal.model_profiles ORDER BY model_path"
+    ).fetchall()
+    return [
+        {
+            "model": r[0],
+            "row_count": r[1],
+            "column_count": r[2],
+            "null_percentages": json.loads(r[3]) if r[3] else {},
+            "distinct_counts": json.loads(r[4]) if r[4] else {},
+            "profiled_at": str(r[5]) if r[5] else None,
+        }
+        for r in rows
+    ]
 
 
 @app.get("/api/profiles/{model_name}")
-def get_profile(request: Request, model_name: str) -> dict:
+def get_profile(request: Request, model_name: str, conn: DbConnReadOnly) -> dict:
     """Get profile stats for a specific model."""
     _require_permission(request, "read")
-    db_path = _get_db_path()
-    _require_db(db_path)
-    conn = connect(db_path, read_only=True)
-    try:
-        ensure_meta_table(conn)
-        row = conn.execute(
-            "SELECT model_path, row_count, column_count, null_percentages, distinct_counts, profiled_at "
-            "FROM _dp_internal.model_profiles WHERE model_path = ?",
-            [model_name],
-        ).fetchone()
-        if not row:
-            raise HTTPException(404, f"No profile for '{model_name}'. Run dp transform first.")
-        return {
-            "model": row[0],
-            "row_count": row[1],
-            "column_count": row[2],
-            "null_percentages": json.loads(row[3]) if row[3] else {},
-            "distinct_counts": json.loads(row[4]) if row[4] else {},
-            "profiled_at": str(row[5]) if row[5] else None,
-        }
-    finally:
-        conn.close()
+    ensure_meta_table(conn)
+    row = conn.execute(
+        "SELECT model_path, row_count, column_count, null_percentages, distinct_counts, profiled_at "
+        "FROM _dp_internal.model_profiles WHERE model_path = ?",
+        [model_name],
+    ).fetchone()
+    if not row:
+        raise HTTPException(404, f"No profile for '{model_name}'. Run dp transform first.")
+    return {
+        "model": row[0],
+        "row_count": row[1],
+        "column_count": row[2],
+        "null_percentages": json.loads(row[3]) if row[3] else {},
+        "distinct_counts": json.loads(row[4]) if row[4] else {},
+        "profiled_at": str(row[5]) if row[5] else None,
+    }
 
 
 # --- Assertions ---
 
 
 @app.get("/api/assertions")
-def get_assertions(request: Request, limit: int = 100) -> list[dict]:
+def get_assertions(request: Request, conn: DbConnReadOnly, limit: int = 100) -> list[dict]:
     """Get recent data quality assertion results."""
     _require_permission(request, "read")
-    db_path = _get_db_path()
-    if not db_path.exists():
-        return []
-    conn = connect(db_path, read_only=True)
-    try:
-        ensure_meta_table(conn)
-        rows = conn.execute(
-            """
-            SELECT model_path, expression, passed, detail, checked_at
-            FROM _dp_internal.assertion_results
-            ORDER BY checked_at DESC
-            LIMIT ?
-            """,
-            [limit],
-        ).fetchall()
-        return [
-            {
-                "model": r[0],
-                "expression": r[1],
-                "passed": r[2],
-                "detail": r[3],
-                "checked_at": str(r[4]) if r[4] else None,
-            }
-            for r in rows
-        ]
-    finally:
-        conn.close()
+    ensure_meta_table(conn)
+    rows = conn.execute(
+        """
+        SELECT model_path, expression, passed, detail, checked_at
+        FROM _dp_internal.assertion_results
+        ORDER BY checked_at DESC
+        LIMIT ?
+        """,
+        [limit],
+    ).fetchall()
+    return [
+        {
+            "model": r[0],
+            "expression": r[1],
+            "passed": r[2],
+            "detail": r[3],
+            "checked_at": str(r[4]) if r[4] else None,
+        }
+        for r in rows
+    ]
 
 
 @app.get("/api/assertions/{model_name}")
-def get_model_assertions(request: Request, model_name: str) -> list[dict]:
+def get_model_assertions(request: Request, model_name: str, conn: DbConnReadOnly) -> list[dict]:
     """Get assertion results for a specific model."""
     _require_permission(request, "read")
-    db_path = _get_db_path()
-    _require_db(db_path)
-    conn = connect(db_path, read_only=True)
-    try:
-        ensure_meta_table(conn)
-        rows = conn.execute(
-            """
-            SELECT model_path, expression, passed, detail, checked_at
-            FROM _dp_internal.assertion_results
-            WHERE model_path = ?
-            ORDER BY checked_at DESC
-            LIMIT 50
-            """,
-            [model_name],
-        ).fetchall()
-        return [
-            {
-                "model": r[0],
-                "expression": r[1],
-                "passed": r[2],
-                "detail": r[3],
-                "checked_at": str(r[4]) if r[4] else None,
-            }
-            for r in rows
-        ]
-    finally:
-        conn.close()
+    ensure_meta_table(conn)
+    rows = conn.execute(
+        """
+        SELECT model_path, expression, passed, detail, checked_at
+        FROM _dp_internal.assertion_results
+        WHERE model_path = ?
+        ORDER BY checked_at DESC
+        LIMIT 50
+        """,
+        [model_name],
+    ).fetchall()
+    return [
+        {
+            "model": r[0],
+            "expression": r[1],
+            "passed": r[2],
+            "detail": r[3],
+            "checked_at": str(r[4]) if r[4] else None,
+        }
+        for r in rows
+    ]
 
 
 # --- Alerts ---
 
 
 @app.get("/api/alerts")
-def get_alert_history(request: Request, limit: int = 50) -> list[dict]:
+def get_alert_history(request: Request, conn: DbConnReadOnly, limit: int = 50) -> list[dict]:
     """Get alert history."""
     _require_permission(request, "read")
-    db_path = _get_db_path()
-    if not db_path.exists():
-        return []
-    conn = connect(db_path, read_only=True)
-    try:
-        ensure_meta_table(conn)
-        rows = conn.execute(
-            """
-            SELECT alert_type, channel, target, message, status, sent_at, error
-            FROM _dp_internal.alert_log
-            ORDER BY sent_at DESC
-            LIMIT ?
-            """,
-            [limit],
-        ).fetchall()
-        return [
-            {
-                "alert_type": r[0],
-                "channel": r[1],
-                "target": r[2],
-                "message": r[3],
-                "status": r[4],
-                "sent_at": str(r[5]) if r[5] else None,
-                "error": r[6],
-            }
-            for r in rows
-        ]
-    finally:
-        conn.close()
+    ensure_meta_table(conn)
+    rows = conn.execute(
+        """
+        SELECT alert_type, channel, target, message, status, sent_at, error
+        FROM _dp_internal.alert_log
+        ORDER BY sent_at DESC
+        LIMIT ?
+        """,
+        [limit],
+    ).fetchall()
+    return [
+        {
+            "alert_type": r[0],
+            "channel": r[1],
+            "target": r[2],
+            "message": r[3],
+            "status": r[4],
+            "sent_at": str(r[5]) if r[5] else None,
+            "error": r[6],
+        }
+        for r in rows
+    ]
 
 
 class TestAlertRequest(BaseModel):
@@ -2428,17 +2266,12 @@ class SeedRequest(BaseModel):
 
 
 @app.post("/api/seeds")
-def run_seeds_endpoint(request: Request, req: SeedRequest) -> dict:
+def run_seeds_endpoint(request: Request, req: SeedRequest, conn: DbConn) -> dict:
     """Load all seeds."""
     _require_permission(request, "execute")
     from dp.engine.seeds import run_seeds
-    db_path = _get_db_path()
-    conn = connect(db_path)
-    try:
-        results = run_seeds(conn, _get_project_dir() / "seeds", schema=req.schema_name, force=req.force)
-        return {"results": results}
-    finally:
-        conn.close()
+    results = run_seeds(conn, _get_project_dir() / "seeds", schema=req.schema_name, force=req.force)
+    return {"results": results}
 
 
 # --- Sources ---
@@ -2471,72 +2304,65 @@ def list_sources_endpoint(request: Request) -> list[dict]:
 
 
 @app.get("/api/sources/freshness")
-def check_sources_freshness(request: Request) -> list[dict]:
+def check_sources_freshness(request: Request, conn: DbConnReadOnly) -> list[dict]:
     """Check source freshness against declared SLAs."""
     _require_permission(request, "read")
     config = _get_config()
-    db_path = _get_db_path()
-    if not db_path.exists():
-        return []
 
     results = []
-    conn = connect(db_path, read_only=True)
-    try:
-        ensure_meta_table(conn)
-        for src in config.sources:
-            sla_hours = src.freshness_hours
-            if sla_hours is None:
-                continue
-            for tbl in src.tables:
-                full_name = f"{src.schema}.{tbl.name}"
-                # Try loaded_at_column first
-                last_loaded = None
-                if tbl.loaded_at_column:
-                    try:
-                        row = conn.execute(
-                            f'SELECT MAX("{tbl.loaded_at_column}") FROM "{src.schema}"."{tbl.name}"'
-                        ).fetchone()
-                        if row and row[0]:
-                            last_loaded = str(row[0])
-                    except Exception:
-                        pass
-                # Fall back to run_log
-                if not last_loaded:
-                    try:
-                        row = conn.execute(
-                            "SELECT MAX(started_at) FROM _dp_internal.run_log "
-                            "WHERE target = ? AND status = 'success'",
-                            [full_name],
-                        ).fetchone()
-                        if row and row[0]:
-                            last_loaded = str(row[0])
-                    except Exception:
-                        pass
+    ensure_meta_table(conn)
+    for src in config.sources:
+        sla_hours = src.freshness_hours
+        if sla_hours is None:
+            continue
+        for tbl in src.tables:
+            full_name = f"{src.schema}.{tbl.name}"
+            # Try loaded_at_column first
+            last_loaded = None
+            if tbl.loaded_at_column:
+                try:
+                    row = conn.execute(
+                        f'SELECT MAX("{tbl.loaded_at_column}") FROM "{src.schema}"."{tbl.name}"'
+                    ).fetchone()
+                    if row and row[0]:
+                        last_loaded = str(row[0])
+                except Exception:
+                    pass
+            # Fall back to run_log
+            if not last_loaded:
+                try:
+                    row = conn.execute(
+                        "SELECT MAX(started_at) FROM _dp_internal.run_log "
+                        "WHERE target = ? AND status = 'success'",
+                        [full_name],
+                    ).fetchone()
+                    if row and row[0]:
+                        last_loaded = str(row[0])
+                except Exception:
+                    pass
 
-                hours_ago = None
-                is_stale = last_loaded is None
-                if last_loaded:
-                    try:
-                        row = conn.execute(
-                            "SELECT EXTRACT(EPOCH FROM (current_timestamp - ?::TIMESTAMP)) / 3600",
-                            [last_loaded],
-                        ).fetchone()
-                        if row:
-                            hours_ago = round(row[0], 1)
-                            is_stale = hours_ago > sla_hours
-                    except Exception:
-                        is_stale = True
+            hours_ago = None
+            is_stale = last_loaded is None
+            if last_loaded:
+                try:
+                    row = conn.execute(
+                        "SELECT EXTRACT(EPOCH FROM (current_timestamp - ?::TIMESTAMP)) / 3600",
+                        [last_loaded],
+                    ).fetchone()
+                    if row:
+                        hours_ago = round(row[0], 1)
+                        is_stale = hours_ago > sla_hours
+                except Exception:
+                    is_stale = True
 
-                results.append({
-                    "source": src.name,
-                    "table": full_name,
-                    "sla_hours": sla_hours,
-                    "last_loaded": last_loaded,
-                    "hours_ago": hours_ago,
-                    "is_stale": is_stale,
-                })
-    finally:
-        conn.close()
+            results.append({
+                "source": src.name,
+                "table": full_name,
+                "sla_hours": sla_hours,
+                "last_loaded": last_loaded,
+                "hours_ago": hours_ago,
+                "is_stale": is_stale,
+            })
     return results
 
 
@@ -2565,46 +2391,38 @@ def list_exposures_endpoint(request: Request) -> list[dict]:
 
 
 @app.get("/api/autocomplete")
-def get_autocomplete(request: Request) -> dict:
+def get_autocomplete(request: Request, conn: DbConnReadOnly) -> dict:
     """Get table and column names for query autocomplete."""
     _require_permission(request, "read")
-    db_path = _get_db_path()
-    if not db_path.exists():
-        return {"tables": [], "columns": []}
+    tables = conn.execute(
+        """
+        SELECT table_schema, table_name
+        FROM information_schema.tables
+        WHERE table_schema NOT IN ('information_schema', '_dp_internal')
+        ORDER BY table_schema, table_name
+        """
+    ).fetchall()
 
-    conn = connect(db_path, read_only=True)
-    try:
-        tables = conn.execute(
-            """
-            SELECT table_schema, table_name
-            FROM information_schema.tables
-            WHERE table_schema NOT IN ('information_schema', '_dp_internal')
-            ORDER BY table_schema, table_name
-            """
-        ).fetchall()
+    columns = conn.execute(
+        """
+        SELECT table_schema, table_name, column_name, data_type
+        FROM information_schema.columns
+        WHERE table_schema NOT IN ('information_schema', '_dp_internal')
+        ORDER BY table_schema, table_name, ordinal_position
+        """
+    ).fetchall()
 
-        columns = conn.execute(
-            """
-            SELECT table_schema, table_name, column_name, data_type
-            FROM information_schema.columns
-            WHERE table_schema NOT IN ('information_schema', '_dp_internal')
-            ORDER BY table_schema, table_name, ordinal_position
-            """
-        ).fetchall()
-
-        return {
-            "tables": [
-                {"schema": t[0], "name": t[1], "full_name": f"{t[0]}.{t[1]}"}
-                for t in tables
-            ],
-            "columns": [
-                {"schema": c[0], "table": c[1], "name": c[2], "type": c[3],
-                 "full_name": f"{c[0]}.{c[1]}.{c[2]}"}
-                for c in columns
-            ],
-        }
-    finally:
-        conn.close()
+    return {
+        "tables": [
+            {"schema": t[0], "name": t[1], "full_name": f"{t[0]}.{t[1]}"}
+            for t in tables
+        ],
+        "columns": [
+            {"schema": c[0], "table": c[1], "name": c[2], "type": c[3],
+             "full_name": f"{c[0]}.{c[1]}.{c[2]}"}
+            for c in columns
+        ],
+    }
 
 
 # --- Enhanced DAG with seeds, sources, and exposures ---
@@ -2717,7 +2535,7 @@ def get_full_dag(request: Request) -> dict:
 
 
 @app.get("/api/models/{model_name:path}/notebook-view")
-def get_model_notebook_view(request: Request, model_name: str) -> dict:
+def get_model_notebook_view(request: Request, model_name: str, conn: DbConnReadOnlyOptional = None) -> dict:
     """Get a notebook-style view for a SQL model.
 
     Returns the SQL source (cell 1) and sample output (cell 2),
@@ -2744,10 +2562,7 @@ def get_model_notebook_view(request: Request, model_name: str) -> dict:
 
     # Try to get sample data
     sample_data = None
-    db_path = _get_db_path()
-    conn = None
-    if db_path.exists():
-        conn = connect(db_path, read_only=True)
+    if conn:
         try:
             quoted = f'"{target.schema}"."{target.name}"'
             result = conn.execute(f"SELECT * FROM {quoted} LIMIT 50")
@@ -2766,9 +2581,6 @@ def get_model_notebook_view(request: Request, model_name: str) -> dict:
         lineage = extract_column_lineage(target, conn)
     except Exception:
         pass
-
-    if conn:
-        conn.close()
 
     # Get upstream/downstream
     upstream = target.depends_on

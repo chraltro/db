@@ -13,36 +13,24 @@ from __future__ import annotations
 import ast
 import io
 import json
+import logging
 import re
 import time
 import traceback
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
+
+logger = logging.getLogger("dp.notebook")
 from typing import Any
 
 import duckdb
 
+from dp.engine.utils import validate_identifier as _validate_identifier
 
-# --- Identifier validation ---
-
-_IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
-
-
-def _validate_identifier(value: str, label: str = "identifier") -> str:
-    """Validate that a value is a safe SQL identifier.
-
-    Raises ValueError if the identifier contains unsafe characters.
-    """
-    if not _IDENTIFIER_RE.match(value):
-        raise ValueError(f"Invalid {label}: {value!r} (must match [A-Za-z_][A-Za-z0-9_]*)")
-    return value
-
-
-# Import shared SQL analysis functions
 from dp.engine.sql_analysis import (
-    extract_table_refs as _extract_table_refs,
-    parse_config as _parse_sql_config_shared,
-    strip_config_comments as _strip_sql_comments_shared,
+    extract_table_refs,
+    parse_config as parse_sql_config,
+    strip_config_comments,
 )
 
 
@@ -88,19 +76,6 @@ def _make_cell_id() -> str:
 # --- SQL cell execution ---
 
 
-def _parse_sql_config(sql: str) -> dict[str, str]:
-    """Parse -- config: key=value, key=value from SQL cell source."""
-    return _parse_sql_config_shared(sql)
-
-
-def _strip_sql_comments(sql: str) -> str:
-    """Remove config/depends comment lines, return the actual query."""
-    return _strip_sql_comments_shared(sql)
-
-
-def _infer_table_refs(sql: str) -> list[str]:
-    """Extract schema.table references from SQL using AST parsing."""
-    return _extract_table_refs(sql)
 
 
 def _split_sql_statements(sql: str) -> list[str]:
@@ -165,8 +140,8 @@ def execute_sql_cell(
     """
     outputs: list[dict] = []
     start = time.perf_counter()
-    config = _parse_sql_config(source)
-    query = _strip_sql_comments(source).strip()
+    config = parse_sql_config(source)
+    query = strip_config_comments(source).strip()
 
     if not query:
         duration_ms = int((time.perf_counter() - start) * 1000)
@@ -348,8 +323,8 @@ def execute_ingest_cell(
             ensure_meta_table(conn)
             log_run(conn, "ingest", full_table, "success",
                     int((time.perf_counter() - start) * 1000), row_count)
-        except Exception:
-            pass  # Don't fail the cell on logging errors
+        except Exception as e:
+            logger.debug("SQL cell logging error: %s", e)
 
     except Exception as e:
         outputs.append({"type": "error", "text": str(e)})
@@ -490,8 +465,8 @@ def _format_result(result: Any) -> dict:
                 "rows": [[_serialize(v) for v in row] for row in rows[:500]],
                 "total_rows": len(rows),
             }
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Result serialization fallback: %s", e)
 
     # Plain text
     return {"type": "text", "text": repr(result)}
@@ -599,8 +574,8 @@ def promote_sql_to_model(
     _validate_identifier(schema, "schema")
 
     # Parse existing config from SQL if present
-    existing_config = _parse_sql_config(sql_source)
-    query = _strip_sql_comments(sql_source).strip()
+    existing_config = parse_sql_config(sql_source)
+    query = strip_config_comments(sql_source).strip()
 
     # Use existing config values or defaults
     materialized = existing_config.get("materialized", "table")
@@ -608,7 +583,7 @@ def promote_sql_to_model(
     _validate_identifier(target_schema, "target schema from config")
 
     # Infer dependencies from the SQL
-    refs = _infer_table_refs(query)
+    refs = extract_table_refs(query)
 
     # Build the model file content
     lines = []

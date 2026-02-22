@@ -5,10 +5,13 @@ Computes row-level and schema-level deltas without modifying the warehouse.
 
 from __future__ import annotations
 
+import logging
 import re
 from dataclasses import dataclass, field
 
 import duckdb
+
+logger = logging.getLogger("dp.diff")
 
 
 # -- Primary key detection patterns --
@@ -97,7 +100,8 @@ def _get_column_info(
             [schema, table],
         ).fetchall()
         return {row[0]: row[1] for row in rows}
-    except Exception:
+    except Exception as e:
+        logger.debug("Could not get column types: %s", e)
         return {}
 
 
@@ -111,7 +115,8 @@ def _get_temp_column_info(conn: duckdb.DuckDBPyConnection, temp_table: str) -> d
             f"SELECT column_name, column_type FROM (DESCRIBE {temp_table})"
         ).fetchall()
         return {row[0]: row[1] for row in rows}
-    except Exception:
+    except Exception as e:
+        logger.debug("Could not get primary key: %s", e)
         return {}
 
 
@@ -153,7 +158,8 @@ def _rows_to_dicts(
             {col: _serialize(val) for col, val in zip(columns, row)}
             for row in rows
         ]
-    except Exception:
+    except Exception as e:
+        logger.debug("Could not detect schema changes: %s", e)
         return []
 
 
@@ -175,7 +181,8 @@ def _table_exists(conn: duckdb.DuckDBPyConnection, schema: str, table: str) -> b
             [schema, table],
         ).fetchone()
         return result[0] > 0 if result else False
-    except Exception:
+    except Exception as e:
+        logger.debug("Could not check table existence: %s", e)
         return False
 
 
@@ -326,9 +333,9 @@ def diff_model(
                         )
                         sample_added = _rows_to_dicts(conn, added_excl_sql, sample_limit)
                         sample_removed = _rows_to_dicts(conn, removed_excl_sql, sample_limit)
-                except Exception:
+                except Exception as e:
                     # If modified detection fails, fall back to added/removed only
-                    pass
+                    logger.debug("Modified row detection failed: %s", e)
 
     # Cleanup
     conn.execute("DROP TABLE IF EXISTS _dp_diff_new")

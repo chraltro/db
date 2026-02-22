@@ -8,10 +8,13 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 from datetime import datetime
 from pathlib import Path
 
 import duckdb
+
+logger = logging.getLogger("dp.snapshot")
 
 
 def _ensure_snapshot_table(conn: duckdb.DuckDBPyConnection) -> None:
@@ -67,7 +70,8 @@ def _build_table_signatures(conn: duckdb.DuckDBPyConnection) -> dict[str, dict]:
             "FROM information_schema.tables "
             "WHERE table_schema NOT IN ('information_schema', '_dp_internal')"
         ).fetchall()
-    except Exception:
+    except Exception as e:
+        logger.debug("Could not enumerate tables for snapshot: %s", e)
         return signatures
 
     for schema, table, table_type in tables:
@@ -78,7 +82,8 @@ def _build_table_signatures(conn: duckdb.DuckDBPyConnection) -> dict[str, dict]:
         try:
             count = conn.execute(f'SELECT COUNT(*) FROM "{schema}"."{table}"').fetchone()[0]
             sig["row_count"] = count
-        except Exception:
+        except Exception as e:
+            logger.debug("Could not get row count for %s: %s", full_name, e)
             sig["row_count"] = -1
 
         # Column signature
@@ -90,7 +95,8 @@ def _build_table_signatures(conn: duckdb.DuckDBPyConnection) -> dict[str, dict]:
             ).fetchall()
             col_str = "|".join(f"{c[0]}:{c[1]}" for c in cols)
             sig["col_hash"] = hashlib.sha256(col_str.encode()).hexdigest()[:16]
-        except Exception:
+        except Exception as e:
+            logger.debug("Could not hash columns for %s: %s", full_name, e)
             sig["col_hash"] = ""
 
         signatures[full_name] = sig

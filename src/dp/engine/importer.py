@@ -11,12 +11,15 @@ Workflow: test connection -> preview data -> land into table.
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 from typing import Any
 
 import duckdb
 
 from dp.engine.database import connect, ensure_meta_table, log_run
+
+logger = logging.getLogger("dp.importer")
 
 
 def preview_file(file_path: str, limit: int = 100) -> dict:
@@ -227,8 +230,8 @@ def import_from_connection(
         # Detach
         try:
             db_conn.execute("DETACH _import_src")
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Could not get row count: %s", e)
 
         log_run(db_conn, "import", full_name, "success", duration_ms, rows_affected=row_count)
 
@@ -242,8 +245,8 @@ def import_from_connection(
         duration_ms = int((time.perf_counter() - start) * 1000)
         try:
             db_conn.execute("DETACH _import_src")
-        except Exception:
-            pass
+        except Exception as e2:
+            logger.debug("Failed to detach import source: %s", e2)
         log_run(db_conn, "import", full_name, "error", duration_ms, error=str(e))
         return {"status": "error", "table": full_name, "error": str(e)}
 
