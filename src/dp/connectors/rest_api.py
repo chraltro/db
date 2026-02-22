@@ -28,6 +28,7 @@ class RESTAPIConnector(BaseConnector):
         ParamSpec("json_path", "JSONPath to the data array (e.g. $.data or $.results)", required=False, default="$"),
         ParamSpec("table_name", "Target table name", required=False, default="api_data"),
         ParamSpec("pagination_key", "Key for next-page URL in response", required=False),
+        ParamSpec("since_param", "Query param for incremental fetch (e.g. since, updated_after)", required=False),
     ]
 
     def test_connection(self, config: dict[str, Any]) -> dict:
@@ -77,6 +78,7 @@ class RESTAPIConnector(BaseConnector):
         json_path = config.get("json_path", "$")
         table_name = tables[0] if tables else config.get("table_name", "api_data")
         pagination_key = config.get("pagination_key", "")
+        since_param = config.get("since_param", "")
 
         auth_env = config.get("auth_header", "")
         if auth_env.startswith("${") and auth_env.endswith("}"):
@@ -91,24 +93,49 @@ class RESTAPIConnector(BaseConnector):
 # Pagination support
 next_url = data.get("{pagination_key}")
 while next_url:
-    req = Request(next_url, method="{method}", headers=req_headers)
-    with urlopen(req, timeout=30) as resp:
-        page = json.loads(resp.read())
-    page_records = _extract(page, json_path)
+    page_data, _ = _fetch_with_retry(next_url, "{method}", req_headers)
+    page_records = _extract(page_data, json_path)
     if not page_records:
         break
     all_records.extend(page_records)
-    next_url = page.get("{pagination_key}")
+    next_url = page_data.get("{pagination_key}")
 '''
+
+        # Incremental fetch block
+        incremental_block = ""
+        incremental_update = ""
+        if since_param:
+            incremental_block = f'''
+# Incremental: append {since_param}=<last_value> to URL
+from dp.engine.cdc import ensure_cdc_table, get_watermark, update_watermark
+ensure_cdc_table(db)
+
+_watermark = get_watermark(db, "rest_api", "{target_schema}.{table_name}")
+if _watermark:
+    _sep = "&" if "?" in url else "?"
+    url = f"{{url}}{{_sep}}{since_param}={{_watermark}}"
+    print(f"Incremental fetch: {since_param}={{_watermark}}")
+'''
+            incremental_update = f'''
+    # Update watermark for next incremental fetch
+    from datetime import datetime, timezone
+    update_watermark(
+        db, "rest_api", "{target_schema}.{table_name}",
+        "high_watermark", datetime.now(timezone.utc).isoformat(),
+        rows_synced=rows,
+    )'''
 
         return f'''\
 """Auto-generated REST API ingest script.
 
 Fetches data from {url} into {target_schema}.{table_name}.
+Includes retry logic with exponential backoff.
 """
 
 import json
 import os
+import time
+from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 {auth_line}
@@ -124,11 +151,28 @@ req_headers.update(extra_headers)
 if auth_header:
     req_headers["Authorization"] = auth_header
 
-req = Request(url, method="{method}", headers=req_headers)
 
-print(f"Fetching data from {{url}}...")
-with urlopen(req, timeout=30) as resp:
-    data = json.loads(resp.read())
+def _fetch_with_retry(fetch_url, method, headers, max_retries=3):
+    """Fetch URL with retry on rate-limit (429) and server errors (5xx)."""
+    for attempt in range(max_retries + 1):
+        try:
+            req = Request(fetch_url, method=method, headers=headers)
+            with urlopen(req, timeout=30) as resp:
+                return json.loads(resp.read()), resp.headers
+        except HTTPError as e:
+            if e.code == 429 or e.code >= 500:
+                retry_after = int(e.headers.get("Retry-After", 2 ** attempt))
+                print(f"  HTTP {{e.code}}, retrying in {{retry_after}}s... ({{attempt + 1}}/{{max_retries}})")
+                time.sleep(retry_after)
+            else:
+                raise
+        except (OSError, TimeoutError) as e:
+            if attempt == max_retries:
+                raise
+            wait = 2 ** attempt
+            print(f"  Network error ({{e}}), retrying in {{wait}}s... ({{attempt + 1}}/{{max_retries}})")
+            time.sleep(wait)
+    raise RuntimeError(f"Failed after {{max_retries}} retries: {{fetch_url}}")
 
 
 def _extract(obj, path):
@@ -144,6 +188,9 @@ def _extract(obj, path):
             break
     return current if isinstance(current, list) else [current]
 
+{incremental_block}
+print(f"Fetching data from {{url}}...")
+data, _ = _fetch_with_retry(url, "{method}", req_headers)
 
 all_records = _extract(data, json_path)
 {pagination_block}
@@ -151,7 +198,6 @@ print(f"Got {{len(all_records)}} records")
 
 if all_records:
     db.execute("CREATE SCHEMA IF NOT EXISTS {target_schema}")
-    # Write to a temp JSON file for DuckDB to read
     import tempfile
     with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
         json.dump(all_records, f)
@@ -165,6 +211,7 @@ if all_records:
     os.unlink(tmp_path)
     rows = db.execute("SELECT COUNT(*) FROM {target_schema}.{table_name}").fetchone()[0]
     print(f"Loaded {{rows}} rows into {target_schema}.{table_name}")
+{incremental_update}
 else:
     print("No records found")
 '''

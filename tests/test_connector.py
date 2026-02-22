@@ -750,3 +750,177 @@ def test_regenerate_preserves_config(tmp_path):
     # Script should still reference the CSV path
     script_content = (project_dir / "ingest" / "connector_cfg_test.py").read_text()
     assert str(csv_file) in script_content
+
+
+# ---------------------------------------------------------------------------
+# Hardening tests: retry logic, per-table error handling, incremental sync
+# ---------------------------------------------------------------------------
+
+
+class TestPostgresHardening:
+    """Test PostgreSQL connector hardening features."""
+
+    def test_generated_script_has_retry(self):
+        """Generated script should include _attach_with_retry."""
+        connector = get_connector("postgres")
+        script = connector.generate_script(
+            {"host": "db.example.com", "database": "mydb", "user": "admin",
+             "password": "${PG_PASS}", "schema": "public"},
+            ["users", "orders"],
+            "landing",
+        )
+        assert "_attach_with_retry" in script
+        assert "max_retries" in script
+        assert "time.sleep" in script
+
+    def test_generated_script_has_error_handling(self):
+        """Generated script should handle per-table errors."""
+        connector = get_connector("postgres")
+        script = connector.generate_script(
+            {"host": "db.example.com", "database": "mydb", "user": "admin",
+             "password": "${PG_PASS}", "schema": "public"},
+            ["users", "orders"],
+            "landing",
+        )
+        assert "errors = []" in script
+        assert "errors.append" in script
+        assert "ERROR syncing" in script
+
+    def test_generated_script_incremental(self):
+        """With cdc_column, script should use high-watermark sync."""
+        connector = get_connector("postgres")
+        script = connector.generate_script(
+            {"host": "db.example.com", "database": "mydb", "user": "admin",
+             "password": "${PG_PASS}", "schema": "public",
+             "cdc_column": "updated_at"},
+            ["users"],
+            "landing",
+        )
+        assert "Incremental sync" in script
+        assert "get_watermark" in script
+        assert "update_watermark" in script
+        assert "updated_at" in script
+
+    def test_incremental_rejects_bad_cdc_column(self):
+        """cdc_column with injection characters should be rejected."""
+        connector = get_connector("postgres")
+        with pytest.raises(ValueError, match="Invalid"):
+            connector.generate_script(
+                {"host": "h", "database": "d", "user": "u", "password": "p",
+                 "schema": "public", "cdc_column": "col; DROP TABLE--"},
+                ["users"],
+                "landing",
+            )
+
+    def test_cdc_column_param_exists(self):
+        """Postgres connector should have cdc_column param."""
+        connector = get_connector("postgres")
+        param_names = [p.name for p in connector.params]
+        assert "cdc_column" in param_names
+
+
+class TestMySQLHardening:
+    """Test MySQL connector hardening features."""
+
+    def test_generated_script_has_retry(self):
+        """Generated script should include _attach_with_retry."""
+        connector = get_connector("mysql")
+        script = connector.generate_script(
+            {"host": "db.example.com", "database": "shop", "user": "root",
+             "password": "${MYSQL_PASS}"},
+            ["products"],
+            "landing",
+        )
+        assert "_attach_with_retry" in script
+        assert "max_retries" in script
+
+    def test_generated_script_has_error_handling(self):
+        """Generated script should handle per-table errors."""
+        connector = get_connector("mysql")
+        script = connector.generate_script(
+            {"host": "db.example.com", "database": "shop", "user": "root",
+             "password": "${MYSQL_PASS}"},
+            ["products", "categories"],
+            "landing",
+        )
+        assert "errors = []" in script
+        assert "errors.append" in script
+
+    def test_generated_script_incremental(self):
+        """With cdc_column, script should use high-watermark sync."""
+        connector = get_connector("mysql")
+        script = connector.generate_script(
+            {"host": "db.example.com", "database": "shop", "user": "root",
+             "password": "${MYSQL_PASS}", "cdc_column": "modified_at"},
+            ["products"],
+            "landing",
+        )
+        assert "Incremental sync" in script
+        assert "get_watermark" in script
+        assert "modified_at" in script
+
+    def test_cdc_column_param_exists(self):
+        """MySQL connector should have cdc_column param."""
+        connector = get_connector("mysql")
+        param_names = [p.name for p in connector.params]
+        assert "cdc_column" in param_names
+
+
+class TestRESTAPIHardening:
+    """Test REST API connector hardening features."""
+
+    def test_generated_script_has_retry(self):
+        """Generated script should include _fetch_with_retry."""
+        connector = get_connector("rest_api")
+        script = connector.generate_script(
+            {"url": "https://api.example.com/data", "table_name": "data"},
+            ["data"],
+            "landing",
+        )
+        assert "_fetch_with_retry" in script
+        assert "max_retries" in script
+        assert "429" in script  # rate limit handling
+        assert "500" in script or "5xx" in script or ">= 500" in script
+
+    def test_generated_script_retries_network_errors(self):
+        """Generated script should retry on OSError / TimeoutError."""
+        connector = get_connector("rest_api")
+        script = connector.generate_script(
+            {"url": "https://api.example.com/data", "table_name": "data"},
+            ["data"],
+            "landing",
+        )
+        assert "OSError" in script or "TimeoutError" in script
+        assert "Network error" in script
+
+    def test_generated_script_incremental_since(self):
+        """With since_param, script should track watermark for incremental."""
+        connector = get_connector("rest_api")
+        script = connector.generate_script(
+            {"url": "https://api.example.com/data", "table_name": "data",
+             "since_param": "updated_after"},
+            ["data"],
+            "landing",
+        )
+        assert "updated_after" in script
+        assert "get_watermark" in script
+        assert "update_watermark" in script
+        assert "Incremental fetch" in script
+
+    def test_generated_script_pagination_uses_retry(self):
+        """Paginated scripts should use _fetch_with_retry for page requests."""
+        connector = get_connector("rest_api")
+        script = connector.generate_script(
+            {"url": "https://api.example.com/data", "table_name": "data",
+             "pagination_key": "next"},
+            ["data"],
+            "landing",
+        )
+        assert "Pagination support" in script
+        assert "_fetch_with_retry" in script
+
+    def test_since_param_exists(self):
+        """REST API connector should have since_param."""
+        connector = get_connector("rest_api")
+        param_names = [p.name for p in connector.params]
+        assert "since_param" in param_names
