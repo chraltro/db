@@ -48,6 +48,7 @@ When enabled:
 - **No session invalidation on password change** — changing a user's password does not revoke existing tokens
 - **No CSRF protection** — the API uses bearer tokens, which mitigates CSRF for API calls, but the web UI loads from the same origin
 - **Single-process token store** — rate limit state is in-memory and resets on restart
+- **Rate limiting uses `request.client.host`** — behind a reverse proxy, all requests appear to come from the proxy's IP unless the proxy sets `X-Forwarded-For` and dp is configured to trust it (it currently isn't). This effectively makes the rate limit per-proxy, not per-user.
 
 ### Roles and Permissions
 
@@ -158,8 +159,9 @@ This is enforced by `validate_identifier()` in:
 
 ### `dp serve` (web UI)
 
-- Default: **binds to 0.0.0.0:3000** — accessible on all network interfaces
-- Without `--auth`: **no authentication** — anyone on the network can read, write, and execute
+- Default: **binds to 127.0.0.1:3000** (localhost only) — not accessible from other machines
+- Use `--host 0.0.0.0` to expose to the network (required for remote access)
+- Without `--auth`: **no authentication** — anyone who can reach the port can read, write, and execute
 - CORS is configured to allow the dev server (`localhost:5173`) and the same origin
 
 ### Recommendations for production use

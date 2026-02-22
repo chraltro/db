@@ -188,7 +188,8 @@ All parallel execution uses the **same DuckDB connection**. This is safe because
 - Parallel execution is **thread-based** (GIL applies to Python code, but DuckDB releases the GIL during query execution)
 - The write lock means parallel writes are effectively serialized — the benefit comes from **parallel query planning and I/O**, not parallel writes
 - For small models (<1000 rows), parallel execution may be slower than sequential due to thread overhead
-- Assertion failures in one model do **not** cancel other running models in the same tier
+- Assertion failures in one model do **not** cancel other running models in the same tier, but they **do block all subsequent tiers** from running (remaining models are marked as "skipped")
+- In sequential mode (without `--parallel`), assertion failures are logged but do **not** block subsequent models — each model runs independently
 
 ## Best Practices
 
