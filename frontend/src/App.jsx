@@ -26,6 +26,9 @@ import { useHintTriggerFn } from "./HintSystem";
 import EnvironmentSwitcher from "./EnvironmentSwitcher";
 import ModelNotebookView from "./ModelNotebookView";
 import NewModelDialog from "./NewModelDialog";
+import { useAuth } from "./AuthContext";
+import { WarehouseProvider, useWarehouse } from "./WarehouseContext";
+import { PipelineProvider, usePipeline } from "./PipelineContext";
 
 const GUIDE_STEPS = [
   {
@@ -75,7 +78,6 @@ const GUIDE_STEPS = [
 // Primary tabs always visible; secondary tabs collapsed under "More"
 const PRIMARY_TABS = ["Overview", "Editor", "Query", "Tables", "Data Sources"];
 const SECONDARY_TABS = ["Notebooks", "DAG", "Diff", "Docs", "History", "Settings"];
-const ALL_TABS = [...PRIMARY_TABS, ...SECONDARY_TABS];
 
 function ActionDropdown({ label, onClick, options, disabled, primary }) {
   const [open, setOpen] = useState(false);
@@ -246,40 +248,34 @@ const stStyles = {
   tableNameActive: { color: "var(--dp-accent)", fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
 };
 
-export default function App() {
-  const [files, setFiles] = useState([]);
+/** Inner app component that consumes all three contexts */
+function AppContent() {
+  const { currentUser, handleLogout } = useAuth();
+  const { tables, files, streams, loadFiles, refreshAll } = useWarehouse();
+  const { running, output, runSummary, addOutput, clearOutput, setRunSummary, runTransformAll, runStream, runLint, runCurrentScript, runSingleModel } = usePipeline();
+
+  // Editor state (local to this component)
   const [activeFile, setActiveFile] = useState(null);
   const [fileContent, setFileContent] = useState("");
   const [fileLang, setFileLang] = useState("sql");
   const [dirty, setDirty] = useState(false);
-  const [preview, setPreview] = useState(null); // { columns, rows } | null
+  const [preview, setPreview] = useState(null);
   const [previewError, setPreviewError] = useState(null);
   const [previewRunning, setPreviewRunning] = useState(false);
   const [previewHeight, onPreviewResize, onPreviewResizeStart] = useResizable("dp_editor_preview_height", 200, 80, 600);
-  const [output, setOutput] = useState([]);
+
+  // Tab/UI state
   const [activeTab, setActiveTab] = useState("Overview");
-  const [streams, setStreams] = useState({});
   const [moreOpen, setMoreOpen] = useState(false);
   const moreRef = useRef(null);
   const moreBtnRef = useRef(null);
   const moreMenuRef = useRef(null);
   const [moreMenuPos, setMoreMenuPos] = useState({ top: 0, left: 0 });
-
-  // Run summary state
-  const [runSummary, setRunSummary] = useState(null);
-  const [running, setRunning] = useState(false);
-  const [warehouseTables, setWarehouseTables] = useState([]);
   const [selectedTable, setSelectedTable] = useState(null);
 
   // Resizable panels
   const [sidebarWidth, onSidebarResize, onSidebarResizeStart] = useResizable("dp_sidebar_width", 240, 150, 500);
   const [outputHeight, onOutputResize, onOutputResizeStart] = useResizable("dp_output_height", 180, 80, 500);
-
-  // Auth state
-  const [authChecked, setAuthChecked] = useState(false);
-  const [authRequired, setAuthRequired] = useState(false);
-  const [needsSetup, setNeedsSetup] = useState(false);
-  const [currentUser, setCurrentUser] = useState(null);
 
   // Editor navigation
   const editorRef = useRef(null);
@@ -294,8 +290,12 @@ export default function App() {
 
   // Keep warehouseHasTables hint flag in sync
   useEffect(() => {
-    setHintTrigger("warehouseHasTables", warehouseTables.length > 0);
-  }, [warehouseTables, setHintTrigger]);
+    setHintTrigger("warehouseHasTables", tables.length > 0);
+  }, [tables, setHintTrigger]);
+
+  const [notebookPath, setNotebookPath] = useState(null);
+  const [modelNotebookName, setModelNotebookName] = useState(null);
+  const [showNewDialog, setShowNewDialog] = useState(false);
 
   function handleGuideComplete() {
     setGuideOpen(false);
@@ -341,102 +341,14 @@ export default function App() {
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, []);
 
-  useEffect(() => {
-    checkAuth();
-    window.addEventListener("dp_auth_required", () => setAuthRequired(true));
-  }, []);
-
-  async function checkAuth() {
-    try {
-      const status = await api.getAuthStatus();
-      if (!status.auth_enabled) {
-        setAuthChecked(true);
-        setCurrentUser({ username: "local", role: "admin", display_name: "Local User" });
-        return;
-      }
-      if (status.needs_setup) {
-        setNeedsSetup(true);
-        setAuthRequired(true);
-        setAuthChecked(true);
-        return;
-      }
-      // Try existing token
-      if (api.getToken()) {
-        try {
-          const me = await api.getMe();
-          setCurrentUser(me);
-          setAuthChecked(true);
-          return;
-        } catch {
-          api.setToken(null);
-        }
-      }
-      setAuthRequired(true);
-      setAuthChecked(true);
-    } catch {
-      // Server not requiring auth
-      setAuthChecked(true);
-      setCurrentUser({ username: "local", role: "admin", display_name: "Local User" });
-    }
-  }
-
-  function handleLogin(result) {
-    setAuthRequired(false);
-    setNeedsSetup(false);
-    setCurrentUser({ username: result.username, role: result.role || "admin" });
-  }
-
-  const loadFiles = useCallback(async () => {
-    try {
-      const data = await api.listFiles();
-      setFiles(data.map((f) => typeof f === "string" ? f.replace(/\\/g, "/") : { ...f, path: f.path?.replace(/\\/g, "/") }));
-    } catch (e) {
-      addOutput("error", `Failed to load files: ${e.message}`);
-    }
-  }, []);
-
-  const loadStreams = useCallback(async () => {
-    try {
-      const data = await api.listStreams();
-      setStreams(data);
-    } catch (e) { console.warn("Failed to load streams:", e.message); }
-  }, []);
-
-  const loadTables = useCallback(async () => {
-    try {
-      const data = await api.listTables();
-      setWarehouseTables(data);
-    } catch (e) { console.warn("Failed to load tables:", e.message); }
-  }, []);
-
-  useEffect(() => {
-    if (!authRequired && authChecked) {
-      loadFiles();
-      loadStreams();
-      loadTables();
-    }
-  }, [authRequired, authChecked, loadFiles, loadStreams, loadTables]);
-
-  function addOutput(type, message) {
-    const ts = new Date().toLocaleTimeString();
-    setOutput((prev) => [...prev, { type, message, ts }]);
-  }
-
-  const [notebookPath, setNotebookPath] = useState(null);
-  const [modelNotebookName, setModelNotebookName] = useState(null);
-  const [showNewDialog, setShowNewDialog] = useState(false);
-
   async function openFile(path, opts = {}) {
     path = path.replace(/\\/g, "/");
-    // Open .dpnb files in Notebooks tab
     if (path.endsWith(".dpnb")) {
       setNotebookPath(path);
       setActiveTab("Notebooks");
       return;
     }
-    // Open SQL models in notebook view if requested or if it's a transform model
     if (path.endsWith(".sql") && path.startsWith("transform/") && opts.notebookView) {
-      // Extract schema.name from path: transform/silver/model.sql -> silver.model
       const parts = path.replace("transform/", "").replace(".sql", "").split("/");
       if (parts.length >= 2) {
         setModelNotebookName(`${parts[0]}.${parts[1]}`);
@@ -464,13 +376,11 @@ export default function App() {
     const normalized = ref.replace(/\\/g, "/");
     const hasExtension = /\.(sql|py|yml|yaml|json|csv|md|txt|dpnb)$/i.test(normalized);
 
-    // If it looks like schema.model (no slashes, no file extension), map to transform SQL
     if (!hasExtension && !normalized.includes("/") && /^\w+\.\w+$/.test(normalized)) {
       const [schema, model] = normalized.split(".");
       return `transform/${schema}/${model}.sql`;
     }
 
-    // If it's just a bare filename (no slashes), search the file tree
     if (!normalized.includes("/")) {
       const allPaths = [];
       const collect = (nodes) => {
@@ -557,156 +467,26 @@ export default function App() {
   async function runCurrentFile() {
     if (!activeFile) return;
     if (dirty) await saveFile();
-    setRunning(true);
-    try {
-      if (activeFile.endsWith(".sql")) {
-        addOutput("info", "Running transform...");
+    if (activeFile.endsWith(".sql")) {
+      addOutput("info", "Running transform...");
+      try {
         const data = await api.runTransform(null, false);
         for (const [model, status] of Object.entries(data.results || {})) {
           addOutput(status === "error" ? "error" : "info", `${model}: ${status}`);
         }
-      } else if (activeFile.endsWith(".py")) {
-        addOutput("info", `Running ${activeFile}...`);
-        const data = await api.runScript(activeFile);
-        addOutput(data.status === "error" ? "error" : "info", `${activeFile}: ${data.status} (${data.duration_ms}ms)`);
-        if (data.log_output) data.log_output.split("\n").filter((l) => l.trim()).forEach((l) => addOutput("log", l));
-        if (data.error) addOutput("error", data.error);
+      } catch (e) {
+        addOutput("error", e.message);
       }
-    } catch (e) {
-      addOutput("error", e.message);
-    } finally {
-      setRunning(false);
+    } else if (activeFile.endsWith(".py")) {
+      await runCurrentScript(activeFile);
     }
   }
 
-  async function runTransformAll(force = false) {
-    setRunning(true);
-    setRunSummary(null);
-    addOutput("info", `Running transform (force=${force})...`);
-    try {
-      const data = await api.runTransform(null, force);
-      const models = [];
-      for (const [model, status] of Object.entries(data.results || {})) {
-        addOutput(status === "error" ? "error" : "info", `${model}: ${status}`);
-        models.push({ name: model, result: status });
-      }
-      loadTables();
-
-      const transformSummary = {
-        type: "transform",
-        status: models.some((m) => m.result === "error") ? "failed" : "success",
-        models,
-        totalRows: 0,
-        duration: 0,
-        errors: models.filter((m) => m.result === "error").length,
-      };
-      setRunSummary(transformSummary);
-      if (transformSummary.status === "success") {
-        setHintTrigger("pipelineJustCompleted", true);
-        setHintTrigger("pipelineRanThisSession", true);
-      }
-    } catch (e) {
-      addOutput("error", e.message);
-    } finally {
-      setRunning(false);
-    }
-  }
-
-  async function runStream(name, force = false) {
-    setRunning(true);
-    setRunSummary(null);
-    addOutput("info", `Running pipeline${force ? " (full refresh)" : ""}...`);
-    try {
-      const data = await api.runStream(name, force);
-      const models = [];
-      let totalRows = 0;
-      let totalDuration = 0;
-      let hasError = false;
-
-      for (const step of data.steps || []) {
-        addOutput("info", `--- ${step.action} ---`);
-        if (step.action === "transform") {
-          for (const [model, status] of Object.entries(step.results || {})) {
-            addOutput(status === "error" ? "error" : "info", `${model}: ${status}`);
-            models.push({ name: model, result: status });
-            if (status === "error") hasError = true;
-          }
-        } else {
-          for (const r of step.results || []) {
-            const label = r.script || step.action;
-            const msg = r.status === "error" ? `${label}: error — ${r.error}` : `${label}: success (${r.duration_ms}ms)`;
-            addOutput(r.status === "error" ? "error" : "info", msg);
-            if (r.log_output && r.log_output.trim()) {
-              r.log_output.split("\n").filter((l) => l.trim()).forEach((l) => addOutput("log", l.trim()));
-            }
-            if (r.rows_affected) totalRows += r.rows_affected;
-            if (r.duration_ms) totalDuration += r.duration_ms;
-            if (r.status === "error") hasError = true;
-          }
-        }
-      }
-
-      const durationS = data.duration_seconds ? data.duration_seconds * 1000 : totalDuration;
-      addOutput("info", `Pipeline completed.`);
-      loadTables();
-
-      // Show run summary
-      const streamSummary = {
-        type: "stream",
-        status: hasError ? "failed" : "success",
-        models,
-        totalRows,
-        duration: Math.round(durationS),
-        errors: models.filter((m) => m.result === "error").length,
-      };
-      setRunSummary(streamSummary);
-      if (!hasError) {
-        setHintTrigger("pipelineJustCompleted", true);
-        setHintTrigger("pipelineRanThisSession", true);
-      }
-    } catch (e) {
-      addOutput("error", e.message);
-      setRunSummary({
-        type: "stream",
-        status: "failed",
-        models: [],
-        totalRows: 0,
-        duration: 0,
-        errors: 1,
-      });
-    } finally {
-      setRunning(false);
-    }
-  }
-
-  async function runLint(fix = false) {
-    setRunning(true);
-    addOutput("info", fix ? "Fixing SQL..." : "Linting SQL...");
-    try {
-      const data = await api.runLint(fix);
-      for (const v of data.violations || []) {
-        const tag = fix && !v.fixable ? " (unfixable)" : "";
-        addOutput("warn", `${v.file}:${v.line}:${v.col} [${v.code}] ${v.description}${tag}`);
-      }
-      if (fix) {
-        const fixed = data.fixed ?? 0;
-        const remaining = data.count;
-        const parts = [];
-        if (fixed > 0) parts.push(`${fixed} fixed`);
-        if (remaining > 0) parts.push(`${remaining} violation(s) remain (unfixable by SQLFluff)`);
-        addOutput("info", parts.length > 0 ? parts.join(", ") + "." : "All fixable violations resolved.");
-      } else {
-        addOutput("info", data.count === 0 ? "No lint violations found." : `${data.count} violation(s) found.`);
-      }
-      if (fix && activeFile) {
-        const d = await api.readFile(activeFile);
-        setFileContent(d.content);
-      }
-    } catch (e) {
-      addOutput("error", e.message);
-    } finally {
-      setRunning(false);
-    }
+  async function handleRunSingleModel() {
+    if (!activeFile || !activeFile.includes("transform/") || !activeFile.endsWith(".sql")) return;
+    if (dirty) await saveFile();
+    const modelName = activeFile.replace(/^transform\//, "").replace(/\.sql$/, "").replace(/\//g, ".");
+    await runSingleModel(modelName);
   }
 
   async function formatCurrentFile() {
@@ -728,7 +508,6 @@ export default function App() {
 
   async function previewCurrentFile() {
     if (!activeFile || !activeFile.endsWith(".sql")) return;
-    // Strip -- config: / -- depends_on: header lines before running
     const lines = fileContent.split("\n");
     let start = 0;
     for (const line of lines) {
@@ -755,55 +534,16 @@ export default function App() {
     setActiveTab("Tables");
   }
 
-  function handleLogout() {
-    api.setToken(null);
-    setCurrentUser(null);
-    setAuthRequired(true);
-  }
-
-  if (!authChecked) {
-    return <div style={styles.loading}>Loading...</div>;
-  }
-
-  if (authRequired) {
-    return <LoginPage onLogin={handleLogin} needsSetup={needsSetup} />;
-  }
-
-  // Navigate to Query with pre-filled SQL (for "Query this table" from TablesPanel)
   function queryTable(schema, table) {
     navigateToTab("Query");
-    // Store the query intent for QueryPanel to pick up
     window.__dp_prefill_query = { sql: `SELECT * FROM ${schema}.${table} LIMIT 1000`, run: true };
   }
 
-  // Run a specific transform model from the editor
-  async function runSingleModel() {
-    if (!activeFile || !activeFile.includes("transform/") || !activeFile.endsWith(".sql")) return;
-    if (dirty) await saveFile();
-    setRunning(true);
-    setRunSummary(null);
-    const modelName = activeFile.replace(/^transform\//, "").replace(/\.sql$/, "").replace(/\//g, ".");
-    addOutput("info", `Running transform for ${modelName}...`);
-    try {
-      const data = await api.runTransform([modelName], false);
-      const models = [];
-      for (const [model, status] of Object.entries(data.results || {})) {
-        addOutput(status === "error" ? "error" : "info", `${model}: ${status}`);
-        models.push({ name: model, result: status });
-      }
-      loadTables();
-      setRunSummary({
-        type: "transform",
-        status: models.some((m) => m.result === "error") ? "failed" : "success",
-        models,
-        totalRows: 0,
-        duration: 0,
-        errors: models.filter((m) => m.result === "error").length,
-      });
-    } catch (e) {
-      addOutput("error", e.message);
-    } finally {
-      setRunning(false);
+  async function handleRunLintWithReload(fix = false) {
+    await runLint(fix);
+    if (fix && activeFile) {
+      const d = await api.readFile(activeFile);
+      setFileContent(d.content);
     }
   }
 
@@ -841,8 +581,8 @@ export default function App() {
           />
           <ActionDropdown
             label="Lint"
-            onClick={() => runLint(false)}
-            options={[{ label: "Fix", action: () => runLint(true) }]}
+            onClick={() => handleRunLintWithReload(false)}
+            options={[{ label: "Fix", action: () => handleRunLintWithReload(true) }]}
             disabled={running}
           />
           <button onClick={() => setShowNewDialog(true)} style={styles.btn}>+ New</button>
@@ -862,11 +602,11 @@ export default function App() {
       <div style={styles.main}>
         {/* Sidebar */}
         <aside style={{ ...styles.sidebar, width: sidebarWidth }} data-dp-guide="sidebar">
-          <FileTree files={files} onSelect={openFile} activeFile={activeFile} onNewFile={createFile} onDeleteFile={deleteFile} onRefresh={() => { loadFiles(); loadTables(); loadStreams(); }} />
+          <FileTree files={files} onSelect={openFile} activeFile={activeFile} onNewFile={createFile} onDeleteFile={deleteFile} onRefresh={refreshAll} />
           <div style={styles.sidebarDivider} />
           <div style={styles.sidebarSectionHeader}>TABLES</div>
           <SchemaTree
-            tables={warehouseTables}
+            tables={tables}
             selectedTable={selectedTable}
             onSelectTable={handleSelectTable}
           />
@@ -880,7 +620,7 @@ export default function App() {
 
         {/* Content */}
         <div style={styles.content}>
-          {/* Tabs — primary tabs + "More" dropdown for secondary */}
+          {/* Tabs */}
           <div style={styles.tabs} data-dp-guide="tabs" data-dp-hint="tab-bar">
             {PRIMARY_TABS.map((tab, i) => (
               <button
@@ -940,7 +680,7 @@ export default function App() {
                   Save
                 </button>
                 {isTransformFile && (
-                  <button onClick={runSingleModel} disabled={running} style={styles.btn} title="Run just this model">
+                  <button onClick={handleRunSingleModel} disabled={running} style={styles.btn} title="Run just this model">
                     Run Model
                   </button>
                 )}
@@ -1046,7 +786,7 @@ export default function App() {
             onResizeStart={onOutputResizeStart}
           />
           <div data-dp-guide="output">
-            <OutputPanel output={output} onClear={() => setOutput([])} height={outputHeight} onOpenFile={openFileAtLine} />
+            <OutputPanel output={output} onClear={clearOutput} height={outputHeight} onOpenFile={openFileAtLine} />
           </div>
         </div>
       </div>
@@ -1081,6 +821,44 @@ export default function App() {
   );
 }
 
+/** Bridge component that provides PipelineProvider with access to WarehouseContext */
+function WarehouseConsumerBridge({ children, onPipelineComplete }) {
+  const { loadTables } = useWarehouse();
+  return (
+    <PipelineProvider onTablesChanged={loadTables} onPipelineComplete={onPipelineComplete}>
+      {children}
+    </PipelineProvider>
+  );
+}
+
+/** Root App: wraps inner content with Warehouse + Pipeline providers */
+export default function App() {
+  const { authChecked, authRequired, needsSetup, handleLogin, isAuthenticated } = useAuth();
+
+  // Hint triggers for pipeline completion
+  const setHintTrigger = useHintTriggerFn();
+  const onPipelineComplete = useCallback(() => {
+    setHintTrigger("pipelineJustCompleted", true);
+    setHintTrigger("pipelineRanThisSession", true);
+  }, [setHintTrigger]);
+
+  if (!authChecked) {
+    return <div style={styles.loading}>Loading...</div>;
+  }
+
+  if (authRequired) {
+    return <LoginPage onLogin={handleLogin} needsSetup={needsSetup} />;
+  }
+
+  return (
+    <WarehouseProvider enabled={isAuthenticated}>
+      <WarehouseConsumerBridge onPipelineComplete={onPipelineComplete}>
+        <AppContent />
+      </WarehouseConsumerBridge>
+    </WarehouseProvider>
+  );
+}
+
 const styles = {
   container: { display: "flex", flexDirection: "column", height: "100vh", background: "var(--dp-bg)", color: "var(--dp-text)", fontFamily: "var(--dp-font)" },
   loading: { display: "flex", alignItems: "center", justifyContent: "center", height: "100vh", background: "var(--dp-bg)", color: "var(--dp-text-secondary)", fontFamily: "var(--dp-font)", fontSize: "14px" },
@@ -1105,12 +883,10 @@ const styles = {
   panel: { flex: 1, overflow: "hidden" },
   btn: { padding: "5px 12px", background: "var(--dp-btn-bg)", border: "1px solid var(--dp-btn-border)", borderRadius: "var(--dp-radius-lg)", color: "var(--dp-text)", cursor: "pointer", fontSize: "12px", fontWeight: 500 },
   btnPrimary: { padding: "5px 12px", background: "var(--dp-green)", border: "1px solid var(--dp-green-border)", borderRadius: "var(--dp-radius-lg)", color: "#fff", cursor: "pointer", fontSize: "12px", fontWeight: 500 },
-  // "More" dropdown
   moreWrapper: { position: "relative" },
   moreArrow: { marginLeft: "4px", fontSize: "10px" },
   moreMenu: { background: "var(--dp-bg-secondary)", border: "1px solid var(--dp-border)", borderRadius: "var(--dp-radius)", zIndex: 9999, minWidth: "130px", boxShadow: "0 4px 12px rgba(0,0,0,0.3)" },
   moreItem: { display: "block", width: "100%", padding: "7px 14px", background: "none", border: "none", color: "var(--dp-text)", cursor: "pointer", fontSize: "13px", textAlign: "left", whiteSpace: "nowrap" },
-  // Breadcrumb for secondary tabs
   breadcrumb: { display: "flex", alignItems: "center", gap: "6px", padding: "6px 16px", fontSize: "12px", borderBottom: "1px solid var(--dp-border)", background: "var(--dp-bg-tertiary)" },
   breadcrumbLink: { background: "none", border: "none", color: "var(--dp-accent)", cursor: "pointer", fontSize: "12px", padding: 0, fontWeight: 500 },
   breadcrumbSep: { color: "var(--dp-text-dim)" },
