@@ -1,0 +1,1117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>dp — Query Panel Redesign Proposal</title>
+<style>
+  /* ─── Reset & Base ─── */
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: #0c0e14;
+    color: #c8cdd8;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* ─── Proposal wrapper ─── */
+  .proposal-banner {
+    background: linear-gradient(135deg, #1a1d2e 0%, #0c0e14 100%);
+    border-bottom: 2px solid #6ee7b7;
+    padding: 20px 32px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .proposal-banner h1 {
+    font-size: 18px;
+    font-weight: 600;
+    color: #6ee7b7;
+    letter-spacing: -0.3px;
+  }
+  .proposal-banner .badge {
+    background: #6ee7b722;
+    border: 1px solid #6ee7b744;
+    color: #6ee7b7;
+    font-size: 11px;
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-weight: 500;
+  }
+  .comparison-header {
+    display: flex;
+    border-bottom: 1px solid #1e2235;
+  }
+  .comparison-header .tab {
+    flex: 1;
+    text-align: center;
+    padding: 12px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    color: #6b7294;
+    transition: all 0.2s;
+  }
+  .comparison-header .tab.active {
+    color: #6ee7b7;
+    border-bottom-color: #6ee7b7;
+    background: #6ee7b708;
+  }
+  .comparison-header .tab:hover:not(.active) {
+    color: #c8cdd8;
+    background: #ffffff06;
+  }
+
+  .mockup-container {
+    display: flex;
+    flex-direction: column;
+    height: calc(100vh - 100px);
+  }
+  .view { display: none; flex: 1; overflow: hidden; }
+  .view.active { display: flex; flex-direction: column; }
+
+  /* ─── Annotations ─── */
+  .annotation-bar {
+    background: #11131a;
+    border-bottom: 1px solid #1e2235;
+    padding: 12px 24px;
+    display: flex;
+    gap: 16px;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+  .annotation-bar .callout {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    color: #8b92b0;
+  }
+  .callout-num {
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    font-weight: 700;
+    flex-shrink: 0;
+  }
+  .callout-num.green { background: #6ee7b722; color: #6ee7b7; border: 1px solid #6ee7b744; }
+  .callout-num.blue { background: #60a5fa22; color: #60a5fa; border: 1px solid #60a5fa44; }
+  .callout-num.purple { background: #a78bfa22; color: #a78bfa; border: 1px solid #a78bfa44; }
+  .callout-num.amber { background: #fbbf2422; color: #fbbf24; border: 1px solid #fbbf2444; }
+  .callout-num.red { background: #fb718522; color: #fb7185; border: 1px solid #fb718544; }
+
+  /* ──────────────────────────────────────────────
+     CURRENT (Before) Layout — plain textarea
+     ────────────────────────────────────────────── */
+  .current-layout {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+  }
+
+  /* Schema sidebar (current) */
+  .current-sidebar {
+    width: 200px;
+    border-right: 1px solid #1e2235;
+    background: #0f1118;
+    overflow-y: auto;
+    flex-shrink: 0;
+  }
+  .current-sidebar .sb-header {
+    padding: 8px 10px;
+    font-size: 11px;
+    font-weight: 600;
+    color: #6b7294;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    border-bottom: 1px solid #1e2235;
+  }
+  .current-sidebar .schema-name {
+    padding: 5px 10px 2px;
+    font-size: 11px;
+    font-weight: 600;
+    color: #6ee7b7;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    margin-top: 4px;
+    display: flex;
+    justify-content: space-between;
+  }
+  .schema-count {
+    font-size: 10px;
+    color: #3a4058;
+    font-weight: 400;
+  }
+  .current-sidebar .table-item {
+    padding: 2px 6px 2px 16px;
+    font-size: 12px;
+    font-family: 'IBM Plex Mono', monospace;
+    color: #8b92b0;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .table-item:hover { background: #6ee7b710; }
+  .table-item .arrow { color: #3a4058; font-size: 10px; }
+
+  /* Query area (current) */
+  .current-query-area {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .current-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    border-bottom: 1px solid #1e2235;
+    flex-shrink: 0;
+  }
+  .btn-run {
+    padding: 5px 14px;
+    background: #22c55e;
+    border: 1px solid #16a34a;
+    border-radius: 6px;
+    color: #fff;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .btn-secondary {
+    padding: 5px 10px;
+    background: #1a1d2e;
+    border: 1px solid #252a3a;
+    border-radius: 6px;
+    color: #6b7294;
+    font-size: 12px;
+    cursor: pointer;
+  }
+  .shortcut-label {
+    font-size: 10px;
+    opacity: 0.6;
+  }
+  .view-toggle {
+    margin-left: auto;
+    display: flex;
+    gap: 1px;
+    background: #1e2235;
+    border-radius: 6px;
+    overflow: hidden;
+  }
+  .view-toggle button {
+    padding: 3px 10px;
+    background: #1a1d2e;
+    border: none;
+    color: #6b7294;
+    font-size: 11px;
+    cursor: pointer;
+  }
+  .view-toggle button.active {
+    background: #11131a;
+    color: #c8cdd8;
+    font-weight: 600;
+  }
+
+  /* Plain textarea (current problem) */
+  .current-textarea {
+    width: 100%;
+    height: 120px;
+    padding: 10px 12px;
+    background: #0c0e14;
+    border: none;
+    color: #c8cdd8;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 13px;
+    line-height: 1.5;
+    resize: none;
+    outline: none;
+  }
+  .current-textarea::placeholder { color: #3a4058; }
+  .shortcut-bar {
+    height: 22px;
+    display: flex;
+    align-items: center;
+    padding: 0 10px;
+    gap: 2px;
+    font-size: 10px;
+    color: #3a4058;
+    background: #0c0e14;
+    border-top: 1px solid #1e2235;
+    border-bottom: 1px solid #1e2235;
+  }
+  .kbd {
+    background: #1a1d2e;
+    border: 1px solid #252a3a;
+    border-radius: 3px;
+    padding: 0 4px;
+    font-size: 10px;
+    font-family: 'IBM Plex Mono', monospace;
+    color: #6b7294;
+  }
+
+  /* Results table (current — no export, no row count status) */
+  .results-header {
+    padding: 6px 12px;
+    font-size: 11px;
+    color: #6b7294;
+    border-bottom: 1px solid #1e2235;
+    flex-shrink: 0;
+  }
+  .results-area {
+    flex: 1;
+    overflow: auto;
+  }
+  table.data-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+    font-family: 'IBM Plex Mono', monospace;
+  }
+  table.data-table th {
+    text-align: left;
+    padding: 6px 12px;
+    border-bottom: 2px solid #252a3a;
+    color: #6b7294;
+    font-weight: 600;
+    position: sticky;
+    top: 0;
+    background: #0c0e14;
+    cursor: pointer;
+    user-select: none;
+    white-space: nowrap;
+  }
+  table.data-table td {
+    padding: 4px 12px;
+    border-bottom: 1px solid #1e2235;
+    color: #c8cdd8;
+    white-space: nowrap;
+    max-width: 250px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  table.data-table tbody tr:hover {
+    background: #6ee7b708;
+  }
+  .type-badge {
+    font-size: 9px;
+    font-weight: 500;
+    opacity: 0.8;
+    margin-left: 6px;
+  }
+  .null-val {
+    color: #3a4058;
+    font-style: italic;
+    font-size: 11px;
+  }
+
+  /* ──────────────────────────────────────────────
+     PROPOSED (After) Layout — improved UX
+     ────────────────────────────────────────────── */
+  .proposed-layout {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+  }
+
+  /* Improved sidebar */
+  .proposed-sidebar {
+    width: 220px;
+    border-right: 1px solid #1e2235;
+    background: #0f1118;
+    overflow-y: auto;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+  }
+  .sidebar-search {
+    padding: 8px;
+    border-bottom: 1px solid #1e2235;
+  }
+  .sidebar-search input {
+    width: 100%;
+    padding: 6px 10px 6px 28px;
+    background: #0c0e14;
+    border: 1px solid #252a3a;
+    border-radius: 6px;
+    color: #c8cdd8;
+    font-size: 12px;
+    outline: none;
+    font-family: inherit;
+  }
+  .sidebar-search input:focus {
+    border-color: #6ee7b7;
+    box-shadow: 0 0 0 2px #6ee7b718;
+  }
+  .sidebar-search input::placeholder { color: #3a4058; }
+  .sidebar-search-icon {
+    position: absolute;
+    left: 16px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: #3a4058;
+    font-size: 12px;
+    pointer-events: none;
+  }
+
+  /* Proposed query area */
+  .proposed-query-area {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* Improved toolbar with export + explain */
+  .proposed-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    border-bottom: 1px solid #1e2235;
+    flex-shrink: 0;
+  }
+  .toolbar-group {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .toolbar-divider {
+    width: 1px;
+    height: 20px;
+    background: #252a3a;
+    margin: 0 4px;
+  }
+  .btn-explain {
+    padding: 5px 10px;
+    background: #1a1d2e;
+    border: 1px solid #252a3a;
+    border-radius: 6px;
+    color: #a78bfa;
+    font-size: 12px;
+    cursor: pointer;
+    font-weight: 500;
+  }
+  .btn-export {
+    padding: 5px 10px;
+    background: #1a1d2e;
+    border: 1px solid #252a3a;
+    border-radius: 6px;
+    color: #60a5fa;
+    font-size: 12px;
+    cursor: pointer;
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  /* Monaco-style editor area (mockup) */
+  .proposed-editor {
+    height: 140px;
+    background: #0c0e14;
+    border-bottom: 1px solid #1e2235;
+    display: flex;
+    flex-shrink: 0;
+    overflow: hidden;
+  }
+  .editor-gutter {
+    width: 44px;
+    background: #0f1118;
+    display: flex;
+    flex-direction: column;
+    padding-top: 8px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    color: #3a4058;
+    text-align: right;
+    user-select: none;
+    line-height: 1.5;
+  }
+  .editor-gutter .line-num {
+    padding-right: 8px;
+    height: 19.5px;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+  }
+  .editor-gutter .line-num.active { color: #6b7294; }
+  .editor-code {
+    flex: 1;
+    padding: 8px 12px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 13px;
+    line-height: 1.5;
+    overflow: auto;
+    white-space: pre;
+  }
+  .sql-keyword { color: #c792ea; font-weight: 500; }
+  .sql-function { color: #82aaff; }
+  .sql-string { color: #c3e88d; }
+  .sql-number { color: #f78c6c; }
+  .sql-comment { color: #546e7a; font-style: italic; }
+  .sql-table { color: #6ee7b7; }
+  .sql-column { color: #c8cdd8; }
+  .sql-alias { color: #ffcb6b; }
+
+  /* Improved results with status bar and export */
+  .proposed-results-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 12px;
+    border-bottom: 1px solid #1e2235;
+    flex-shrink: 0;
+    background: #11131a;
+  }
+  .results-stats {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 11px;
+  }
+  .stat {
+    color: #6b7294;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .stat .value {
+    color: #c8cdd8;
+    font-weight: 600;
+    font-family: 'IBM Plex Mono', monospace;
+  }
+  .stat .label { color: #6b7294; }
+  .stat-divider { color: #252a3a; }
+  .results-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .export-dropdown {
+    position: relative;
+    display: inline-flex;
+  }
+  .export-btn-small {
+    padding: 3px 10px;
+    background: #1a1d2e;
+    border: 1px solid #252a3a;
+    border-radius: 5px;
+    color: #60a5fa;
+    font-size: 11px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-weight: 500;
+  }
+  .export-menu {
+    position: absolute;
+    top: 100%;
+    right: 0;
+    margin-top: 4px;
+    background: #11131a;
+    border: 1px solid #1e2235;
+    border-radius: 6px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+    min-width: 160px;
+    z-index: 10;
+    overflow: hidden;
+    display: none;
+  }
+  .export-dropdown:hover .export-menu,
+  .export-dropdown:focus-within .export-menu {
+    display: block;
+  }
+  .export-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 14px;
+    font-size: 12px;
+    color: #c8cdd8;
+    cursor: pointer;
+    border: none;
+    background: none;
+    width: 100%;
+    text-align: left;
+  }
+  .export-menu-item:hover {
+    background: #6ee7b710;
+  }
+  .export-icon { font-size: 14px; width: 18px; text-align: center; }
+  .export-desc { font-size: 10px; color: #3a4058; margin-top: 1px; }
+
+  /* Row number column */
+  table.data-table-proposed th.row-num,
+  table.data-table-proposed td.row-num {
+    color: #3a4058;
+    font-size: 10px;
+    text-align: right;
+    padding-right: 8px;
+    width: 40px;
+    border-right: 1px solid #1e2235;
+    user-select: none;
+  }
+
+  /* Pagination */
+  .pagination-bar {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 8px;
+    border-top: 1px solid #1e2235;
+    background: #0f1118;
+    flex-shrink: 0;
+  }
+  .page-btn {
+    padding: 4px 10px;
+    background: #1a1d2e;
+    border: 1px solid #252a3a;
+    border-radius: 4px;
+    color: #6b7294;
+    font-size: 11px;
+    cursor: pointer;
+  }
+  .page-btn.active {
+    background: #6ee7b722;
+    border-color: #6ee7b744;
+    color: #6ee7b7;
+  }
+  .page-btn:hover:not(.active) {
+    background: #252a3a;
+    color: #c8cdd8;
+  }
+  .page-info {
+    font-size: 11px;
+    color: #3a4058;
+    margin: 0 8px;
+  }
+
+  /* Tabs for results: Table / Chart / JSON */
+  .result-tabs {
+    display: flex;
+    gap: 0;
+    margin-left: auto;
+  }
+  .result-tab {
+    padding: 3px 12px;
+    background: none;
+    border: none;
+    color: #3a4058;
+    font-size: 11px;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    font-weight: 500;
+  }
+  .result-tab.active {
+    color: #c8cdd8;
+    border-bottom-color: #6ee7b7;
+    font-weight: 600;
+  }
+  .result-tab:hover:not(.active) { color: #6b7294; }
+
+  /* Query execution time badge */
+  .exec-time {
+    font-size: 10px;
+    color: #22c55e;
+    background: #22c55e12;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-weight: 500;
+  }
+
+  /* EXPLAIN panel */
+  .explain-panel {
+    background: #0c0e14;
+    border: 1px solid #a78bfa33;
+    border-radius: 6px;
+    margin: 8px 12px;
+    padding: 12px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    line-height: 1.6;
+    color: #c8cdd8;
+  }
+  .explain-header {
+    font-size: 11px;
+    color: #a78bfa;
+    font-weight: 600;
+    margin-bottom: 8px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  /* ─── Problems overlay ─── */
+  .problems-callout {
+    position: absolute;
+    background: #fb718522;
+    border: 1px solid #fb718544;
+    border-radius: 8px;
+    padding: 8px 14px;
+    font-size: 12px;
+    color: #fb7185;
+    pointer-events: none;
+    z-index: 5;
+  }
+
+  /* ─── New: Column filter in results ─── */
+  .col-filter {
+    padding: 2px 6px;
+    background: #0c0e14;
+    border: 1px solid #252a3a;
+    border-radius: 4px;
+    color: #c8cdd8;
+    font-size: 11px;
+    font-family: 'IBM Plex Mono', monospace;
+    outline: none;
+    width: 100%;
+    margin-top: 3px;
+  }
+  .col-filter:focus {
+    border-color: #6ee7b7;
+  }
+  .col-filter::placeholder { color: #252a3a; }
+
+  /* ─── Comparison note box ─── */
+  .change-note {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 10px 16px;
+    margin: 8px 12px;
+    background: #6ee7b708;
+    border: 1px solid #6ee7b722;
+    border-radius: 6px;
+    font-size: 12px;
+    color: #8b92b0;
+    line-height: 1.5;
+  }
+  .change-note strong { color: #6ee7b7; font-weight: 600; }
+  .change-note .icon { font-size: 16px; flex-shrink: 0; margin-top: 1px; }
+</style>
+</head>
+<body>
+
+<!-- Proposal Banner -->
+<div class="proposal-banner">
+  <h1>Improvement #1: Query Panel UX Redesign</h1>
+  <span class="badge">UI/UX Proposal</span>
+</div>
+
+<!-- Before / After Tabs -->
+<div class="comparison-header">
+  <div class="tab active" id="tab-current" onclick="switchView('current')">
+    Current Design
+  </div>
+  <div class="tab" id="tab-proposed" onclick="switchView('proposed')">
+    Proposed Design
+  </div>
+  <div class="tab" id="tab-explain" onclick="switchView('explain')">
+    New: EXPLAIN View
+  </div>
+</div>
+
+<div class="mockup-container">
+
+  <!-- ══════════════════════════════════════════
+       VIEW 1: CURRENT DESIGN
+       ══════════════════════════════════════════ -->
+  <div class="view active" id="view-current">
+    <div class="annotation-bar">
+      <div class="callout"><span class="callout-num red">1</span> Plain textarea — no syntax highlighting</div>
+      <div class="callout"><span class="callout-num red">2</span> No result export (CSV/JSON/clipboard)</div>
+      <div class="callout"><span class="callout-num red">3</span> No EXPLAIN / query plan view</div>
+      <div class="callout"><span class="callout-num red">4</span> No pagination — renders all rows to DOM</div>
+      <div class="callout"><span class="callout-num red">5</span> No execution time shown</div>
+    </div>
+    <div class="current-layout">
+      <!-- Sidebar -->
+      <div class="current-sidebar">
+        <div class="sb-header">Tables</div>
+        <div class="schema-name">gold <span class="schema-count">3</span></div>
+        <div class="table-item"><span class="arrow">&#9656;</span> dim_customer</div>
+        <div class="table-item"><span class="arrow">&#9656;</span> fact_orders</div>
+        <div class="table-item"><span class="arrow">&#9656;</span> summary_revenue</div>
+        <div class="schema-name">silver <span class="schema-count">4</span></div>
+        <div class="table-item"><span class="arrow">&#9656;</span> customers</div>
+        <div class="table-item"><span class="arrow">&#9656;</span> orders</div>
+        <div class="table-item"><span class="arrow">&#9656;</span> products</div>
+        <div class="table-item"><span class="arrow">&#9656;</span> order_items</div>
+        <div class="schema-name">bronze <span class="schema-count">3</span></div>
+        <div class="table-item"><span class="arrow">&#9656;</span> raw_customers</div>
+        <div class="table-item"><span class="arrow">&#9656;</span> raw_orders</div>
+        <div class="table-item"><span class="arrow">&#9656;</span> raw_products</div>
+        <div class="schema-name">landing <span class="schema-count">2</span></div>
+        <div class="table-item"><span class="arrow">&#9656;</span> csv_upload</div>
+        <div class="table-item"><span class="arrow">&#9656;</span> api_data</div>
+      </div>
+
+      <!-- Query area -->
+      <div class="current-query-area">
+        <div class="current-toolbar">
+          <button class="btn-run">Run <span class="shortcut-label">Ctrl+Enter</span></button>
+          <button class="btn-secondary">Format <span class="shortcut-label">Ctrl+Shift+F</span></button>
+          <button class="btn-secondary">&#9200;</button>
+          <div class="view-toggle">
+            <button class="active">Table</button>
+            <button>Chart</button>
+          </div>
+        </div>
+        <textarea class="current-textarea" spellcheck="false" readonly>SELECT
+  c.customer_id,
+  c.name,
+  COUNT(o.order_id) AS order_count,
+  SUM(o.total_amount) AS lifetime_value
+FROM silver.customers c
+LEFT JOIN silver.orders o ON c.customer_id = o.customer_id
+GROUP BY 1, 2
+ORDER BY lifetime_value DESC
+LIMIT 1000</textarea>
+        <div class="shortcut-bar">
+          <span class="kbd">Ctrl+Enter</span> run &nbsp;&middot;&nbsp;
+          <span class="kbd">Ctrl+Shift+F</span> format &nbsp;&middot;&nbsp;
+          <span class="kbd">Tab</span> autocomplete
+        </div>
+        <div class="results-header">847 rows, 4 columns</div>
+        <div class="results-area">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>customer_id <span class="type-badge" style="color:#6ee7b7">123</span></th>
+                <th>name <span class="type-badge" style="color:#22c55e">VARCHAR</span></th>
+                <th>order_count <span class="type-badge" style="color:#6ee7b7">123</span></th>
+                <th>lifetime_value <span class="type-badge" style="color:#6ee7b7">1.2</span></th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td>1042</td><td>Acme Corporation</td><td>156</td><td>892,340.50</td></tr>
+              <tr><td>2891</td><td>TechFlow Inc</td><td>134</td><td>745,120.00</td></tr>
+              <tr><td>1523</td><td>DataDriven Co</td><td>121</td><td>623,890.75</td></tr>
+              <tr><td>3847</td><td>CloudScale LLC</td><td>98</td><td>512,445.25</td></tr>
+              <tr><td>915</td><td>AnalyticsPro</td><td>87</td><td>498,230.00</td></tr>
+              <tr><td>4201</td><td>InsightHub</td><td>76</td><td>421,670.50</td></tr>
+              <tr><td>2156</td><td>MetricsMaster</td><td>72</td><td>389,100.00</td></tr>
+              <tr><td>3390</td><td>StreamLine Corp</td><td>65</td><td>345,780.25</td></tr>
+              <tr><td>1788</td><td>PipelineWorks</td><td>61</td><td>312,450.75</td></tr>
+              <tr><td>5034</td><td>QueryForge</td><td>58</td><td>298,340.00</td></tr>
+              <tr><td>892</td><td>TableStack</td><td>54</td><td>276,890.50</td></tr>
+              <tr><td>4567</td><td>WarehouseOne</td><td>51</td><td>261,430.00</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════
+       VIEW 2: PROPOSED DESIGN
+       ══════════════════════════════════════════ -->
+  <div class="view" id="view-proposed">
+    <div class="annotation-bar">
+      <div class="callout"><span class="callout-num green">1</span> Syntax-highlighted editor with line numbers</div>
+      <div class="callout"><span class="callout-num blue">2</span> Export to CSV, JSON, clipboard</div>
+      <div class="callout"><span class="callout-num purple">3</span> EXPLAIN button for query plans</div>
+      <div class="callout"><span class="callout-num amber">4</span> Paginated results + row numbers</div>
+      <div class="callout"><span class="callout-num green">5</span> Execution time + row count status bar</div>
+    </div>
+    <div class="proposed-layout">
+      <!-- Improved Sidebar with search -->
+      <div class="proposed-sidebar">
+        <div class="sidebar-search" style="position:relative">
+          <span class="sidebar-search-icon">&#128269;</span>
+          <input type="text" placeholder="Filter tables..." value="" readonly>
+        </div>
+        <div style="overflow-y:auto; flex:1; padding:4px 0">
+          <div class="schema-name" style="padding:5px 10px 2px">gold <span class="schema-count">3</span></div>
+          <div class="table-item"><span class="arrow">&#9656;</span> dim_customer</div>
+          <div class="table-item"><span class="arrow">&#9656;</span> fact_orders</div>
+          <div class="table-item"><span class="arrow">&#9656;</span> summary_revenue</div>
+          <div class="schema-name" style="padding:5px 10px 2px">silver <span class="schema-count">4</span></div>
+          <div class="table-item"><span class="arrow">&#9662;</span> customers</div>
+          <div style="padding-left:30px; padding-bottom:2px">
+            <div style="display:flex; justify-content:space-between; padding:1px 8px; font-size:11px; font-family:'IBM Plex Mono',monospace">
+              <span style="color:#8b92b0">customer_id</span>
+              <span style="color:#3a4058; font-size:10px">INTEGER</span>
+            </div>
+            <div style="display:flex; justify-content:space-between; padding:1px 8px; font-size:11px; font-family:'IBM Plex Mono',monospace">
+              <span style="color:#8b92b0">name</span>
+              <span style="color:#3a4058; font-size:10px">VARCHAR</span>
+            </div>
+            <div style="display:flex; justify-content:space-between; padding:1px 8px; font-size:11px; font-family:'IBM Plex Mono',monospace">
+              <span style="color:#8b92b0">email</span>
+              <span style="color:#3a4058; font-size:10px">VARCHAR</span>
+            </div>
+          </div>
+          <div class="table-item"><span class="arrow">&#9656;</span> orders</div>
+          <div class="table-item"><span class="arrow">&#9656;</span> products</div>
+          <div class="table-item"><span class="arrow">&#9656;</span> order_items</div>
+          <div class="schema-name" style="padding:5px 10px 2px">bronze <span class="schema-count">3</span></div>
+          <div class="table-item"><span class="arrow">&#9656;</span> raw_customers</div>
+          <div class="table-item"><span class="arrow">&#9656;</span> raw_orders</div>
+          <div class="table-item"><span class="arrow">&#9656;</span> raw_products</div>
+        </div>
+      </div>
+
+      <!-- Improved Query area -->
+      <div class="proposed-query-area">
+        <!-- Toolbar with Explain + Export -->
+        <div class="proposed-toolbar">
+          <div class="toolbar-group">
+            <button class="btn-run">&#9654; Run <span class="shortcut-label">Ctrl+Enter</span></button>
+            <button class="btn-secondary">Format</button>
+          </div>
+          <div class="toolbar-divider"></div>
+          <div class="toolbar-group">
+            <button class="btn-explain">&#128202; Explain</button>
+          </div>
+          <div class="toolbar-divider"></div>
+          <div class="toolbar-group">
+            <button class="btn-secondary">&#9200; History</button>
+          </div>
+        </div>
+
+        <!-- Syntax-highlighted editor (mockup) -->
+        <div class="proposed-editor">
+          <div class="editor-gutter">
+            <div class="line-num active">1</div>
+            <div class="line-num">2</div>
+            <div class="line-num">3</div>
+            <div class="line-num">4</div>
+            <div class="line-num">5</div>
+            <div class="line-num">6</div>
+            <div class="line-num">7</div>
+          </div>
+          <div class="editor-code"><span class="sql-keyword">SELECT</span>
+  <span class="sql-column">c</span>.<span class="sql-column">customer_id</span>,
+  <span class="sql-column">c</span>.<span class="sql-column">name</span>,
+  <span class="sql-function">COUNT</span>(<span class="sql-column">o</span>.<span class="sql-column">order_id</span>) <span class="sql-keyword">AS</span> <span class="sql-alias">order_count</span>,
+  <span class="sql-function">SUM</span>(<span class="sql-column">o</span>.<span class="sql-column">total_amount</span>) <span class="sql-keyword">AS</span> <span class="sql-alias">lifetime_value</span>
+<span class="sql-keyword">FROM</span> <span class="sql-table">silver.customers</span> <span class="sql-alias">c</span>
+<span class="sql-keyword">LEFT JOIN</span> <span class="sql-table">silver.orders</span> <span class="sql-alias">o</span> <span class="sql-keyword">ON</span> <span class="sql-column">c</span>.<span class="sql-column">customer_id</span> = <span class="sql-column">o</span>.<span class="sql-column">customer_id</span></div>
+        </div>
+
+        <!-- Improved results bar with stats + export -->
+        <div class="proposed-results-bar">
+          <div class="results-stats">
+            <div class="stat">
+              <span class="value">847</span>
+              <span class="label">rows</span>
+            </div>
+            <span class="stat-divider">&middot;</span>
+            <div class="stat">
+              <span class="value">4</span>
+              <span class="label">columns</span>
+            </div>
+            <span class="stat-divider">&middot;</span>
+            <span class="exec-time">42ms</span>
+          </div>
+          <div class="results-actions">
+            <div class="result-tabs">
+              <button class="result-tab active">Table</button>
+              <button class="result-tab">Chart</button>
+              <button class="result-tab">JSON</button>
+            </div>
+            <div class="toolbar-divider"></div>
+            <!-- Export dropdown -->
+            <div class="export-dropdown" tabindex="0">
+              <button class="export-btn-small">&#11123; Export</button>
+              <div class="export-menu">
+                <button class="export-menu-item">
+                  <span class="export-icon">&#128196;</span>
+                  <div>
+                    <div>Download CSV</div>
+                    <div class="export-desc">Comma-separated values</div>
+                  </div>
+                </button>
+                <button class="export-menu-item">
+                  <span class="export-icon">{ }</span>
+                  <div>
+                    <div>Download JSON</div>
+                    <div class="export-desc">Array of objects</div>
+                  </div>
+                </button>
+                <button class="export-menu-item">
+                  <span class="export-icon">&#128203;</span>
+                  <div>
+                    <div>Copy to Clipboard</div>
+                    <div class="export-desc">Tab-separated for spreadsheets</div>
+                  </div>
+                </button>
+                <button class="export-menu-item">
+                  <span class="export-icon">&#127912;</span>
+                  <div>
+                    <div>Copy as Markdown</div>
+                    <div class="export-desc">Markdown table format</div>
+                  </div>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Data table with row numbers -->
+        <div class="results-area">
+          <table class="data-table data-table-proposed">
+            <thead>
+              <tr>
+                <th class="row-num">#</th>
+                <th>customer_id <span class="type-badge" style="color:#6ee7b7">INTEGER</span></th>
+                <th>name <span class="type-badge" style="color:#22c55e">VARCHAR</span></th>
+                <th>order_count <span class="type-badge" style="color:#6ee7b7">BIGINT</span></th>
+                <th>lifetime_value <span class="type-badge" style="color:#6ee7b7">DECIMAL</span></th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td class="row-num">1</td><td>1042</td><td>Acme Corporation</td><td>156</td><td style="text-align:right">892,340.50</td></tr>
+              <tr><td class="row-num">2</td><td>2891</td><td>TechFlow Inc</td><td>134</td><td style="text-align:right">745,120.00</td></tr>
+              <tr><td class="row-num">3</td><td>1523</td><td>DataDriven Co</td><td>121</td><td style="text-align:right">623,890.75</td></tr>
+              <tr><td class="row-num">4</td><td>3847</td><td>CloudScale LLC</td><td>98</td><td style="text-align:right">512,445.25</td></tr>
+              <tr><td class="row-num">5</td><td>915</td><td>AnalyticsPro</td><td>87</td><td style="text-align:right">498,230.00</td></tr>
+              <tr><td class="row-num">6</td><td>4201</td><td>InsightHub</td><td>76</td><td style="text-align:right">421,670.50</td></tr>
+              <tr><td class="row-num">7</td><td>2156</td><td>MetricsMaster</td><td>72</td><td style="text-align:right">389,100.00</td></tr>
+              <tr><td class="row-num">8</td><td>3390</td><td>StreamLine Corp</td><td>65</td><td style="text-align:right">345,780.25</td></tr>
+              <tr><td class="row-num">9</td><td>1788</td><td>PipelineWorks</td><td>61</td><td style="text-align:right">312,450.75</td></tr>
+              <tr><td class="row-num">10</td><td>5034</td><td>QueryForge</td><td>58</td><td style="text-align:right">298,340.00</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Pagination -->
+        <div class="pagination-bar">
+          <button class="page-btn" disabled>&laquo;</button>
+          <button class="page-btn active">1</button>
+          <button class="page-btn">2</button>
+          <button class="page-btn">3</button>
+          <span class="page-info">&hellip;</span>
+          <button class="page-btn">85</button>
+          <button class="page-btn">&raquo;</button>
+          <span class="page-info">10 rows/page</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════
+       VIEW 3: EXPLAIN QUERY PLAN
+       ══════════════════════════════════════════ -->
+  <div class="view" id="view-explain">
+    <div class="annotation-bar">
+      <div class="callout"><span class="callout-num purple">NEW</span> Click "Explain" to see the DuckDB query plan without executing</div>
+    </div>
+    <div class="proposed-layout">
+      <div class="proposed-sidebar">
+        <div class="sidebar-search" style="position:relative">
+          <span class="sidebar-search-icon">&#128269;</span>
+          <input type="text" placeholder="Filter tables..." value="" readonly>
+        </div>
+        <div style="overflow-y:auto; flex:1; padding:4px 0">
+          <div class="schema-name" style="padding:5px 10px 2px">gold <span class="schema-count">3</span></div>
+          <div class="table-item"><span class="arrow">&#9656;</span> dim_customer</div>
+          <div class="table-item"><span class="arrow">&#9656;</span> fact_orders</div>
+          <div class="table-item"><span class="arrow">&#9656;</span> summary_revenue</div>
+          <div class="schema-name" style="padding:5px 10px 2px">silver <span class="schema-count">4</span></div>
+          <div class="table-item"><span class="arrow">&#9656;</span> customers</div>
+          <div class="table-item"><span class="arrow">&#9656;</span> orders</div>
+          <div class="table-item"><span class="arrow">&#9656;</span> products</div>
+          <div class="table-item"><span class="arrow">&#9656;</span> order_items</div>
+        </div>
+      </div>
+
+      <div class="proposed-query-area">
+        <div class="proposed-toolbar">
+          <div class="toolbar-group">
+            <button class="btn-run">&#9654; Run <span class="shortcut-label">Ctrl+Enter</span></button>
+            <button class="btn-secondary">Format</button>
+          </div>
+          <div class="toolbar-divider"></div>
+          <div class="toolbar-group">
+            <button class="btn-explain" style="background:#a78bfa22; border-color:#a78bfa44">&#128202; Explain</button>
+          </div>
+        </div>
+
+        <div class="proposed-editor" style="height:100px">
+          <div class="editor-gutter">
+            <div class="line-num active">1</div>
+            <div class="line-num">2</div>
+            <div class="line-num">3</div>
+            <div class="line-num">4</div>
+            <div class="line-num">5</div>
+          </div>
+          <div class="editor-code"><span class="sql-keyword">SELECT</span> <span class="sql-column">c</span>.<span class="sql-column">customer_id</span>, <span class="sql-column">c</span>.<span class="sql-column">name</span>,
+  <span class="sql-function">COUNT</span>(<span class="sql-column">o</span>.<span class="sql-column">order_id</span>) <span class="sql-keyword">AS</span> <span class="sql-alias">order_count</span>,
+  <span class="sql-function">SUM</span>(<span class="sql-column">o</span>.<span class="sql-column">total_amount</span>) <span class="sql-keyword">AS</span> <span class="sql-alias">lifetime_value</span>
+<span class="sql-keyword">FROM</span> <span class="sql-table">silver.customers</span> <span class="sql-alias">c</span>
+<span class="sql-keyword">LEFT JOIN</span> <span class="sql-table">silver.orders</span> <span class="sql-alias">o</span> <span class="sql-keyword">ON</span> <span class="sql-column">c</span>.<span class="sql-column">customer_id</span> = <span class="sql-column">o</span>.<span class="sql-column">customer_id</span></div>
+        </div>
+
+        <!-- EXPLAIN output -->
+        <div style="flex:1; overflow:auto; padding-bottom:12px">
+          <div class="explain-panel">
+            <div class="explain-header">
+              <span>&#128202;</span> Query Plan
+              <span style="margin-left:auto; font-size:10px; font-weight:400; color:#6b7294">EXPLAIN ANALYZE</span>
+            </div>
+            <div style="color:#c8cdd8; line-height:1.8">
+<span style="color:#a78bfa">&#9500;&#9472;&#9472;</span> <span style="color:#82aaff">PROJECTION</span> <span style="color:#3a4058">[4 columns]</span>
+<span style="color:#a78bfa">&#9474;</span>   customer_id, name, order_count, lifetime_value
+<span style="color:#a78bfa">&#9474;</span>
+<span style="color:#a78bfa">&#9500;&#9472;&#9472;</span> <span style="color:#82aaff">HASH_GROUP_BY</span> <span style="color:#3a4058">[groups: 2, aggregates: 2]</span>
+<span style="color:#a78bfa">&#9474;</span>   Groups: c.customer_id, c.name
+<span style="color:#a78bfa">&#9474;</span>   Aggregates: <span style="color:#ffcb6b">count(o.order_id)</span>, <span style="color:#ffcb6b">sum(o.total_amount)</span>
+<span style="color:#a78bfa">&#9474;</span>   <span style="color:#22c55e">Estimated Cardinality: 847</span>
+<span style="color:#a78bfa">&#9474;</span>
+<span style="color:#a78bfa">&#9500;&#9472;&#9472;</span> <span style="color:#82aaff">HASH_JOIN</span> <span style="color:#3a4058">[LEFT, condition: c.customer_id = o.customer_id]</span>
+<span style="color:#a78bfa">&#9474;</span>   <span style="color:#22c55e">Estimated Cardinality: 12,450</span>
+<span style="color:#a78bfa">&#9474;</span>
+<span style="color:#a78bfa">&#9474; &#9500;&#9472;</span> <span style="color:#82aaff">SEQ_SCAN</span> <span style="color:#6ee7b7">silver.customers</span> <span style="color:#3a4058">[847 rows]</span>
+<span style="color:#a78bfa">&#9474; &#9474;</span>   Columns: customer_id, name
+<span style="color:#a78bfa">&#9474; &#9474;</span>   <span style="color:#22c55e">Rows: 847 | Time: 0.3ms</span>
+<span style="color:#a78bfa">&#9474; &#9474;</span>
+<span style="color:#a78bfa">&#9474; &#9492;&#9472;</span> <span style="color:#82aaff">SEQ_SCAN</span> <span style="color:#6ee7b7">silver.orders</span> <span style="color:#3a4058">[12,450 rows]</span>
+<span style="color:#a78bfa">   &#9474;</span>   Columns: customer_id, order_id, total_amount
+<span style="color:#a78bfa">   &#9474;</span>   <span style="color:#22c55e">Rows: 12,450 | Time: 1.2ms</span>
+            </div>
+          </div>
+
+          <div class="change-note">
+            <span class="icon">&#128161;</span>
+            <div>
+              <strong>Why this matters:</strong> Users can now understand query performance without
+              executing the full query. This is especially useful for large tables where running a bad
+              query could lock the warehouse. The EXPLAIN view maps to DuckDB's
+              <code style="background:#1a1d2e; padding:1px 6px; border-radius:3px; font-size:11px">EXPLAIN ANALYZE</code>
+              or <code style="background:#1a1d2e; padding:1px 6px; border-radius:3px; font-size:11px">EXPLAIN</code> statements.
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+function switchView(name) {
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  document.querySelectorAll('.comparison-header .tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('view-' + name).classList.add('active');
+  document.getElementById('tab-' + name).classList.add('active');
+}
+</script>
+
+</body>
+</html>
