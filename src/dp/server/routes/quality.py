@@ -34,14 +34,39 @@ class TestAlertRequest(BaseModel):
 
 @router.get("/api/freshness")
 def get_freshness(
-    request: Request, conn: DbConnReadOnly, max_hours: float = 24.0
+    request: Request, conn: DbConnReadOnly, max_hours: float = 24.0, send_alerts: bool = False,
 ) -> list[dict]:
-    """Check model freshness: which models are stale?"""
+    """Check model freshness: which models are stale?
+
+    If send_alerts=true and stale models are found, sends alerts via
+    configured channels (Slack, webhook).
+    """
     _require_permission(request, "read")
     from dp.engine.transform import check_freshness
 
     ensure_meta_table(conn)
-    return check_freshness(conn, max_age_hours=max_hours)
+    results = check_freshness(conn, max_age_hours=max_hours)
+
+    if send_alerts:
+        stale = [r for r in results if r.get("is_stale")]
+        if stale:
+            try:
+                from dp.engine.alerts import AlertConfig, alert_stale_models
+
+                config = _get_config()
+                alerts_cfg = config.alerts
+                if alerts_cfg and alerts_cfg.on_stale:
+                    alert_config = AlertConfig(
+                        slack_webhook_url=alerts_cfg.slack_webhook_url,
+                        webhook_url=alerts_cfg.webhook_url,
+                        channels=alerts_cfg.channels,
+                    )
+                    if alert_config.slack_webhook_url or alert_config.webhook_url:
+                        alert_stale_models(stale, alert_config)
+            except Exception:
+                pass  # Don't fail the freshness check because of alert failures
+
+    return results
 
 
 # --- Model profiles ---

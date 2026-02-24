@@ -137,10 +137,33 @@ export interface StreamConfig {
 // ---- API client ----
 
 const BASE = "/api";
+const DEFAULT_TIMEOUT_MS = 30_000;
+const LONG_TIMEOUT_MS = 300_000; // 5 min for transforms, streams, imports
 
 let authToken: string | null = localStorage.getItem("dp_token") || null;
 
-async function request<T = unknown>(path: string, options: RequestInit = {}): Promise<T> {
+// Active abort controllers — allows callers to cancel in-flight requests
+const _activeControllers = new Map<string, AbortController>();
+
+function _makeController(key?: string): AbortController {
+  const controller = new AbortController();
+  if (key) {
+    // Cancel any previous request with the same key
+    _activeControllers.get(key)?.abort();
+    _activeControllers.set(key, controller);
+  }
+  return controller;
+}
+
+async function request<T = unknown>(
+  path: string,
+  options: RequestInit = {},
+  timeoutMs: number = DEFAULT_TIMEOUT_MS,
+  cancelKey?: string,
+): Promise<T> {
+  const controller = _makeController(cancelKey);
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
     ...(options.headers as Record<string, string> || {}),
@@ -148,18 +171,38 @@ async function request<T = unknown>(path: string, options: RequestInit = {}): Pr
   if (authToken) {
     headers["Authorization"] = `Bearer ${authToken}`;
   }
-  const res = await fetch(`${BASE}${path}`, { ...options, headers });
-  if (res.status === 401) {
-    authToken = null;
-    localStorage.removeItem("dp_token");
-    window.dispatchEvent(new Event("dp_auth_required"));
-    throw new Error("Authentication required");
+  try {
+    const res = await fetch(`${BASE}${path}`, {
+      ...options,
+      headers,
+      signal: options.signal ?? controller.signal,
+    });
+    if (res.status === 401) {
+      authToken = null;
+      localStorage.removeItem("dp_token");
+      window.dispatchEvent(new Event("dp_auth_required"));
+      throw new Error("Authentication required");
+    }
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(text || res.statusText);
+    }
+    return res.json() as Promise<T>;
+  } catch (e: unknown) {
+    if (e instanceof DOMException && e.name === "AbortError") {
+      throw new Error(`Request timed out after ${Math.round(timeoutMs / 1000)}s`);
+    }
+    throw e;
+  } finally {
+    clearTimeout(timer);
+    if (cancelKey) _activeControllers.delete(cancelKey);
   }
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(text || res.statusText);
-  }
-  return res.json() as Promise<T>;
+}
+
+/** Cancel an in-flight request by its cancel key. */
+function cancelRequest(key: string): void {
+  _activeControllers.get(key)?.abort();
+  _activeControllers.delete(key);
 }
 
 export const api = {
@@ -213,23 +256,24 @@ export const api = {
     request<TransformResult>("/transform", {
       method: "POST",
       body: JSON.stringify({ targets, force }),
-    }),
+    }, LONG_TIMEOUT_MS),
 
   // Run script
   runScript: (scriptPath: string) =>
     request<ScriptResult>("/run", {
       method: "POST",
       body: JSON.stringify({ script_path: scriptPath }),
-    }),
+    }, LONG_TIMEOUT_MS),
 
   // Streams
   listStreams: () => request<Record<string, StreamConfig>>("/streams"),
   runStream: (name: string, force: boolean = false) =>
-    request<StreamResult>(`/stream/${name}?force=${force}`, { method: "POST" }),
+    request<StreamResult>(`/stream/${name}?force=${force}`, { method: "POST" }, LONG_TIMEOUT_MS),
 
   // Query
   runQuery: (sql: string, limit: number = 1000) =>
-    request<QueryResult>("/query", { method: "POST", body: JSON.stringify({ sql, limit }) }),
+    request<QueryResult>("/query", { method: "POST", body: JSON.stringify({ sql, limit }) }, LONG_TIMEOUT_MS, "query"),
+  cancelQuery: () => cancelRequest("query"),
 
   // Tables
   listTables: (schema: string | null = null) =>
@@ -281,7 +325,7 @@ export const api = {
     request(`/notebooks/create/${name}?title=${encodeURIComponent(title)}`, {
       method: "POST",
     }),
-  runNotebook: (name: string) => request(`/notebooks/run/${name}`, { method: "POST" }),
+  runNotebook: (name: string) => request(`/notebooks/run/${name}`, { method: "POST" }, LONG_TIMEOUT_MS),
   runCell: (name: string, source: string, { reset = false, cell_type = "code" }: { reset?: boolean; cell_type?: string } = {}) =>
     request(`/notebooks/run-cell/${name}`, {
       method: "POST",
@@ -298,7 +342,7 @@ export const api = {
     request("/import/file", {
       method: "POST",
       body: JSON.stringify({ file_path, target_schema, target_table }),
-    }),
+    }, LONG_TIMEOUT_MS),
   testConnection: (connection_type: string, params: Record<string, unknown>) =>
     request("/import/test-connection", {
       method: "POST",
@@ -334,7 +378,7 @@ export const api = {
       body: JSON.stringify(config || {}),
     }),
   syncConnector: (connection_name: string) =>
-    request(`/connectors/sync/${connection_name}`, { method: "POST" }),
+    request(`/connectors/sync/${connection_name}`, { method: "POST" }, LONG_TIMEOUT_MS),
   removeConnector: (connection_name: string) =>
     request(`/connectors/${connection_name}`, { method: "DELETE" }),
 

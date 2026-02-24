@@ -138,7 +138,8 @@ export default function QueryPanel({ addOutput }) {
   const [acItems, setAcItems] = useState([]);
   const [acIndex, setAcIndex] = useState(0);
   const [acToken, setAcToken] = useState(""); // the token being completed
-  const colCacheRef = useRef({}); // schema.table -> columns[]
+  const colCacheRef = useRef(new Map()); // LRU-style bounded map: schema.table -> columns[]
+  const COL_CACHE_MAX = 200;
 
   useEffect(() => {
     api.listTables().then(setTables).catch((e) => console.warn("Failed to load tables:", e.message));
@@ -281,12 +282,17 @@ export default function QueryPanel({ addOutput }) {
       let colMatches = [];
       if (exactTable) {
         const key = `${exactTable.schema}.${exactTable.name}`;
-        let cols = colCacheRef.current[key];
+        let cols = colCacheRef.current.get(key);
         if (!cols) {
           try {
             const info = await api.describeTable(exactTable.schema, exactTable.name);
             cols = info.columns || [];
-            colCacheRef.current[key] = cols;
+            colCacheRef.current.set(key, cols);
+            // Evict oldest if over limit
+            if (colCacheRef.current.size > COL_CACHE_MAX) {
+              const oldest = colCacheRef.current.keys().next().value;
+              colCacheRef.current.delete(oldest);
+            }
           } catch { cols = []; }
         }
         colMatches = cols.slice(0, 8).map((c) => ({

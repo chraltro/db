@@ -4,8 +4,35 @@ import { useTheme } from "./ThemeProvider";
 import { getTheme } from "./themes";
 import { api } from "./api";
 
-// Cache for table schema lookups to avoid repeated API calls
-const schemaCache = new Map();
+// LRU cache for table schema lookups — bounded to avoid unbounded memory growth
+class LRUCache {
+  constructor(maxSize = 200) {
+    this._max = maxSize;
+    this._cache = new Map();
+  }
+  get(key) {
+    if (!this._cache.has(key)) return undefined;
+    const val = this._cache.get(key);
+    // Move to end (most recently used)
+    this._cache.delete(key);
+    this._cache.set(key, val);
+    return val;
+  }
+  set(key, val) {
+    this._cache.delete(key);
+    this._cache.set(key, val);
+    if (this._cache.size > this._max) {
+      // Evict oldest entry
+      const oldest = this._cache.keys().next().value;
+      this._cache.delete(oldest);
+    }
+  }
+  has(key) {
+    return this._cache.has(key);
+  }
+}
+
+const schemaCache = new LRUCache(200);
 // Cached table list for completions (populated on first completion request)
 let tablesCache = null;
 let tablesCacheTime = 0;

@@ -100,13 +100,14 @@ def _execute_incremental(
 
         if strategy == "merge":
             # True upsert: UPDATE existing rows, INSERT new ones
+            # Use IS NOT DISTINCT FROM to correctly match NULL keys
             non_key_cols = [c for c in staging_col_names if c not in keys]
             if non_key_cols:
                 set_clause = ", ".join(
                     f'"{c}" = staging."{c}"' for c in non_key_cols
                 )
                 join_cond = " AND ".join(
-                    f'target."{k}" = staging."{k}"' for k in keys
+                    f'target."{k}" IS NOT DISTINCT FROM staging."{k}"' for k in keys
                 )
                 conn.execute(
                     f"UPDATE {model.full_name} AS target SET {set_clause} "
@@ -114,7 +115,7 @@ def _execute_incremental(
                 )
             # Insert rows that don't already exist
             not_exists_cond = " AND ".join(
-                f'staging."{k}" = target."{k}"' for k in keys
+                f'staging."{k}" IS NOT DISTINCT FROM target."{k}"' for k in keys
             )
             insert_cols = ", ".join(f'"{c}"' for c in staging_col_names)
             conn.execute(
@@ -137,9 +138,13 @@ def _execute_incremental(
             )
         else:
             # delete+insert strategy: delete by key, insert new
+            # Use IS NOT DISTINCT FROM to correctly match NULL keys
+            del_join_cond = " AND ".join(
+                f'target."{k}" IS NOT DISTINCT FROM staging."{k}"' for k in keys
+            )
             conn.execute(
-                f"DELETE FROM {model.full_name} "
-                f"WHERE ({key_cols}) IN (SELECT {key_cols} FROM {staging_name})"
+                f"DELETE FROM {model.full_name} AS target "
+                f"USING {staging_name} AS staging WHERE {del_join_cond}"
             )
             insert_cols = ", ".join(f'"{c}"' for c in staging_col_names)
             conn.execute(

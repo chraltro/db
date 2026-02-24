@@ -22,23 +22,29 @@ from dp.engine.database import connect, ensure_meta_table, log_run
 logger = logging.getLogger("dp.importer")
 
 
+def _escape_path(file_path: str) -> str:
+    """Escape single quotes in file paths for safe SQL interpolation."""
+    return str(file_path).replace("'", "''")
+
+
 def preview_file(file_path: str, limit: int = 100) -> dict:
     """Preview data from a local file (CSV, Parquet, JSON)."""
     path = Path(file_path)
     if not path.exists():
         raise FileNotFoundError(f"File not found: {file_path}")
 
+    safe_path = _escape_path(file_path)
     conn = duckdb.connect(":memory:")
     try:
         ext = path.suffix.lower()
         if ext == ".csv":
-            query = f"SELECT * FROM read_csv('{file_path}', auto_detect=true) LIMIT {limit}"
+            query = f"SELECT * FROM read_csv('{safe_path}', auto_detect=true) LIMIT {limit}"
         elif ext in (".parquet", ".pq"):
-            query = f"SELECT * FROM read_parquet('{file_path}') LIMIT {limit}"
+            query = f"SELECT * FROM read_parquet('{safe_path}') LIMIT {limit}"
         elif ext in (".json", ".jsonl", ".ndjson"):
-            query = f"SELECT * FROM read_json('{file_path}', auto_detect=true) LIMIT {limit}"
+            query = f"SELECT * FROM read_json('{safe_path}', auto_detect=true) LIMIT {limit}"
         elif ext in (".xlsx", ".xls"):
-            query = f"SELECT * FROM st_read('{file_path}') LIMIT {limit}"
+            query = f"SELECT * FROM st_read('{safe_path}') LIMIT {limit}"
         else:
             raise ValueError(f"Unsupported file type: {ext}")
 
@@ -68,18 +74,19 @@ def preview_file(file_path: str, limit: int = 100) -> dict:
 
 def preview_query(connection_string: str, query: str, limit: int = 100) -> dict:
     """Preview data from an external database using DuckDB's extension system."""
+    safe_conn = _escape_path(connection_string)
     conn = duckdb.connect(":memory:")
     try:
         # Install and load extensions as needed
         if "postgres" in connection_string.lower() or "postgresql" in connection_string.lower():
             conn.execute("INSTALL postgres; LOAD postgres;")
-            conn.execute(f"ATTACH '{connection_string}' AS ext_db (TYPE POSTGRES, READ_ONLY)")
+            conn.execute(f"ATTACH '{safe_conn}' AS ext_db (TYPE POSTGRES, READ_ONLY)")
         elif "mysql" in connection_string.lower():
             conn.execute("INSTALL mysql; LOAD mysql;")
-            conn.execute(f"ATTACH '{connection_string}' AS ext_db (TYPE MYSQL, READ_ONLY)")
+            conn.execute(f"ATTACH '{safe_conn}' AS ext_db (TYPE MYSQL, READ_ONLY)")
         elif "sqlite" in connection_string.lower() or connection_string.endswith(".db"):
             conn.execute("INSTALL sqlite; LOAD sqlite;")
-            conn.execute(f"ATTACH '{connection_string}' AS ext_db (TYPE SQLITE, READ_ONLY)")
+            conn.execute(f"ATTACH '{safe_conn}' AS ext_db (TYPE SQLITE, READ_ONLY)")
 
         limited_query = f"SELECT * FROM ({query}) sub LIMIT {limit}"
         result = conn.execute(limited_query)
@@ -102,16 +109,17 @@ def test_connection(connection_type: str, params: dict) -> dict:
     conn = duckdb.connect(":memory:")
     try:
         conn_string = _build_connection_string(connection_type, params)
+        safe_conn = _escape_path(conn_string)
 
         if connection_type == "postgres":
             conn.execute("INSTALL postgres; LOAD postgres;")
-            conn.execute(f"ATTACH '{conn_string}' AS ext_db (TYPE POSTGRES, READ_ONLY)")
+            conn.execute(f"ATTACH '{safe_conn}' AS ext_db (TYPE POSTGRES, READ_ONLY)")
         elif connection_type == "mysql":
             conn.execute("INSTALL mysql; LOAD mysql;")
-            conn.execute(f"ATTACH '{conn_string}' AS ext_db (TYPE MYSQL, READ_ONLY)")
+            conn.execute(f"ATTACH '{safe_conn}' AS ext_db (TYPE MYSQL, READ_ONLY)")
         elif connection_type == "sqlite":
             conn.execute("INSTALL sqlite; LOAD sqlite;")
-            conn.execute(f"ATTACH '{conn_string}' AS ext_db (TYPE SQLITE, READ_ONLY)")
+            conn.execute(f"ATTACH '{safe_conn}' AS ext_db (TYPE SQLITE, READ_ONLY)")
         else:
             return {"success": False, "error": f"Unsupported connection type: {connection_type}"}
 
@@ -150,23 +158,24 @@ def import_file(
     db_conn.execute(f"CREATE SCHEMA IF NOT EXISTS {target_schema}")
 
     ext = path.suffix.lower()
+    safe_path = _escape_path(file_path)
     start = time.perf_counter()
 
     try:
         if ext == ".csv":
             db_conn.execute(
                 f"CREATE OR REPLACE TABLE {full_name} AS "
-                f"SELECT * FROM read_csv('{file_path}', auto_detect=true)"
+                f"SELECT * FROM read_csv('{safe_path}', auto_detect=true)"
             )
         elif ext in (".parquet", ".pq"):
             db_conn.execute(
                 f"CREATE OR REPLACE TABLE {full_name} AS "
-                f"SELECT * FROM read_parquet('{file_path}')"
+                f"SELECT * FROM read_parquet('{safe_path}')"
             )
         elif ext in (".json", ".jsonl", ".ndjson"):
             db_conn.execute(
                 f"CREATE OR REPLACE TABLE {full_name} AS "
-                f"SELECT * FROM read_json('{file_path}', auto_detect=true)"
+                f"SELECT * FROM read_json('{safe_path}', auto_detect=true)"
             )
         else:
             raise ValueError(f"Unsupported file type: {ext}")
@@ -206,18 +215,19 @@ def import_from_connection(
     db_conn.execute(f"CREATE SCHEMA IF NOT EXISTS {target_schema}")
 
     conn_string = _build_connection_string(connection_type, params)
+    safe_conn = _escape_path(conn_string)
     start = time.perf_counter()
 
     try:
         if connection_type == "postgres":
             db_conn.execute("INSTALL postgres; LOAD postgres;")
-            db_conn.execute(f"ATTACH '{conn_string}' AS _import_src (TYPE POSTGRES, READ_ONLY)")
+            db_conn.execute(f"ATTACH '{safe_conn}' AS _import_src (TYPE POSTGRES, READ_ONLY)")
         elif connection_type == "mysql":
             db_conn.execute("INSTALL mysql; LOAD mysql;")
-            db_conn.execute(f"ATTACH '{conn_string}' AS _import_src (TYPE MYSQL, READ_ONLY)")
+            db_conn.execute(f"ATTACH '{safe_conn}' AS _import_src (TYPE MYSQL, READ_ONLY)")
         elif connection_type == "sqlite":
             db_conn.execute("INSTALL sqlite; LOAD sqlite;")
-            db_conn.execute(f"ATTACH '{conn_string}' AS _import_src (TYPE SQLITE, READ_ONLY)")
+            db_conn.execute(f"ATTACH '{safe_conn}' AS _import_src (TYPE SQLITE, READ_ONLY)")
 
         db_conn.execute(
             f"CREATE OR REPLACE TABLE {full_name} AS "

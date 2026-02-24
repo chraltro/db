@@ -70,6 +70,65 @@ def _run_stream_task(project_dir_str: str, stream_name: str) -> dict:
         conn.close()
 
 
+def _run_stream_with_retries(
+    project_dir_str: str,
+    stream_name: str,
+    max_retries: int = 0,
+    retry_delay: int = 5,
+) -> dict:
+    """Execute a stream with retry logic and logging.
+
+    Retries on failure with exponential backoff. Logs each attempt
+    and the final result to the run log.
+    """
+    from dp.engine.database import connect, log_run
+    from dp.config import load_project
+
+    last_error = None
+    for attempt in range(max_retries + 1):
+        result = _run_stream_task(project_dir_str, stream_name)
+        if result.get("status") != "error":
+            # Log success
+            try:
+                project_dir = Path(project_dir_str)
+                config = load_project(project_dir)
+                conn = connect(project_dir / config.database.path)
+                try:
+                    log_run(conn, "stream", stream_name, "success")
+                finally:
+                    conn.close()
+            except Exception as log_err:
+                logger.debug("Failed to log stream success: %s", log_err)
+            return result
+
+        last_error = result.get("error", "Unknown error")
+        if attempt < max_retries:
+            wait = retry_delay * (2 ** attempt)
+            logger.warning(
+                "Stream '%s' failed (attempt %d/%d): %s — retrying in %ds",
+                stream_name, attempt + 1, max_retries + 1, last_error, wait,
+            )
+            time.sleep(wait)
+
+    # All attempts exhausted — log failure
+    logger.error(
+        "Stream '%s' failed after %d attempt(s): %s",
+        stream_name, max_retries + 1, last_error,
+    )
+    try:
+        project_dir = Path(project_dir_str)
+        config = load_project(project_dir)
+        conn = connect(project_dir / config.database.path)
+        try:
+            log_run(conn, "stream", stream_name, "error", error=str(last_error))
+        finally:
+            conn.close()
+    except Exception as log_err:
+        logger.debug("Failed to log stream failure: %s", log_err)
+
+    return {"stream": stream_name, "status": "error", "error": last_error}
+
+
 def _parse_cron(cron_expr: str) -> dict:
     """Parse a cron expression '* * * * *' into Huey crontab kwargs.
 
@@ -181,8 +240,22 @@ class SchedulerThread(threading.Thread):
                         logger.info("Scheduler triggering stream: %s", name)
                         console.print(f"[bold blue]Scheduler:[/bold blue] Running stream '{name}'")
                         try:
-                            _run_stream_task(str(self.project_dir), name)
-                            console.print(f"[bold green]Scheduler:[/bold green] Stream '{name}' completed")
+                            max_retries = getattr(stream, "retries", 0) or 0
+                            retry_delay = getattr(stream, "retry_delay", 5) or 5
+                            result = _run_stream_with_retries(
+                                str(self.project_dir), name,
+                                max_retries=max_retries,
+                                retry_delay=retry_delay,
+                            )
+                            if result.get("status") == "error":
+                                console.print(
+                                    f"[bold red]Scheduler:[/bold red] Stream '{name}' failed"
+                                    f" after {max_retries + 1} attempt(s): {result.get('error')}"
+                                )
+                                _try_send_failure_alert(self.project_dir, config, name, result.get("error", ""))
+                            else:
+                                console.print(f"[bold green]Scheduler:[/bold green] Stream '{name}' completed")
+                                _try_send_success_alert(self.project_dir, config, name)
                         except Exception as e:
                             console.print(f"[bold red]Scheduler:[/bold red] Stream '{name}' failed: {e}")
             except Exception as e:
@@ -192,6 +265,56 @@ class SchedulerThread(threading.Thread):
             self._stop_event.wait(30)
 
         logger.info("Scheduler stopped")
+
+
+def _try_send_failure_alert(project_dir: Path, config, stream_name: str, error: str) -> None:
+    """Send a failure alert if alerts are configured."""
+    try:
+        from dp.engine.alerts import AlertConfig, alert_pipeline_failure
+        from dp.engine.database import connect
+
+        alerts_cfg = config.alerts
+        if not alerts_cfg or not alerts_cfg.on_failure:
+            return
+        alert_config = AlertConfig(
+            slack_webhook_url=alerts_cfg.slack_webhook_url,
+            webhook_url=alerts_cfg.webhook_url,
+            channels=alerts_cfg.channels,
+        )
+        if not alert_config.slack_webhook_url and not alert_config.webhook_url:
+            return
+        conn = connect(project_dir / config.database.path)
+        try:
+            alert_pipeline_failure(stream_name, 0, error, alert_config, conn)
+        finally:
+            conn.close()
+    except Exception as e:
+        logger.debug("Failed to send failure alert: %s", e)
+
+
+def _try_send_success_alert(project_dir: Path, config, stream_name: str) -> None:
+    """Send a success alert if alerts are configured."""
+    try:
+        from dp.engine.alerts import AlertConfig, alert_pipeline_success
+        from dp.engine.database import connect
+
+        alerts_cfg = config.alerts
+        if not alerts_cfg or not alerts_cfg.on_success:
+            return
+        alert_config = AlertConfig(
+            slack_webhook_url=alerts_cfg.slack_webhook_url,
+            webhook_url=alerts_cfg.webhook_url,
+            channels=alerts_cfg.channels,
+        )
+        if not alert_config.slack_webhook_url and not alert_config.webhook_url:
+            return
+        conn = connect(project_dir / config.database.path)
+        try:
+            alert_pipeline_success(stream_name, 0, alert_config, conn)
+        finally:
+            conn.close()
+    except Exception as e:
+        logger.debug("Failed to send success alert: %s", e)
 
 
 class FileWatcher(threading.Thread):

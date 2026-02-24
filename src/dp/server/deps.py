@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+import threading
 import time
 from pathlib import Path
 from typing import Annotated, Any, Generator
@@ -54,6 +55,7 @@ def _set_active_env(env: str) -> None:
 # ---------------------------------------------------------------------------
 
 _config_cache: dict[str, Any] = {"config": None, "mtime": 0.0, "path": None}
+_config_lock = threading.Lock()
 
 
 def _get_config_cached():
@@ -66,17 +68,19 @@ def _get_config_cached():
         return load_project(_get_project_dir(), env=active_env)
 
     cache_key = f"{config_path}:{active_env}"
-    if (
-        _config_cache["config"] is not None
-        and _config_cache["path"] == cache_key
-        and _config_cache["mtime"] == mtime
-    ):
-        return _config_cache["config"]
+    with _config_lock:
+        if (
+            _config_cache["config"] is not None
+            and _config_cache["path"] == cache_key
+            and _config_cache["mtime"] == mtime
+        ):
+            return _config_cache["config"]
 
     config = load_project(_get_project_dir(), env=active_env)
-    _config_cache["config"] = config
-    _config_cache["mtime"] = mtime
-    _config_cache["path"] = cache_key
+    with _config_lock:
+        _config_cache["config"] = config
+        _config_cache["mtime"] = mtime
+        _config_cache["path"] = cache_key
     return config
 
 
@@ -91,7 +95,8 @@ def _get_db_path() -> Path:
 
 def invalidate_config_cache() -> None:
     """Invalidate the config cache (e.g. after environment switch)."""
-    _config_cache["config"] = None
+    with _config_lock:
+        _config_cache["config"] = None
 
 
 # ---------------------------------------------------------------------------
@@ -105,6 +110,7 @@ _model_cache: dict[str, Any] = {
     "transform_dir": None,
     "version": None,
 }
+_model_lock = threading.Lock()
 
 
 def _discover_models_cached(transform_dir: Path):
@@ -116,19 +122,21 @@ def _discover_models_cached(transform_dir: Path):
     for sql_file in sorted(transform_dir.rglob("*.sql")):
         current_mtimes[str(sql_file)] = sql_file.stat().st_mtime
 
-    if (
-        _model_cache["models"] is not None
-        and _model_cache["transform_dir"] == str(transform_dir)
-        and _model_cache["mtime_map"] == current_mtimes
-        and _model_cache["version"] == _MODEL_CACHE_VERSION
-    ):
-        return _model_cache["models"]
+    with _model_lock:
+        if (
+            _model_cache["models"] is not None
+            and _model_cache["transform_dir"] == str(transform_dir)
+            and _model_cache["mtime_map"] == current_mtimes
+            and _model_cache["version"] == _MODEL_CACHE_VERSION
+        ):
+            return _model_cache["models"]
 
     models = discover_models(transform_dir)
-    _model_cache["models"] = models
-    _model_cache["mtime_map"] = current_mtimes
-    _model_cache["transform_dir"] = str(transform_dir)
-    _model_cache["version"] = _MODEL_CACHE_VERSION
+    with _model_lock:
+        _model_cache["models"] = models
+        _model_cache["mtime_map"] = current_mtimes
+        _model_cache["transform_dir"] = str(transform_dir)
+        _model_cache["version"] = _MODEL_CACHE_VERSION
     return models
 
 
@@ -253,6 +261,7 @@ def _require_permission(request: Request, permission: str) -> dict:
 # ---------------------------------------------------------------------------
 
 _login_attempts: dict[str, list[float]] = {}
+_login_lock = threading.Lock()
 _RATE_LIMIT_WINDOW = 60.0
 _RATE_LIMIT_MAX = 5
 _RATE_LIMIT_MAX_KEYS = 10_000
@@ -261,21 +270,22 @@ _RATE_LIMIT_MAX_KEYS = 10_000
 def _check_rate_limit(key: str) -> None:
     """Enforce rate limiting. Raises 429 if too many attempts."""
     now = time.time()
-    attempts = _login_attempts.get(key, [])
-    attempts = [t for t in attempts if now - t < _RATE_LIMIT_WINDOW]
-    if len(attempts) >= _RATE_LIMIT_MAX:
-        logger.warning("Rate limit exceeded for %s", key)
-        raise HTTPException(429, "Too many login attempts. Try again later.")
-    attempts.append(now)
-    _login_attempts[key] = attempts
-    if len(_login_attempts) > _RATE_LIMIT_MAX_KEYS:
-        stale = [
-            k
-            for k, v in _login_attempts.items()
-            if not v or now - v[-1] > _RATE_LIMIT_WINDOW
-        ]
-        for k in stale:
-            del _login_attempts[k]
+    with _login_lock:
+        attempts = _login_attempts.get(key, [])
+        attempts = [t for t in attempts if now - t < _RATE_LIMIT_WINDOW]
+        if len(attempts) >= _RATE_LIMIT_MAX:
+            logger.warning("Rate limit exceeded for %s", key)
+            raise HTTPException(429, "Too many login attempts. Try again later.")
+        attempts.append(now)
+        _login_attempts[key] = attempts
+        if len(_login_attempts) > _RATE_LIMIT_MAX_KEYS:
+            stale = [
+                k
+                for k, v in _login_attempts.items()
+                if not v or now - v[-1] > _RATE_LIMIT_WINDOW
+            ]
+            for k in stale:
+                del _login_attempts[k]
 
 
 # ---------------------------------------------------------------------------
