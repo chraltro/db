@@ -59,37 +59,40 @@ def _evaluate_assertion(
             op = "="
         count = conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
         check = conn.execute(f"SELECT {count} {op} {val}").fetchone()[0]
-        return AssertionResult(
-            expression=expr,
-            passed=bool(check),
-            detail=f"row_count={count}",
-        )
+        passed = bool(check)
+        detail = f"got {count:,} rows, expected {op} {val:,}"
+        return AssertionResult(expression=expr, passed=passed, detail=detail)
 
     # no_nulls(column)
     m = re.match(r"no_nulls\((\w+)\)", expr)
     if m:
         col = m.group(1)
-        null_count = conn.execute(
-            f'SELECT COUNT(*) FROM {table} WHERE "{col}" IS NULL'
-        ).fetchone()[0]
-        return AssertionResult(
-            expression=expr,
-            passed=null_count == 0,
-            detail=f"null_count={null_count}",
-        )
+        row = conn.execute(
+            f'SELECT COUNT(*) FILTER (WHERE "{col}" IS NULL), COUNT(*) FROM {table}'
+        ).fetchone()
+        null_count, total = row[0], row[1]
+        passed = null_count == 0
+        if passed:
+            detail = f"0 nulls in {total:,} rows"
+        else:
+            pct = round((null_count / total) * 100, 1) if total > 0 else 0
+            detail = f"{null_count:,} nulls out of {total:,} rows ({pct}%)"
+        return AssertionResult(expression=expr, passed=passed, detail=detail)
 
     # unique(column)
     m = re.match(r"unique\((\w+)\)", expr)
     if m:
         col = m.group(1)
-        dup_count = conn.execute(
-            f'SELECT COUNT(*) - COUNT(DISTINCT "{col}") FROM {table}'
-        ).fetchone()[0]
-        return AssertionResult(
-            expression=expr,
-            passed=dup_count == 0,
-            detail=f"duplicate_count={dup_count}",
-        )
+        row = conn.execute(
+            f'SELECT COUNT(*) - COUNT(DISTINCT "{col}"), COUNT(*), COUNT(DISTINCT "{col}") FROM {table}'
+        ).fetchone()
+        dup_count, total, distinct = row[0], row[1], row[2]
+        passed = dup_count == 0
+        if passed:
+            detail = f"all {total:,} values unique"
+        else:
+            detail = f"{dup_count:,} duplicate(s) — {distinct:,} distinct out of {total:,} rows"
+        return AssertionResult(expression=expr, passed=passed, detail=detail)
 
     # accepted_values(column, ['val1', 'val2'])
     m = re.match(r"accepted_values\((\w+),\s*\[(.+)\]\)", expr)
@@ -101,22 +104,26 @@ def _evaluate_assertion(
         bad_count = conn.execute(
             f'SELECT COUNT(*) FROM {table} WHERE "{col}" IS NOT NULL AND "{col}"::VARCHAR NOT IN ({placeholders})'
         ).fetchone()[0]
-        return AssertionResult(
-            expression=expr,
-            passed=bad_count == 0,
-            detail=f"invalid_count={bad_count}",
-        )
+        passed = bad_count == 0
+        if passed:
+            detail = f"all values in [{', '.join(values)}]"
+        else:
+            # Fetch sample unexpected values
+            sample = conn.execute(
+                f'SELECT DISTINCT "{col}"::VARCHAR FROM {table} '
+                f'WHERE "{col}" IS NOT NULL AND "{col}"::VARCHAR NOT IN ({placeholders}) LIMIT 5'
+            ).fetchall()
+            sample_vals = [str(r[0]) for r in sample]
+            detail = f"{bad_count:,} row(s) with unexpected values: {', '.join(sample_vals)}"
+        return AssertionResult(expression=expr, passed=passed, detail=detail)
 
     # Generic SQL expression — wrap in SELECT and check if true
     check = conn.execute(
         f"SELECT CASE WHEN ({expr}) THEN true ELSE false END FROM {table} LIMIT 1"
     ).fetchone()
     passed = bool(check[0]) if check else False
-    return AssertionResult(
-        expression=expr,
-        passed=passed,
-        detail="",
-    )
+    detail = "expression evaluated to true" if passed else "expression evaluated to false"
+    return AssertionResult(expression=expr, passed=passed, detail=detail)
 
 
 def profile_model(

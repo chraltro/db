@@ -63,7 +63,7 @@ def lint(
         header_count = 0
         for line in lines:
             stripped = line.strip()
-            if stripped.startswith("-- config:") or stripped.startswith("-- depends_on:") or stripped == "":
+            if stripped.startswith("-- config:") or stripped.startswith("-- depends_on:") or stripped.startswith("-- assert:") or stripped == "":
                 header_count += 1
             else:
                 break
@@ -133,7 +133,7 @@ def lint_file(
     header_count = 0
     for line in lines:
         stripped = line.strip()
-        if stripped.startswith("-- config:") or stripped.startswith("-- depends_on:") or stripped == "":
+        if stripped.startswith("-- config:") or stripped.startswith("-- depends_on:") or stripped.startswith("-- assert:") or stripped == "":
             header_count += 1
         else:
             break

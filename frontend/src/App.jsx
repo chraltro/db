@@ -253,7 +253,7 @@ const stStyles = {
 function AppContent() {
   const { currentUser, handleLogout } = useAuth();
   const { tables, files, streams, loadFiles, refreshAll } = useWarehouse();
-  const { running, output, runSummary, addOutput, clearOutput, setRunSummary, runTransformAll, runStream, runLint, runCurrentScript, runSingleModel } = usePipeline();
+  const { running, output, runSummary, addOutput, clearOutput, setRunSummary, runTransformAll, runStream, runLint, runCurrentScript, runSingleModel, runContracts } = usePipeline();
 
   // Editor state (local to this component)
   const [activeFile, setActiveFile] = useState(null);
@@ -297,6 +297,10 @@ function AppContent() {
   const [notebookPath, setNotebookPath] = useState(null);
   const [modelNotebookName, setModelNotebookName] = useState(null);
   const [showNewDialog, setShowNewDialog] = useState(false);
+
+  // Delete confirmation dialog state
+  const [deleteConfirm, setDeleteConfirm] = useState(null); // { path, schema, name, hasObject }
+  const deleteResolveRef = useRef(null);
 
   function handleGuideComplete() {
     setGuideOpen(false);
@@ -450,10 +454,33 @@ function AppContent() {
 
   async function deleteFile(path) {
     path = path.replace(/\\/g, "/");
-    if (!confirm(`Delete ${path}?`)) return;
+
+    const isTransform = path.endsWith(".sql") && path.startsWith("transform/");
+    const isSeed = path.endsWith(".csv") && path.startsWith("seeds/");
+    let dropObject = false;
+
+    if (isTransform || isSeed) {
+      const parts = path.split("/");
+      const fileName = parts[parts.length - 1];
+      const name = fileName.replace(/\.(sql|csv)$/, "");
+      const schema = isSeed ? "seeds" : (parts.length >= 3 ? parts[1] : "bronze");
+      // Show custom dialog with Delete & Drop / Delete Only / Cancel
+      const choice = await new Promise((resolve) => {
+        deleteResolveRef.current = resolve;
+        setDeleteConfirm({ path, schema, name, hasObject: true });
+      });
+      if (choice === "cancel") return;
+      dropObject = choice === "drop";
+    } else {
+      if (!confirm(`Delete ${path}?`)) return;
+    }
+
     try {
-      await api.deleteFile(path);
+      const result = await api.deleteFile(path, dropObject);
       addOutput("info", `Deleted ${path}`);
+      if (result.dropped) {
+        addOutput("info", `Dropped ${result.dropped} from warehouse`);
+      }
       if (activeFile === path) {
         setActiveFile(null);
         setFileContent("");
@@ -465,6 +492,14 @@ function AppContent() {
     }
   }
 
+  function resolveDeleteConfirm(choice) {
+    setDeleteConfirm(null);
+    if (deleteResolveRef.current) {
+      deleteResolveRef.current(choice);
+      deleteResolveRef.current = null;
+    }
+  }
+
   async function runCurrentFile() {
     if (!activeFile) return;
     if (dirty) await saveFile();
@@ -472,6 +507,8 @@ function AppContent() {
       await runTransformAll(false);
     } else if (activeFile.endsWith(".py")) {
       await runCurrentScript(activeFile);
+    } else if (activeFile.endsWith(".yml") && activeFile.startsWith("contracts/")) {
+      await runContracts();
     }
   }
 
@@ -578,6 +615,7 @@ function AppContent() {
             options={[{ label: "Fix", action: () => handleRunLintWithReload(true) }]}
             disabled={running}
           />
+          <button onClick={runContracts} disabled={running} style={styles.btn}>Contract</button>
           <button onClick={() => setShowNewDialog(true)} style={styles.btn}>+ New</button>
           <EnvironmentSwitcher />
         </div>
@@ -801,6 +839,23 @@ function AppContent() {
       <Hint onNavigate={navigateToTab} />
       <GuideTour steps={GUIDE_STEPS} onComplete={handleGuideComplete} isOpen={guideOpen} />
 
+      {/* Delete confirmation dialog for transform/seed files */}
+      {deleteConfirm && (
+        <div style={dcStyles.overlay} onClick={() => resolveDeleteConfirm("cancel")}>
+          <div style={dcStyles.dialog} onClick={(e) => e.stopPropagation()}>
+            <div style={dcStyles.title}>Delete {deleteConfirm.path}?</div>
+            <div style={dcStyles.body}>
+              Also drop <strong>{deleteConfirm.schema}.{deleteConfirm.name}</strong> table/view from the warehouse?
+            </div>
+            <div style={dcStyles.footer}>
+              <button onClick={() => resolveDeleteConfirm("cancel")} style={dcStyles.btnCancel}>Cancel</button>
+              <button onClick={() => resolveDeleteConfirm("keep")} style={dcStyles.btnSecondary}>Delete File Only</button>
+              <button onClick={() => resolveDeleteConfirm("drop")} style={dcStyles.btnDanger}>Delete & Drop</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Model notebook view overlay */}
       {modelNotebookName && (
         <div style={{ position: "fixed", inset: 0, background: "var(--dp-bg)", zIndex: 900, overflow: "auto", padding: "16px" }}>
@@ -901,4 +956,15 @@ const styles = {
   breadcrumbLink: { background: "none", border: "none", color: "var(--dp-accent)", cursor: "pointer", fontSize: "12px", padding: 0, fontWeight: 500 },
   breadcrumbSep: { color: "var(--dp-text-dim)" },
   breadcrumbCurrent: { color: "var(--dp-text-secondary)", fontWeight: 500 },
+};
+
+const dcStyles = {
+  overlay: { position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 },
+  dialog: { background: "var(--dp-bg-secondary)", border: "1px solid var(--dp-border)", borderRadius: "8px", padding: "20px", width: "420px", maxWidth: "90vw" },
+  title: { fontSize: "14px", fontWeight: 600, color: "var(--dp-text)", marginBottom: "8px" },
+  body: { fontSize: "13px", color: "var(--dp-text-secondary)", marginBottom: "16px", lineHeight: 1.5 },
+  footer: { display: "flex", justifyContent: "flex-end", gap: "8px" },
+  btnCancel: { padding: "6px 14px", background: "none", border: "1px solid var(--dp-border-light)", borderRadius: "var(--dp-radius-lg)", color: "var(--dp-text-secondary)", cursor: "pointer", fontSize: "12px", fontWeight: 500 },
+  btnSecondary: { padding: "6px 14px", background: "var(--dp-btn-bg)", border: "1px solid var(--dp-btn-border)", borderRadius: "var(--dp-radius-lg)", color: "var(--dp-text)", cursor: "pointer", fontSize: "12px", fontWeight: 500 },
+  btnDanger: { padding: "6px 14px", background: "var(--dp-red, #c53030)", border: "1px solid var(--dp-red, #c53030)", borderRadius: "var(--dp-radius-lg)", color: "#fff", cursor: "pointer", fontSize: "12px", fontWeight: 500 },
 };

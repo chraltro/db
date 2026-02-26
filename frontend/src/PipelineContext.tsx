@@ -13,6 +13,7 @@ interface PipelineState {
   runLint: (fix?: boolean) => Promise<void>;
   runCurrentScript: (scriptPath: string) => Promise<void>;
   runSingleModel: (modelName: string) => Promise<void>;
+  runContracts: () => Promise<void>;
 }
 
 const PipelineContext = createContext<PipelineState | null>(null);
@@ -205,6 +206,57 @@ export function PipelineProvider({ children, onTablesChanged, onPipelineComplete
     }
   }, [addOutput, onTablesChanged]);
 
+  const runContracts = useCallback(async () => {
+    setRunning(true);
+    addOutput("info", "Running contracts...");
+    try {
+      const data = await api.runContracts() as {
+        total: number;
+        passed: number;
+        failed: number;
+        results: {
+          contract_name: string;
+          model: string;
+          passed: boolean;
+          severity: string;
+          duration_ms: number;
+          error?: string;
+          assertions: { expression: string; passed: boolean; detail: string }[];
+        }[];
+      };
+
+      if (data.total === 0) {
+        addOutput("warn", "No contracts found. Create YAML files in contracts/ to get started.");
+        return;
+      }
+
+      for (const cr of data.results) {
+        const status = cr.passed ? "pass" : "FAIL";
+        const level = cr.passed ? "info" : "error";
+        addOutput(level as OutputEntry["type"], `${status}  ${cr.contract_name} (${cr.model}) [${cr.duration_ms}ms]`);
+        for (const a of cr.assertions || []) {
+          if (a.passed) {
+            addOutput("info", `  pass  ${a.expression}`);
+          } else {
+            addOutput("error", `  FAIL  ${a.expression} (${a.detail})`);
+          }
+        }
+        if (cr.error) addOutput("error", `  Error: ${cr.error}`);
+      }
+
+      addOutput("info", "");
+      if (data.failed === 0) {
+        addOutput("info", `All ${data.passed} contract(s) passed.`);
+      } else {
+        addOutput("error", `${data.failed} contract(s) failed, ${data.passed} passed.`);
+      }
+    } catch (e: unknown) {
+      addOutput("error", (e as Error).message);
+    } finally {
+      setRunning(false);
+    }
+  }, [addOutput]);
+
   return (
     <PipelineContext.Provider
       value={{
@@ -219,6 +271,7 @@ export function PipelineProvider({ children, onTablesChanged, onPipelineComplete
         runLint,
         runCurrentScript,
         runSingleModel,
+        runContracts,
       }}
     >
       {children}

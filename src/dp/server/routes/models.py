@@ -367,10 +367,10 @@ def create_model_endpoint(request: Request, req: CreateModelRequest) -> dict:
 
 @router.post("/api/check")
 def run_check(request: Request, conn_opt: DbConnReadOnlyOptional = None) -> dict:
-    """Validate all SQL models without executing them."""
+    """Validate SQL models, run inline assertions, and run YAML contracts."""
     _require_permission(request, "read")
     from dp.engine.seeds import discover_seeds
-    from dp.engine.transform import discover_models, validate_models
+    from dp.engine.transform import discover_models, run_assertions, validate_models
 
     project_dir = _get_project_dir()
     transform_dir = project_dir / "transform"
@@ -392,15 +392,73 @@ def run_check(request: Request, conn_opt: DbConnReadOnlyOptional = None) -> dict
             source_columns[full] = {c.name for c in t.columns}
 
     conn = conn_opt
-    ensure_meta_table(conn) if conn else None
     errors = validate_models(
         conn, models, known_tables=known_tables, source_columns=source_columns
     )
+
+    # Run inline assertions (-- assert: comments) against live data
+    assertion_results: list[dict] = []
+    if conn:
+        for model in models:
+            if model.assertions:
+                try:
+                    results = run_assertions(conn, model)
+                    for ar in results:
+                        assertion_results.append({
+                            "model": model.full_name,
+                            "expression": ar.expression,
+                            "passed": ar.passed,
+                            "detail": ar.detail,
+                        })
+                except Exception as e:
+                    assertion_results.append({
+                        "model": model.full_name,
+                        "expression": "(all)",
+                        "passed": False,
+                        "detail": str(e),
+                    })
+
+    # Run YAML contracts from contracts/ directory
+    contract_results: list[dict] = []
+    contracts_dir = project_dir / "contracts"
+    if conn and contracts_dir.exists():
+        from dp.engine.contracts import discover_contracts, evaluate_contract
+
+        contracts = discover_contracts(contracts_dir)
+        for contract in contracts:
+            try:
+                cr = evaluate_contract(conn, contract)
+                contract_results.append({
+                    "contract_name": cr.contract_name,
+                    "model": cr.model,
+                    "passed": cr.passed,
+                    "severity": cr.severity,
+                    "duration_ms": cr.duration_ms,
+                    "error": cr.error,
+                    "assertions": cr.results,
+                })
+            except Exception as e:
+                contract_results.append({
+                    "contract_name": contract.name,
+                    "model": contract.model,
+                    "passed": False,
+                    "severity": contract.severity,
+                    "duration_ms": 0,
+                    "error": str(e),
+                    "assertions": [],
+                })
+
+    validation_passed = not any(e.severity == "error" for e in errors)
+    assertions_passed = all(ar["passed"] for ar in assertion_results)
+    contracts_passed = all(cr["passed"] for cr in contract_results)
+
     return {
         "models_checked": len(models),
         "errors": [
             {"model": e.model, "severity": e.severity, "message": e.message}
             for e in errors
         ],
-        "passed": not any(e.severity == "error" for e in errors),
+        "assertions": assertion_results,
+        "contracts": contract_results,
+        "passed": validation_passed and assertions_passed and contracts_passed,
     }

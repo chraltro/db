@@ -254,10 +254,16 @@ def get_overview(request: Request, conn: DbConnReadOnly) -> dict:
     try:
         rows = conn.execute(
             """
-            SELECT run_id, run_type, target, status, started_at, duration_ms, rows_affected, error
-            FROM _dp_internal.run_log
-            ORDER BY started_at DESC
-            LIMIT 20
+            SELECT r.run_id, r.run_type, r.target, r.status,
+                   r.started_at, r.duration_ms, r.rows_affected, r.error
+            FROM _dp_internal.run_log r
+            INNER JOIN (
+                SELECT target, MAX(started_at) AS max_started
+                FROM _dp_internal.run_log
+                GROUP BY target
+            ) latest ON r.target = latest.target
+                    AND r.started_at = latest.max_started
+            ORDER BY r.started_at DESC
             """
         ).fetchall()
         result["recent_runs"] = [

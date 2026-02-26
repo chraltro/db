@@ -202,8 +202,8 @@ export const api = {
   readFile: (path: string) => request<FileContent>(`/files/${path}`),
   saveFile: (path: string, content: string) =>
     request(`/files/${path}`, { method: "PUT", body: JSON.stringify({ content }) }),
-  deleteFile: (path: string) =>
-    request(`/files/${path}`, { method: "DELETE" }),
+  deleteFile: (path: string, dropObject: boolean = false) =>
+    request(`/files/${path}${dropObject ? "?drop_object=true" : ""}`, { method: "DELETE" }),
 
   // Models
   listModels: () => request("/models"),
@@ -395,8 +395,11 @@ export const api = {
       body: JSON.stringify({ name, schema_name, materialized, sql }),
     }),
 
-  // Check (validation)
+  // Check (validation + assertions + contracts)
   runCheck: () => request("/check", { method: "POST" }),
+
+  // Contracts
+  runContracts: () => request("/contracts/run", { method: "POST" }),
 
   // Lineage
   getLineage: (modelName: string) => request(`/lineage/${modelName}`),

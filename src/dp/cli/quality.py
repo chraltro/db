@@ -17,15 +17,16 @@ def check(
     env: Annotated[Optional[str], typer.Option("--env", "-e", help="Environment to use")] = None,
     project_dir: Annotated[Optional[Path], typer.Option("--project", "-p", help="Project directory (default: current dir)")] = None,
 ) -> None:
-    """Validate all SQL models without executing them.
+    """Validate SQL models, run inline assertions, and run YAML contracts.
 
     Checks that SQL parses correctly, referenced tables exist in the DAG,
     sources.yml, the DuckDB catalog, or seeds. Validates column references
-    against upstream tables. Reports all errors at once.
+    against upstream tables. Then runs inline -- assert: assertions and
+    YAML contracts from contracts/ against live data. Reports all errors.
     """
     from dp.engine.database import connect, ensure_meta_table
     from dp.engine.seeds import discover_seeds
-    from dp.engine.transform import discover_models, validate_models
+    from dp.engine.transform import discover_models, run_assertions, validate_models
 
     project_dir = _resolve_project(project_dir)
     config = _load_config(project_dir, env)
@@ -63,25 +64,75 @@ def check(
         conn = connect(db_path, read_only=True)
         ensure_meta_table(conn)
 
+    has_failure = False
     try:
         env_label = f" [dim](env={config.active_environment})[/dim]" if config.active_environment else ""
         console.print(f"[bold]Checking {len(models)} model(s)...{env_label}[/bold]")
         errors = validate_models(conn, models, known_tables=known_tables, source_columns=source_columns)
 
-        if not errors:
+        if errors:
+            err_count = sum(1 for e in errors if e.severity == "error")
+            warn_count = sum(1 for e in errors if e.severity == "warning")
+
+            for e in errors:
+                icon = "[red]error[/red]" if e.severity == "error" else "[yellow]warn[/yellow]"
+                console.print(f"  {icon}  [bold]{e.model}[/bold]: {e.message}")
+
+            console.print(f"  {err_count} error(s), {warn_count} warning(s)")
+            if err_count:
+                has_failure = True
+        else:
             console.print(f"[green]All {len(models)} models passed validation.[/green]")
-            return
 
-        err_count = sum(1 for e in errors if e.severity == "error")
-        warn_count = sum(1 for e in errors if e.severity == "warning")
+        # Run inline assertions against live data
+        if conn:
+            models_with_assertions = [m for m in models if m.assertions]
+            if models_with_assertions:
+                console.print()
+                console.print(f"[bold]Running assertions for {len(models_with_assertions)} model(s)...[/bold]")
+                assertion_failures = 0
+                for model in models_with_assertions:
+                    try:
+                        results = run_assertions(conn, model)
+                        for ar in results:
+                            if ar.passed:
+                                console.print(f"  [green]pass[/green]  [bold]{model.full_name}[/bold]: {ar.expression}")
+                            else:
+                                console.print(f"  [red]FAIL[/red]  [bold]{model.full_name}[/bold]: {ar.expression} ({ar.detail})")
+                                assertion_failures += 1
+                    except Exception as e:
+                        console.print(f"  [red]FAIL[/red]  [bold]{model.full_name}[/bold]: {e}")
+                        assertion_failures += 1
+                if assertion_failures:
+                    has_failure = True
 
-        for e in errors:
-            icon = "[red]error[/red]" if e.severity == "error" else "[yellow]warn[/yellow]"
-            console.print(f"  {icon}  [bold]{e.model}[/bold]: {e.message}")
+        # Run YAML contracts
+        contracts_dir = project_dir / "contracts"
+        if conn and contracts_dir.exists():
+            from dp.engine.contracts import discover_contracts, evaluate_contract
 
-        console.print()
-        console.print(f"  {err_count} error(s), {warn_count} warning(s)")
-        if err_count:
+            contract_list = discover_contracts(contracts_dir)
+            if contract_list:
+                console.print()
+                console.print(f"[bold]Running {len(contract_list)} contract(s)...[/bold]")
+                contract_failures = 0
+                for contract in contract_list:
+                    try:
+                        cr = evaluate_contract(conn, contract)
+                        status = "[green]pass[/green]" if cr.passed else "[red]FAIL[/red]"
+                        console.print(f"  {status}  [bold]{cr.contract_name}[/bold] ({cr.model}) [{cr.duration_ms}ms]")
+                        for ar in cr.results:
+                            if not ar["passed"]:
+                                console.print(f"         [red]FAIL[/red]  {ar['expression']} ({ar['detail']})")
+                        if not cr.passed:
+                            contract_failures += 1
+                    except Exception as e:
+                        console.print(f"  [red]FAIL[/red]  [bold]{contract.name}[/bold]: {e}")
+                        contract_failures += 1
+                if contract_failures:
+                    has_failure = True
+
+        if has_failure:
             raise typer.Exit(1)
     finally:
         if conn:

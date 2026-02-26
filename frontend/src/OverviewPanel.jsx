@@ -28,6 +28,7 @@ export default function OverviewPanel({ onNavigate, onSelectTable, onOpenFile, o
   const [loading, setLoading] = useState(true);
   const [runningDemo, setRunningDemo] = useState(false);
   const [gitStatus, setGitStatus] = useState(null);
+  const [showFailed, setShowFailed] = useState(false);
   const setHintTrigger = useHintTriggerFn();
 
   useEffect(() => {
@@ -75,7 +76,8 @@ export default function OverviewPanel({ onNavigate, onSelectTable, onOpenFile, o
 
   const recentRuns = data.recent_runs || [];
   const successCount = recentRuns.filter((r) => r.status === "success").length;
-  const errorCount = recentRuns.filter((r) => r.status === "error").length;
+  const failedRuns = recentRuns.filter((r) => r.status !== "success");
+  const errorCount = failedRuns.length;
   const schemas = data.schemas || [];
   const lastRun = recentRuns[0];
 
@@ -123,13 +125,54 @@ export default function OverviewPanel({ onNavigate, onSelectTable, onOpenFile, o
             <div style={st.statValue}>{data.connectors}</div>
             <div style={st.statLabel}>Connectors</div>
           </div>
-          <div style={st.statCard}>
+          <div
+            style={{ ...st.statCard, cursor: errorCount > 0 ? "pointer" : "default", outline: showFailed ? "2px solid var(--dp-red)" : "none" }}
+            onClick={() => { if (errorCount > 0) setShowFailed(!showFailed); }}
+            title={errorCount > 0 ? "Click to show failures" : ""}
+          >
             <div style={{ ...st.statValue, color: errorCount > 0 ? "var(--dp-red)" : "var(--dp-green)" }}>
               {recentRuns.length > 0 ? `${successCount}/${recentRuns.length}` : "-"}
             </div>
-            <div style={st.statLabel}>Runs OK (recent)</div>
+            <div style={st.statLabel}>Runs OK (latest)</div>
+            {errorCount > 0 && (
+              <div style={{ fontSize: "10px", color: "var(--dp-red)", marginTop: "2px" }}>
+                {errorCount} failed {"\u25BE"}
+              </div>
+            )}
           </div>
         </div>
+
+        {/* Failed runs detail */}
+        {showFailed && failedRuns.length > 0 && (
+          <div style={st.failedCard}>
+            <div style={st.failedHeader}>
+              <span style={st.failedTitle}>Failed Runs</span>
+              <button onClick={() => setShowFailed(false)} style={st.failedClose}>{"\u00D7"}</button>
+            </div>
+            {failedRuns.map((run) => (
+              <div key={run.run_id} style={st.failedItem}>
+                <span style={st.failedDot} />
+                <span style={st.failedType}>{run.run_type}</span>
+                <span
+                  style={st.failedTarget}
+                  onClick={() => {
+                    const target = run.target || "";
+                    if (run.run_type === "transform" && target.includes(".")) {
+                      const [s, t] = target.split(".", 2);
+                      onSelectTable(s, t);
+                    } else if (run.run_type === "ingest" || run.run_type === "export") {
+                      onOpenFile(target);
+                    }
+                  }}
+                >{run.target}</span>
+                <span style={st.failedTime}>{timeAgo(run.started_at)}</span>
+                {run.error && (
+                  <span style={st.failedError} title={run.error}>{run.error}</span>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
 
         {/* Git status */}
         {gitStatus && gitStatus.is_git_repo && (
@@ -318,6 +361,60 @@ const st = {
   },
   statValue: { fontSize: "24px", fontWeight: 700, color: "var(--dp-text)", fontFamily: "var(--dp-font-mono)" },
   statLabel: { fontSize: "11px", color: "var(--dp-text-secondary)", marginTop: "4px", textTransform: "uppercase", letterSpacing: "0.5px", fontWeight: 500 },
+
+  // Failed runs
+  failedCard: {
+    background: "var(--dp-bg-secondary)",
+    border: "1px solid var(--dp-red, #c53030)",
+    borderRadius: "var(--dp-radius-lg)",
+    marginBottom: "20px",
+    overflow: "hidden",
+  },
+  failedHeader: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    padding: "8px 16px",
+    borderBottom: "1px solid var(--dp-border)",
+  },
+  failedTitle: { fontSize: "12px", fontWeight: 600, color: "var(--dp-red, #c53030)" },
+  failedClose: { background: "none", border: "none", color: "var(--dp-text-dim)", cursor: "pointer", fontSize: "16px", lineHeight: 1, padding: "0 4px" },
+  failedItem: {
+    display: "flex",
+    alignItems: "center",
+    gap: "8px",
+    padding: "8px 16px",
+    fontSize: "12px",
+    borderBottom: "1px solid var(--dp-border)",
+    flexWrap: "wrap",
+  },
+  failedDot: { width: "6px", height: "6px", borderRadius: "50%", background: "var(--dp-red, #c53030)", flexShrink: 0 },
+  failedType: {
+    fontSize: "10px",
+    fontWeight: 600,
+    color: "var(--dp-text-secondary)",
+    background: "var(--dp-bg-tertiary)",
+    padding: "1px 6px",
+    borderRadius: "var(--dp-radius)",
+    textTransform: "uppercase",
+    flexShrink: 0,
+  },
+  failedTarget: {
+    fontFamily: "var(--dp-font-mono)",
+    color: "var(--dp-accent)",
+    cursor: "pointer",
+    fontWeight: 500,
+  },
+  failedTime: { color: "var(--dp-text-dim)", fontSize: "11px", flexShrink: 0 },
+  failedError: {
+    color: "var(--dp-red, #c53030)",
+    fontSize: "11px",
+    width: "100%",
+    paddingLeft: "14px",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+  },
 
   // Layout
   columns: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" },

@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
 from dp.server.deps import _detect_language, _get_project_dir, _require_permission
@@ -105,8 +106,12 @@ def save_file(request: Request, file_path: str, req: SaveFileRequest) -> dict:
 
 
 @router.delete("/api/files/{file_path:path}")
-def delete_file(request: Request, file_path: str) -> dict:
-    """Delete a file."""
+def delete_file(
+    request: Request,
+    file_path: str,
+    drop_object: bool = Query(False),
+) -> dict:
+    """Delete a file, optionally dropping the corresponding database object."""
     _require_permission(request, "write")
     project_dir = _get_project_dir()
     full_path = (project_dir / file_path).resolve()
@@ -120,6 +125,11 @@ def delete_file(request: Request, file_path: str) -> dict:
     # Prevent deleting critical files
     if full_path.name in ("project.yml", ".env", ".gitignore"):
         raise HTTPException(400, f"Cannot delete {full_path.name}")
+
+    dropped = None
+    if drop_object:
+        dropped = _drop_db_object(full_path, file_path)
+
     full_path.unlink()
     # Remove empty parent directories up to project root
     parent = full_path.parent
@@ -130,7 +140,78 @@ def delete_file(request: Request, file_path: str) -> dict:
     ):
         parent.rmdir()
         parent = parent.parent
-    return {"path": file_path, "status": "deleted"}
+    result: dict = {"path": file_path, "status": "deleted"}
+    if dropped:
+        result["dropped"] = dropped
+    return result
+
+
+def _drop_db_object(full_path: Path, file_path: str) -> str | None:
+    """Drop the DuckDB object corresponding to a transform SQL or seed CSV file."""
+    from dp.engine.database import connect
+    from dp.engine.utils import validate_identifier
+    from dp.server.deps import _get_db_path
+
+    normalized = file_path.replace("\\", "/")
+
+    if full_path.suffix == ".sql" and normalized.startswith("transform/"):
+        # Derive schema and name from file path / content
+        name = full_path.stem
+        # Default schema from folder: transform/<schema>/<name>.sql
+        parts = normalized.split("/")
+        schema = parts[1] if len(parts) >= 3 else "bronze"
+        # Check for -- config: schema=<override> in file content
+        try:
+            content = full_path.read_text(encoding="utf-8")
+            m = re.search(r"--\s*config:.*schema\s*=\s*(\w+)", content)
+            if m:
+                schema = m.group(1)
+        except Exception:
+            pass
+    elif full_path.suffix == ".csv" and normalized.startswith("seeds/"):
+        schema = "seeds"
+        name = full_path.stem
+    else:
+        return None
+
+    try:
+        validate_identifier(schema, "schema")
+        validate_identifier(name, "table name")
+    except ValueError:
+        return None
+
+    db_path = _get_db_path()
+    if not db_path.exists():
+        return None
+
+    conn = connect(db_path)
+    try:
+        # Look up the object type in information_schema
+        rows = conn.execute(
+            "SELECT table_type FROM information_schema.tables "
+            "WHERE table_schema = ? AND table_name = ?",
+            [schema, name],
+        ).fetchall()
+
+        if not rows:
+            return None
+
+        table_type = rows[0][0]
+        obj_kind = "VIEW" if "VIEW" in table_type.upper() else "TABLE"
+        conn.execute(f'DROP {obj_kind} IF EXISTS "{schema}"."{name}"')
+
+        # Clean up model_state metadata
+        try:
+            conn.execute(
+                "DELETE FROM _dp_internal.model_state WHERE model_name = ?",
+                [f"{schema}.{name}"],
+            )
+        except Exception:
+            pass  # table may not exist yet
+
+        return f"{schema}.{name}"
+    finally:
+        conn.close()
 
 
 # --- Git status ---
