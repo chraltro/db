@@ -23,7 +23,7 @@ function formatRows(n) {
   return String(n);
 }
 
-export default function OverviewPanel({ onNavigate, onRunStream, streams }) {
+export default function OverviewPanel({ onNavigate, onSelectTable, onOpenFile, onRunStream, streams }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [runningDemo, setRunningDemo] = useState(false);
@@ -171,7 +171,18 @@ export default function OverviewPanel({ onNavigate, onRunStream, streams }) {
                         background: run.status === "success" ? "var(--dp-green)" : "var(--dp-red)",
                       }} />
                       <span style={st.runType}>{run.run_type}</span>
-                      <span style={st.runTarget}>{run.target}</span>
+                      <span
+                        style={{ ...st.runTarget, cursor: "pointer" }}
+                        onClick={() => {
+                          const target = run.target || "";
+                          if (run.run_type === "transform" && target.includes(".")) {
+                            const [s, t] = target.split(".", 2);
+                            onSelectTable(s, t);
+                          } else if (run.run_type === "ingest" || run.run_type === "export") {
+                            onOpenFile(target);
+                          }
+                        }}
+                      >{run.target}</span>
                       <span style={st.runMeta}>
                         {run.rows_affected > 0 && <span>{formatRows(run.rows_affected)} rows</span>}
                         {run.duration_ms > 0 && <span>{run.duration_ms}ms</span>}
@@ -204,7 +215,10 @@ export default function OverviewPanel({ onNavigate, onRunStream, streams }) {
                 <div style={st.schemaList}>
                   {schemas.map((s) => (
                     <div key={s.name} style={st.schemaItem}>
-                      <span style={st.schemaName}>{s.name}</span>
+                      <span
+                        style={{ ...st.schemaName, cursor: "pointer" }}
+                        onClick={() => onNavigate("Tables")}
+                      >{s.name}</span>
                       <span style={st.schemaStat}>{s.tables} table{s.tables !== 1 ? "s" : ""}</span>
                       {s.views > 0 && <span style={st.schemaStat}>{s.views} view{s.views !== 1 ? "s" : ""}</span>}
                       <span style={st.schemaRows}>{formatRows(s.total_rows)} rows</span>
@@ -370,7 +384,7 @@ const st = {
   },
   runTarget: {
     fontFamily: "var(--dp-font-mono)",
-    color: "var(--dp-text)",
+    color: "var(--dp-accent)",
     flex: 1,
     overflow: "hidden",
     textOverflow: "ellipsis",

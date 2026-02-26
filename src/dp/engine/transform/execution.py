@@ -154,6 +154,28 @@ def _execute_incremental(
     return duration_ms, row_count
 
 
+def _drop_conflicting(
+    conn: duckdb.DuckDBPyConnection,
+    schema: str,
+    name: str,
+    target_type: str,
+) -> None:
+    """Drop an existing object if it conflicts with the desired materialization type."""
+    row = conn.execute(
+        "SELECT table_type FROM information_schema.tables "
+        "WHERE table_schema = ? AND table_name = ?",
+        [schema, name],
+    ).fetchone()
+    if not row:
+        return
+    existing = row[0]  # 'BASE TABLE' or 'VIEW'
+    full_name = f"{schema}.{name}"
+    if target_type == "view" and existing == "BASE TABLE":
+        conn.execute(f"DROP TABLE {full_name}")
+    elif target_type in ("table", "incremental") and existing == "VIEW":
+        conn.execute(f"DROP VIEW {full_name}")
+
+
 def execute_model(
     conn: duckdb.DuckDBPyConnection,
     model: SQLModel,
@@ -165,6 +187,9 @@ def execute_model(
     conn.execute(f"CREATE SCHEMA IF NOT EXISTS {model.schema}")
 
     start = time.perf_counter()
+
+    # Drop any conflicting object of a different type before creating
+    _drop_conflicting(conn, model.schema, model.name, model.materialized)
 
     if model.materialized == "view":
         ddl = f"CREATE OR REPLACE VIEW {model.full_name} AS\n{model.query}"

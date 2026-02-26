@@ -56,7 +56,7 @@ class SQLModel:
     partition_by: str | None = None  # e.g. "event_date" — enables partition-based pruning
 
     def __post_init__(self) -> None:
-        self.content_hash = _hash_content(self.query)
+        self.content_hash = _hash_content(f"{self.materialized}:{self.query}")
 
 
 @dataclass

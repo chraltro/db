@@ -99,15 +99,9 @@ function FileNode({ node, depth, onSelect, activeFile, onNewFile, onDeleteFile }
   );
 }
 
-export default function FileTree({ files, onSelect, activeFile, onNewFile, onDeleteFile, onRefresh }) {
+export default function FileTree({ files, onSelect, activeFile, onNewFile, onDeleteFile }) {
   return (
     <div>
-      <div style={styles.header}>
-        <span>FILES</span>
-        {onRefresh && (
-          <button onClick={onRefresh} style={styles.refreshBtn} title="Refresh files &amp; tables">&#x21BB;</button>
-        )}
-      </div>
       {files.length === 0 && (
         <div style={styles.empty}>No files found</div>
       )}
@@ -119,8 +113,6 @@ export default function FileTree({ files, onSelect, activeFile, onNewFile, onDel
 }
 
 const styles = {
-  header: { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "6px 12px 8px", fontSize: "10px", fontWeight: "600", color: "var(--dp-text-dim)", letterSpacing: "1px", textTransform: "uppercase" },
-  refreshBtn: { background: "none", border: "none", color: "var(--dp-text-secondary)", cursor: "pointer", fontSize: "13px", padding: "0 2px", lineHeight: 1 },
   item: { display: "flex", alignItems: "center", gap: "6px", padding: "4px 8px", cursor: "pointer", fontSize: "13px", whiteSpace: "nowrap", margin: "0 4px", borderRadius: "3px" },
   icon: { fontSize: "10px", color: "var(--dp-text-secondary)", width: "10px", display: "inline-block", transition: "transform 0.12s ease" },
   dirName: { color: "var(--dp-text)", fontWeight: 500 },

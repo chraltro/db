@@ -78,7 +78,7 @@ export function PipelineProvider({ children, onTablesChanged, onPipelineComplete
 
       for (const step of data.steps || []) {
         addOutput("info", `--- ${step.action} ---`);
-        if (step.action === "transform") {
+        if (step.action === "transform" || step.action === "seed") {
           const results = step.results as Record<string, string>;
           for (const [model, status] of Object.entries(results || {})) {
             addOutput(status === "error" ? "error" : "info", `${model}: ${status}`);

@@ -214,6 +214,7 @@ function SchemaTree({ tables, selectedTable, onSelectTable }) {
             const isActive = selectedTable === key;
             return (
               <div
+                data-dp-file=""
                 key={key}
                 style={{
                   ...stStyles.tableRow,
@@ -594,14 +595,26 @@ function AppContent() {
       <div style={styles.main}>
         {/* Sidebar */}
         <aside style={{ ...styles.sidebar, width: sidebarWidth }} data-dp-guide="sidebar">
-          <FileTree files={files} onSelect={openFile} activeFile={activeFile} onNewFile={createFile} onDeleteFile={deleteFile} onRefresh={refreshAll} />
+          <div style={styles.sidebarPane}>
+            <div style={styles.sidebarSectionHeader}>
+              <span>FILES</span>
+              <button onClick={refreshAll} style={styles.sidebarRefreshBtn} title="Refresh files &amp; tables">&#x21BB;</button>
+            </div>
+            <div style={styles.sidebarPaneContent}>
+              <FileTree files={files} onSelect={openFile} activeFile={activeFile} onNewFile={createFile} onDeleteFile={deleteFile} />
+            </div>
+          </div>
           <div style={styles.sidebarDivider} />
-          <div style={styles.sidebarSectionHeader}>TABLES</div>
-          <SchemaTree
-            tables={tables}
-            selectedTable={selectedTable}
-            onSelectTable={handleSelectTable}
-          />
+          <div style={styles.sidebarPane}>
+            <div style={styles.sidebarSectionHeader}>TABLES</div>
+            <div style={styles.sidebarPaneContent}>
+              <SchemaTree
+                tables={tables}
+                selectedTable={selectedTable}
+                onSelectTable={handleSelectTable}
+              />
+            </div>
+          </div>
         </aside>
 
         <ResizeHandle
@@ -697,6 +710,8 @@ function AppContent() {
               <ErrorBoundary name="Overview">
                 <OverviewPanel
                   onNavigate={navigateToTab}
+                  onSelectTable={handleSelectTable}
+                  onOpenFile={openFile}
                   onRunStream={(name, force) => {
                     if (name) runStream(name, force);
                     else {
@@ -862,9 +877,12 @@ const styles = {
   userRole: { fontSize: "10px", color: "var(--dp-text-secondary)", background: "var(--dp-btn-bg)", padding: "2px 8px", borderRadius: "10px", fontWeight: 500, textTransform: "capitalize" },
   logoutBtn: { padding: "3px 8px", background: "none", border: "1px solid var(--dp-border-light)", borderRadius: "var(--dp-radius)", color: "var(--dp-text-secondary)", cursor: "pointer", fontSize: "11px" },
   main: { display: "flex", flex: 1, overflow: "hidden" },
-  sidebar: { borderRight: "1px solid var(--dp-border)", overflow: "auto", background: "var(--dp-bg-tertiary)", padding: "8px 0", flexShrink: 0 },
-  sidebarDivider: { height: "1px", background: "var(--dp-border)", margin: "8px 12px" },
-  sidebarSectionHeader: { padding: "6px 12px 8px", fontSize: "10px", fontWeight: "600", color: "var(--dp-text-dim)", letterSpacing: "1px", textTransform: "uppercase" },
+  sidebar: { borderRight: "1px solid var(--dp-border)", overflow: "hidden", background: "var(--dp-bg-tertiary)", padding: "0", flexShrink: 0, display: "flex", flexDirection: "column" },
+  sidebarPane: { flex: 1, minHeight: 0, display: "flex", flexDirection: "column" },
+  sidebarPaneContent: { flex: 1, overflow: "auto", minHeight: 0, padding: "0 0 8px" },
+  sidebarDivider: { height: "1px", background: "var(--dp-border)", margin: "0 12px", flexShrink: 0 },
+  sidebarSectionHeader: { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 12px 6px", fontSize: "10px", fontWeight: "600", color: "var(--dp-text-dim)", letterSpacing: "1px", textTransform: "uppercase", flexShrink: 0 },
+  sidebarRefreshBtn: { background: "none", border: "none", color: "var(--dp-text-secondary)", cursor: "pointer", fontSize: "13px", padding: "0 2px", lineHeight: 1 },
   content: { flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" },
   tabs: { display: "flex", alignItems: "center", borderBottom: "1px solid var(--dp-border)", padding: "0 8px", background: "var(--dp-bg-secondary)", overflowX: "auto", minHeight: "36px" },
   tab: { padding: "8px 14px", background: "none", border: "none", borderBottom: "2px solid transparent", color: "var(--dp-text-secondary)", cursor: "pointer", fontSize: "13px", whiteSpace: "nowrap", fontWeight: 500 },

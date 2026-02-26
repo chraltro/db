@@ -73,9 +73,16 @@ def read_file(request: Request, file_path: str) -> dict:
         raise HTTPException(404, f"File not found: {file_path}")
     if not full_path.is_file():
         raise HTTPException(400, "Not a file")
+    try:
+        content = full_path.read_text(encoding="utf-8")
+    except UnicodeDecodeError:
+        try:
+            content = full_path.read_text(encoding="latin-1")
+        except Exception:
+            raise HTTPException(422, "Cannot read file: unsupported encoding")
     return {
         "path": file_path,
-        "content": full_path.read_text(),
+        "content": content,
         "language": _detect_language(full_path),
     }
 

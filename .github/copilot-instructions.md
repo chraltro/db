@@ -1,4 +1,4 @@
-## dp — Self-Hosted Data Platform
+## dp - Self-Hosted Data Platform
 
 dp uses DuckDB + plain SQL transforms + Python ingest/export. All data in a single `warehouse.duckdb` file.
 
