@@ -29,7 +29,7 @@
 Your entire warehouse lives in a single DuckDB file. Transforms are plain SQL. Ingest and export scripts are Python. There's no Jinja, no compilation step, no profiles.yml, and no YAML spaghetti.
 
 ```
-pip install dp-data && dp init my-project && cd my-project && dp stream full-refresh && dp serve
+git clone https://github.com/chraltro/db.git && cd db && pip install -e . && cd frontend && npm install && npm run build && cd .. && dp init my-project && cd my-project && dp stream full-refresh && dp serve
 ```
 
 <!-- Screenshot placeholder: replace with actual screenshot of dp web UI -->
@@ -50,7 +50,7 @@ dp gives you the analytical power of a modern data stack in something you can in
 | Cloud costs spiraling | **Runs locally.** DuckDB on your machine. $0/month. |
 | Data leaving your infrastructure | **Self-hosted.** Your data stays on your hardware. Full stop. |
 | Jinja-templated SQL nobody understands | **Plain SQL.** Config is a comment. Dependencies are a comment. SQL is just SQL. |
-| 30-minute onboarding | **30-second onboarding.** `pip install dp-data && dp init` gives you a working pipeline with sample data. |
+| 30-minute onboarding | **30-second onboarding.** Install from source and `dp init` gives you a working pipeline with sample data. |
 | Separate tools for ingest, transform, orchestration, UI | **One tool does it all.** CLI, web UI, scheduler, connectors — included. |
 | LLMs can't write your DSL | **AI-native.** Plain SQL + simple conventions = LLMs write correct transforms on the first try. |
 
@@ -135,11 +135,7 @@ dp context   # generate project summary, paste into any AI chat
 
 ### Install
 
-```bash
-pip install dp-data
-```
-
-Or from source:
+From source (recommended):
 
 ```bash
 git clone https://github.com/chraltro/db.git
@@ -147,6 +143,8 @@ cd db
 pip install -e .
 cd frontend && npm install && npm run build && cd ..
 ```
+
+> **Note:** `pip install dp-data` will be available once the package is published to PyPI. For now, install from source.
 
 ### Create a project
 
