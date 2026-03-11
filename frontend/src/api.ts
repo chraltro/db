@@ -404,4 +404,18 @@ export const api = {
   // Lineage
   getLineage: (modelName: string) => request(`/lineage/${modelName}`),
   getAllLineage: () => request("/lineage"),
+
+  // Rewind (Pipeline Time Travel)
+  getRewindRuns: (limit: number = 100) => request(`/rewind/runs?limit=${limit}`),
+  getRewindSnapshots: (limit: number = 5000) => request(`/rewind/snapshots?limit=${limit}`),
+  getRunSnapshots: (runId: string) => request(`/rewind/snapshots/${runId}`),
+  getSnapshotSample: (runId: string, modelName: string, limit: number = 100) =>
+    request(`/rewind/sample/${runId}/${modelName}?limit=${limit}`),
+  restoreSnapshot: (runId: string, modelName: string, cascade: boolean = true) =>
+    request("/rewind/restore", {
+      method: "POST",
+      body: JSON.stringify({ run_id: runId, model_name: modelName, cascade }),
+    }),
+  getDownstreamModels: (modelName: string) => request(`/rewind/downstream/${modelName}`),
+  runRewindGC: () => request("/rewind/gc", { method: "POST" }),
 };

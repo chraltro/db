@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import Annotated, Optional
 
@@ -9,6 +10,8 @@ import typer
 from rich.table import Table
 
 from dp.cli import _load_config, _resolve_project, app, console
+
+logger = logging.getLogger("dp.cli")
 
 
 @app.command()
@@ -123,10 +126,18 @@ def transform(
 
     db_path = project_dir / config.database.path
     conn = connect(db_path)
+
+    # Start a Pipeline Rewind run if enabled
+    run_id = None
+    if config.rewind.enabled:
+        from dp.engine.snapshots import finish_run, run_gc, start_run
+        run_id = start_run(project_dir, trigger="manual")
+
     try:
         results = run_transform(
             conn, transform_dir, targets=targets, force=force,
             parallel=parallel, max_workers=workers, db_path=str(db_path),
+            project_dir=project_dir, rewind_config=config.rewind, run_id=run_id,
         )
         if not results:
             return
@@ -139,6 +150,27 @@ def transform(
         if assertions_failed:
             parts.append(f"{assertions_failed} assertion failures")
         console.print(f"  {', '.join(parts)}")
+
+        # Finish the Pipeline Rewind run
+        if run_id and config.rewind.enabled:
+            status = "failed" if errors else ("partial" if assertions_failed else "success")
+            models_run = list(results.keys())
+            finish_run(project_dir, run_id, status, models_run)
+            # Run garbage collection
+            try:
+                from dp.engine.snapshots import RewindConfig as _RC
+                rw_cfg = _RC(
+                    enabled=config.rewind.enabled,
+                    retention=config.rewind.retention,
+                    max_storage=config.rewind.max_storage,
+                    dedup=config.rewind.dedup,
+                    exclude=config.rewind.exclude,
+                )
+                deleted = run_gc(project_dir, rw_cfg)
+                if deleted:
+                    console.print(f"  [dim]rewind: {deleted} expired snapshot(s) cleaned up[/dim]")
+            except Exception as gc_err:
+                logger.warning("Snapshot GC failed: %s", gc_err)
 
         # Send alerts if configured
         if config.alerts.slack_webhook_url or config.alerts.webhook_url:

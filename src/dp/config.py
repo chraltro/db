@@ -114,6 +114,17 @@ class ExposureConfig(BaseModel):
     url: str = ""
 
 
+class RewindConfig(BaseModel):
+    """Configuration for Pipeline Rewind (time-travel debugging)."""
+    model_config = ConfigDict(extra="ignore")
+
+    enabled: bool = True
+    retention: str = "7d"
+    max_storage: float | None = None  # GB cap
+    dedup: bool = True
+    exclude: list[str] = Field(default_factory=list)
+
+
 class ProjectConfig(BaseModel):
     model_config = ConfigDict(extra="ignore", arbitrary_types_allowed=True)
 
@@ -124,6 +135,7 @@ class ProjectConfig(BaseModel):
     streams: dict[str, StreamConfig] = Field(default_factory=dict)
     lint: LintConfig = Field(default_factory=LintConfig)
     alerts: AlertsConfig = Field(default_factory=AlertsConfig)
+    rewind: RewindConfig = Field(default_factory=RewindConfig)
     environments: dict[str, EnvironmentConfig] = Field(default_factory=dict)
     active_environment: str | None = None
     sources: list[SourceConfig] = Field(default_factory=list)
@@ -261,6 +273,16 @@ def load_project(project_dir: Path | None = None, env: str | None = None) -> Pro
         rules=lint_raw.get("rules", []),
     )
 
+    # Rewind
+    rewind_raw = raw.get("rewind", {})
+    rewind = RewindConfig(
+        enabled=rewind_raw.get("enabled", True),
+        retention=str(rewind_raw.get("retention", "7d")),
+        max_storage=float(rewind_raw["max_storage"]) if "max_storage" in rewind_raw else None,
+        dedup=rewind_raw.get("dedup", True),
+        exclude=rewind_raw.get("exclude", []),
+    )
+
     # Alerts
     alerts_raw = raw.get("alerts", {})
     alerts = AlertsConfig(
@@ -310,6 +332,7 @@ def load_project(project_dir: Path | None = None, env: str | None = None) -> Pro
         streams=streams,
         lint=lint,
         alerts=alerts,
+        rewind=rewind,
         environments=environments,
         active_environment=active_env if active_env and active_env in environments else None,
         sources=sources,
