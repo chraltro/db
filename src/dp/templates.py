@@ -95,6 +95,8 @@ except Exception as e:
 """
 
 _INGEST_LOAD_SOURCE = """\
+import pandas as pd
+
 rows = [
     {**f["properties"], "id": f["id"],
      "latitude": f["geometry"]["coordinates"][1],
@@ -103,8 +105,9 @@ rows = [
     for f in features
 ]
 
+df = pd.DataFrame(rows)
 db.execute("CREATE SCHEMA IF NOT EXISTS landing")
-db.execute("CREATE OR REPLACE TABLE landing.earthquakes AS SELECT * FROM rows")
+db.execute("CREATE OR REPLACE TABLE landing.earthquakes AS SELECT * FROM df")
 print(f"Loaded {len(rows)} earthquakes into landing.earthquakes")\
 """
 

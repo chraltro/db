@@ -379,8 +379,6 @@ export default function DAGPanel({ onOpenFile }) {
   const [snapshots, setSnapshots] = useState([]);
   const [sliderIndex, setSliderIndex] = useState(-1);
   const [rewindMode, setRewindMode] = useState(false);
-  const [playing, setPlaying] = useState(false);
-  const playRef = useRef(false);
 
   useEffect(() => {
     setError(null);
@@ -432,22 +430,6 @@ export default function DAGPanel({ onOpenFile }) {
     if (!dag || dag.nodes.length === 0) return null;
     return layoutDAG(dag.nodes, dag.edges);
   }, [dag]);
-
-  // Playback animation
-  useEffect(() => {
-    if (!playing) { playRef.current = false; return; }
-    playRef.current = true;
-    let idx = runs.length - 1;
-    function tick() {
-      if (!playRef.current) return;
-      setSliderIndex(idx);
-      idx--;
-      if (idx >= 0) setTimeout(tick, 800);
-      else { setPlaying(false); playRef.current = false; }
-    }
-    tick();
-    return () => { playRef.current = false; };
-  }, [playing, runs.length]);
 
   const draw = useCallback(() => {
     if (!layout || !canvasRef.current) return;
@@ -750,6 +732,99 @@ export default function DAGPanel({ onOpenFile }) {
         </div>
       </div>
 
+      {/* Timeline — placed above the canvas so it's always visible */}
+      {rewindMode && runs.length > 0 && (() => {
+        const sorted = runs.slice().reverse(); // oldest first
+        const earliest = new Date(sorted[0].started_at).getTime();
+        const latest = new Date(sorted[sorted.length - 1].started_at).getTime();
+        const span = latest - earliest || 1;
+        const fmtDate = (s) => s?.slice(0, 10) || "";
+        const fmtTime = (s) => s?.slice(11, 16) || "";
+        // Map sliderIndex (0=newest in runs[]) to position in sorted array
+        const selectedSortedIdx = sorted.length - 1 - sliderIndex;
+
+        return (
+          <div style={styles.sliderContainer}>
+            <span style={{ fontSize: 10, color: "var(--dp-text-dim)", whiteSpace: "nowrap", flexShrink: 0 }}>
+              {fmtDate(sorted[0].started_at)}<br />{fmtTime(sorted[0].started_at)}
+            </span>
+            <div
+              style={{ flex: 1, position: "relative", height: 32, cursor: "pointer", margin: "0 8px" }}
+              onClick={(e) => {
+                const rect = e.currentTarget.getBoundingClientRect();
+                const pct = (e.clientX - rect.left) / rect.width;
+                // Find closest run by position
+                let bestIdx = 0;
+                let bestDist = Infinity;
+                sorted.forEach((r, i) => {
+                  const t = new Date(r.started_at).getTime();
+                  const pos = sorted.length === 1 ? 0.5 : (t - earliest) / span;
+                  const d = Math.abs(pos - pct);
+                  if (d < bestDist) { bestDist = d; bestIdx = i; }
+                });
+                setSliderIndex(sorted.length - 1 - bestIdx);
+              }}
+            >
+              {/* Track line */}
+              <div style={{ position: "absolute", top: 14, left: 0, right: 0, height: 2, background: "var(--dp-border)", borderRadius: 1 }} />
+              {/* Run dots */}
+              {sorted.map((r, i) => {
+                const t = new Date(r.started_at).getTime();
+                const pct = sorted.length === 1 ? 50 : ((t - earliest) / span) * 100;
+                const isSelected = i === selectedSortedIdx;
+                const statusColor = r.status === "success" ? "#3fb950" : r.status === "failed" ? "#f85149" : "#d29922";
+                return (
+                  <div
+                    key={r.run_id}
+                    title={`${r.started_at?.slice(0, 19)} — ${r.status} (${r.trigger})`}
+                    style={{
+                      position: "absolute",
+                      left: `${pct}%`,
+                      top: isSelected ? 7 : 10,
+                      width: isSelected ? 14 : 8,
+                      height: isSelected ? 14 : 8,
+                      borderRadius: "50%",
+                      background: isSelected ? "var(--dp-accent, #58a6ff)" : statusColor,
+                      border: isSelected ? "2px solid #fff" : "1px solid var(--dp-bg)",
+                      transform: "translateX(-50%)",
+                      transition: "all 0.15s ease",
+                      zIndex: isSelected ? 2 : 1,
+                      boxShadow: isSelected ? "0 0 6px rgba(88,166,255,0.5)" : "none",
+                    }}
+                  />
+                );
+              })}
+            </div>
+            <span style={{ fontSize: 10, color: "var(--dp-text-dim)", whiteSpace: "nowrap", flexShrink: 0, textAlign: "right" }}>
+              {fmtDate(sorted[sorted.length - 1].started_at)}<br />{fmtTime(sorted[sorted.length - 1].started_at)}
+            </span>
+            {/* Selected run info */}
+            {currentRun && (
+              <div style={{ marginLeft: 12, fontSize: 11, whiteSpace: "nowrap", flexShrink: 0 }}>
+                <span style={{ fontWeight: 600 }}>{currentRun.started_at?.slice(11, 19)}</span>
+                <span style={{
+                  marginLeft: 6, fontSize: 10, fontWeight: 600,
+                  color: currentRun.status === "success" ? "#3fb950" : currentRun.status === "failed" ? "#f85149" : "#d29922",
+                }}>
+                  {currentRun.status}
+                </span>
+                <span style={{ color: "var(--dp-text-dim)", marginLeft: 6, fontSize: 10 }}>
+                  {currentRun.trigger}
+                </span>
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
+      {rewindMode && runs.length === 0 && (
+        <div style={styles.sliderContainer}>
+          <span style={{ color: "var(--dp-text-dim)", fontSize: 12 }}>
+            No pipeline runs recorded. Run a transform to start capturing snapshots.
+          </span>
+        </div>
+      )}
+
       <div style={styles.mainArea}>
         <div style={{ flex: 1, overflow: "auto", background: "var(--dp-bg-tertiary)" }} data-dp-hint="dag-canvas">
           <canvas
@@ -773,75 +848,22 @@ export default function DAGPanel({ onOpenFile }) {
           />
         )}
       </div>
-
-      {/* Time slider */}
-      {rewindMode && runs.length > 0 && (
-        <div style={styles.sliderContainer}>
-          <button
-            onClick={() => setPlaying(!playing)}
-            style={styles.playBtn}
-            title={playing ? "Pause" : "Play"}
-          >
-            {playing ? "||" : "\u25B6"}
-          </button>
-          <input
-            type="range"
-            min={0}
-            max={runs.length - 1}
-            value={sliderIndex}
-            onChange={(e) => { setSliderIndex(Number(e.target.value)); setPlaying(false); }}
-            style={styles.slider}
-          />
-          <div style={styles.sliderLabel}>
-            {currentRun ? (
-              <>
-                <span style={{ fontWeight: 600 }}>
-                  {currentRun.started_at?.slice(0, 19)}
-                </span>
-                <span style={{ color: "var(--dp-text-dim)", marginLeft: 8, fontSize: 10 }}>
-                  {currentRun.run_id?.slice(0, 8)}
-                </span>
-                <span style={{
-                  marginLeft: 8, fontSize: 10, fontWeight: 600,
-                  color: currentRun.status === "success" ? "#3fb950" : currentRun.status === "failed" ? "#f85149" : "#d29922",
-                }}>
-                  {currentRun.status}
-                </span>
-                <span style={{ color: "var(--dp-text-dim)", marginLeft: 8, fontSize: 10 }}>
-                  {currentRun.trigger}
-                </span>
-              </>
-            ) : "No runs"}
-          </div>
-        </div>
-      )}
-
-      {rewindMode && runs.length === 0 && (
-        <div style={styles.sliderContainer}>
-          <span style={{ color: "var(--dp-text-dim)", fontSize: 12 }}>
-            No pipeline runs recorded. Run a transform to start capturing snapshots.
-          </span>
-        </div>
-      )}
     </div>
   );
 }
 
 const styles = {
-  container: { display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" },
-  header: { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 12px", borderBottom: "1px solid var(--dp-border)", fontSize: "13px" },
+  container: { display: "flex", flexDirection: "column", flex: 1, height: "100%", minHeight: 0, overflow: "hidden" },
+  header: { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 12px", borderBottom: "1px solid var(--dp-border)", fontSize: "13px", flexShrink: 0 },
   headerTitle: { fontWeight: 600 },
   headerRight: { display: "flex", alignItems: "center", gap: 12 },
   legend: { display: "flex", gap: "10px", fontSize: "11px", color: "var(--dp-text-secondary)", alignItems: "center", flexWrap: "wrap" },
   legendItem: { display: "flex", alignItems: "center", gap: "4px" },
   legendDot: { width: "8px", height: "8px", borderRadius: "50%", display: "inline-block" },
-  mainArea: { flex: 1, display: "flex", overflow: "hidden" },
+  mainArea: { flex: 1, display: "flex", overflow: "hidden", minHeight: 0 },
   canvas: { display: "block" },
   loading: { padding: "24px", color: "var(--dp-text-secondary)", textAlign: "center" },
   empty: { padding: "24px", color: "var(--dp-text-dim)", textAlign: "center" },
   rewindBtn: { border: "1px solid var(--dp-border)", borderRadius: 4, padding: "3px 10px", fontSize: 11, fontWeight: 600, cursor: "pointer" },
-  sliderContainer: { display: "flex", alignItems: "center", gap: 10, padding: "8px 16px", borderTop: "1px solid var(--dp-border)", background: "var(--dp-bg-secondary)", fontSize: 12 },
-  playBtn: { background: "none", border: "1px solid var(--dp-border)", borderRadius: 4, padding: "2px 8px", cursor: "pointer", fontSize: 12, color: "var(--dp-text)", minWidth: 28, textAlign: "center" },
-  slider: { flex: 1, accentColor: "var(--dp-accent, #58a6ff)" },
-  sliderLabel: { minWidth: 300, textAlign: "right", fontSize: 11 },
+  sliderContainer: { display: "flex", alignItems: "center", gap: 10, padding: "8px 16px", borderBottom: "1px solid var(--dp-border)", background: "var(--dp-bg-secondary)", fontSize: 12, flexShrink: 0 },
 };

@@ -838,7 +838,7 @@ function AppContent() {
             onResize={(delta) => onOutputResize(-delta)}
             onResizeStart={onOutputResizeStart}
           />
-          <div data-dp-guide="output">
+          <div data-dp-guide="output" style={{ flexShrink: 0 }}>
             <OutputPanel output={output} onClear={clearOutput} height={outputHeight} onOpenFile={openFileAtLine} />
           </div>
         </div>
@@ -953,7 +953,7 @@ const styles = {
   fileActions: { marginLeft: "auto", display: "flex", alignItems: "center", gap: "8px", paddingLeft: "16px" },
   fileName: { fontSize: "12px", color: "var(--dp-text-secondary)", fontFamily: "var(--dp-font-mono)" },
   modifiedDot: { color: "var(--dp-accent)", fontWeight: 700 },
-  panel: { flex: 1, overflow: "hidden" },
+  panel: { flex: 1, overflow: "hidden", minHeight: 0 },
   btn: { padding: "5px 12px", background: "var(--dp-btn-bg)", border: "1px solid var(--dp-btn-border)", borderRadius: "var(--dp-radius-lg)", color: "var(--dp-text)", cursor: "pointer", fontSize: "12px", fontWeight: 500 },
   btnPrimary: { padding: "5px 12px", background: "var(--dp-green)", border: "1px solid var(--dp-green-border)", borderRadius: "var(--dp-radius-lg)", color: "#fff", cursor: "pointer", fontSize: "12px", fontWeight: 500 },
   moreWrapper: { position: "relative" },

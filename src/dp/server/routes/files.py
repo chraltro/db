@@ -98,10 +98,10 @@ def save_file(request: Request, file_path: str, req: SaveFileRequest) -> dict:
     if not str(full_path).startswith(str(project_dir.resolve())):
         raise HTTPException(400, "Invalid file path")
     # Only allow known file extensions
-    if full_path.suffix not in (".sql", ".py", ".yml", ".yaml", ".dpnb", ".sqlfluff"):
+    if full_path.suffix not in (".sql", ".py", ".yml", ".yaml", ".dpnb", ".sqlfluff", ".csv", ".md"):
         raise HTTPException(400, f"Unsupported file type: {full_path.suffix}")
     full_path.parent.mkdir(parents=True, exist_ok=True)
-    full_path.write_text(req.content)
+    full_path.write_text(req.content, encoding="utf-8")
     return {"path": file_path, "status": "saved"}
 
 

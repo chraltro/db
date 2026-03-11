@@ -296,6 +296,17 @@ def stream(
         console.print(f"  [dim]retries: {stream_config.retries}, delay: {stream_config.retry_delay}s[/dim]")
     console.print()
 
+    db_path = project_dir / config.database.path
+    conn = connect(db_path)
+    has_error = False
+    start = _time.perf_counter()
+
+    # Start rewind run tracking for streams
+    run_id = None
+    if config.rewind.enabled:
+        from dp.engine.snapshots import finish_run, run_gc, start_run
+        run_id = start_run(project_dir, trigger=f"stream:{name}")
+
     def _run_step(step, conn_):
         """Run a single step. Returns True on success."""
         if step.action == "ingest":
@@ -310,6 +321,9 @@ def stream(
                 project_dir / "transform",
                 targets=step.targets if step.targets != ["all"] else None,
                 force=force,
+                project_dir=project_dir,
+                rewind_config=config.rewind if run_id else None,
+                run_id=run_id,
             )
             if any(s == "error" for s in results.values()):
                 return False
@@ -326,11 +340,6 @@ def stream(
                 return False
         console.print()
         return True
-
-    db_path = project_dir / config.database.path
-    conn = connect(db_path)
-    has_error = False
-    start = _time.perf_counter()
 
     try:
         for step in stream_config.steps:
@@ -354,6 +363,26 @@ def stream(
             console.print(f"[red]Stream failed after {duration_s}s.[/red]")
         else:
             console.print(f"[green]Stream completed successfully in {duration_s}s.[/green]")
+
+        # Finish rewind run
+        if run_id and config.rewind.enabled:
+            status = "failed" if has_error else "success"
+            models_run = []  # populated by transform step internally
+            finish_run(project_dir, run_id, status, models_run)
+            try:
+                from dp.engine.snapshots import RewindConfig as _RC
+                rw_cfg = _RC(
+                    enabled=config.rewind.enabled,
+                    retention=config.rewind.retention,
+                    max_storage=config.rewind.max_storage,
+                    dedup=config.rewind.dedup,
+                    exclude=config.rewind.exclude,
+                )
+                deleted = run_gc(project_dir, rw_cfg)
+                if deleted:
+                    console.print(f"  [dim]rewind: {deleted} expired snapshot(s) cleaned up[/dim]")
+            except Exception:
+                pass
 
         # Webhook notification
         if stream_config.webhook_url:
