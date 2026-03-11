@@ -61,7 +61,7 @@ def check(
 
     conn = None
     if db_path.exists():
-        conn = connect(db_path, read_only=True)
+        conn = connect(db_path)
         ensure_meta_table(conn)
 
     has_failure = False
@@ -163,7 +163,7 @@ def freshness(
         console.print("[yellow]No warehouse database found.[/yellow]")
         return
 
-    conn = connect(db_path, read_only=True)
+    conn = connect(db_path)
     try:
         ensure_meta_table(conn)
         results = check_freshness(conn, max_age_hours=hours)
@@ -230,7 +230,7 @@ def profile(
         console.print("[yellow]No warehouse database found.[/yellow]")
         return
 
-    conn = connect(db_path, read_only=True)
+    conn = connect(db_path)
     try:
         ensure_meta_table(conn)
 
@@ -307,7 +307,7 @@ def assertions(
         console.print("[yellow]No warehouse database found.[/yellow]")
         return
 
-    conn = connect(db_path, read_only=True)
+    conn = connect(db_path)
     try:
         ensure_meta_table(conn)
         rows = conn.execute(

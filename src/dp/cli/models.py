@@ -228,7 +228,7 @@ def impact(
 
     conn = None
     if db_path.exists():
-        conn = connect(db_path, read_only=True)
+        conn = connect(db_path)
         ensure_meta_table(conn)
 
     try:
