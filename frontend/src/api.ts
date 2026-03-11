@@ -440,4 +440,36 @@ export const api = {
   // Wiki
   listWikiPages: () => request("/wiki"),
   getWikiPage: (slug: string) => request(`/wiki/${encodeURIComponent(slug)}`),
+
+  // Rewind (Pipeline Time Travel)
+  getRewindRuns: (limit: number = 100) => request(`/rewind/runs?limit=${limit}`),
+  getRewindSnapshots: (limit: number = 5000) => request(`/rewind/snapshots?limit=${limit}`),
+  getRunSnapshots: (runId: string) => request(`/rewind/snapshots/${runId}`),
+  getSnapshotSample: (runId: string, modelName: string, limit: number = 100) =>
+    request(`/rewind/sample/${runId}/${modelName}?limit=${limit}`),
+  restoreSnapshot: (runId: string, modelName: string, cascade: boolean = true) =>
+    request("/rewind/restore", {
+      method: "POST",
+      body: JSON.stringify({ run_id: runId, model_name: modelName, cascade }),
+    }),
+  getDownstreamModels: (modelName: string) => request(`/rewind/downstream/${modelName}`),
+  runRewindGC: () => request("/rewind/gc", { method: "POST" }),
+
+  // Schema Sentinel
+  runSentinelCheck: () => request("/sentinel/check", { method: "POST" }),
+  getSentinelDiffs: (limit: number = 50) => request(`/sentinel/diffs?limit=${limit}`),
+  getSentinelImpacts: (diffId: string) => request(`/sentinel/impacts/${diffId}`),
+  getSentinelHistory: (sourceName: string, limit: number = 20) =>
+    request(`/sentinel/history/${sourceName}?limit=${limit}`),
+  getSentinelSources: () => request("/sentinel/sources"),
+  applySentinelFix: (modelPath: string, oldName: string, newName: string) =>
+    request("/sentinel/apply-fix", {
+      method: "POST",
+      body: JSON.stringify({ model_path: modelPath, old_name: oldName, new_name: newName }),
+    }),
+  resolveSentinelImpact: (diffId: string, modelName: string) =>
+    request("/sentinel/resolve", {
+      method: "POST",
+      body: JSON.stringify({ diff_id: diffId, model_name: modelName }),
+    }),
 };

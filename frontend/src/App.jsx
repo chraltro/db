@@ -8,6 +8,7 @@ import QueryPanel from "./QueryPanel";
 import TablesPanel from "./TablesPanel";
 import HistoryPanel from "./HistoryPanel";
 import DAGPanel from "./DAGPanel";
+import SentinelPanel from "./SentinelPanel";
 import DiffPanel from "./DiffPanel";
 import DocsPanel from "./DocsPanel";
 import NotebookPanel from "./NotebookPanel";
@@ -80,7 +81,7 @@ const GUIDE_STEPS = [
 
 // Primary tabs always visible; secondary tabs collapsed under "More"
 const PRIMARY_TABS = ["Overview", "Editor", "Query", "Tables", "Data Sources"];
-const SECONDARY_TABS = ["Notebooks", "DAG", "Diff", "Quality", "Masking", "Wiki", "History", "Settings"];
+const SECONDARY_TABS = ["Notebooks", "DAG", "Sentinel", "Diff", "Quality", "Masking", "Wiki", "Docs", "History", "Settings"];
 
 function ActionDropdown({ label, onClick, options, disabled, primary }) {
   const [open, setOpen] = useState(false);
@@ -810,6 +811,7 @@ function AppContent() {
             {activeTab === "Data Sources" && <ErrorBoundary name="Data Sources"><DataSourcesPanel addOutput={addOutput} /></ErrorBoundary>}
             {activeTab === "Notebooks" && <ErrorBoundary name="Notebooks"><NotebookPanel openPath={notebookPath} /></ErrorBoundary>}
             {activeTab === "DAG" && <ErrorBoundary name="DAG"><DAGPanel onOpenFile={openFile} /></ErrorBoundary>}
+            {activeTab === "Sentinel" && <ErrorBoundary name="Sentinel"><SentinelPanel /></ErrorBoundary>}
             {activeTab === "Diff" && <ErrorBoundary name="Diff"><DiffPanel api={api} addOutput={addOutput} /></ErrorBoundary>}
             {activeTab === "Docs" && <ErrorBoundary name="Docs"><DocsPanel /></ErrorBoundary>}
             {activeTab === "Quality" && <ErrorBoundary name="Quality"><QualityPanel /></ErrorBoundary>}

@@ -40,6 +40,9 @@ def run_transform(
     parallel: bool = False,
     max_workers: int = 4,
     db_path: str | None = None,
+    project_dir: Path | None = None,
+    rewind_config: object | None = None,
+    run_id: str | None = None,
 ) -> dict[str, str]:
     """Run the full transformation pipeline.
 
@@ -51,6 +54,9 @@ def run_transform(
         parallel: Enable parallel execution of independent models
         max_workers: Max number of parallel workers
         db_path: Explicit database path (required for parallel mode)
+        project_dir: Project root (for snapshot capture)
+        rewind_config: RewindConfig from project settings
+        run_id: Pipeline run ID (for snapshot tagging)
 
     Returns:
         Dict of model_name -> status ("built", "skipped", "error")
@@ -74,14 +80,23 @@ def run_transform(
             return {}
 
     if parallel:
-        return _run_transform_parallel(conn, models, force, max_workers, db_path=db_path)
-    return _run_transform_sequential(conn, models, force)
+        return _run_transform_parallel(
+            conn, models, force, max_workers, db_path=db_path,
+            project_dir=project_dir, rewind_config=rewind_config, run_id=run_id,
+        )
+    return _run_transform_sequential(
+        conn, models, force,
+        project_dir=project_dir, rewind_config=rewind_config, run_id=run_id,
+    )
 
 
 def _run_transform_sequential(
     conn: duckdb.DuckDBPyConnection,
     models: list[SQLModel],
     force: bool,
+    project_dir: Path | None = None,
+    rewind_config: object | None = None,
+    run_id: str | None = None,
 ) -> dict[str, str]:
     """Run models sequentially (original behavior + assertions + profiling)."""
     ordered = build_dag(models)
@@ -109,6 +124,23 @@ def _run_transform_sequential(
 
             suffix = f" ({row_count:,} rows, {duration_ms}ms)" if row_count else f" ({duration_ms}ms)"
             console.print(f"  [green]done[/green]  {label}{suffix}")
+
+            # Capture snapshot for Pipeline Rewind
+            if project_dir and run_id:
+                try:
+                    from dp.engine.snapshots import RewindConfig, capture_snapshot
+                    rw_cfg = None
+                    if rewind_config is not None:
+                        rw_cfg = RewindConfig(
+                            enabled=getattr(rewind_config, "enabled", True),
+                            retention=getattr(rewind_config, "retention", "7d"),
+                            max_storage=getattr(rewind_config, "max_storage", None),
+                            dedup=getattr(rewind_config, "dedup", True),
+                            exclude=getattr(rewind_config, "exclude", []),
+                        )
+                    capture_snapshot(project_dir, conn, model.full_name, run_id, row_count, rw_cfg)
+                except Exception as snap_err:
+                    logger.warning("Snapshot capture failed for %s: %s", model.full_name, snap_err)
 
             # Run data quality assertions
             if model.assertions:
@@ -155,6 +187,9 @@ def _run_transform_parallel(
     force: bool,
     max_workers: int,
     db_path: str | None = None,
+    project_dir: Path | None = None,
+    rewind_config: object | None = None,
+    run_id: str | None = None,
 ) -> dict[str, str]:
     """Run models in parallel by DAG tiers.
 
@@ -181,7 +216,10 @@ def _run_transform_parallel(
             logger.debug("Could not extract db path from connection: %s", e)
     if not db_path_str:
         console.print("[yellow]Cannot determine database path, falling back to sequential[/yellow]")
-        return _run_transform_sequential(conn, models, force)
+        return _run_transform_sequential(
+            conn, models, force,
+            project_dir=project_dir, rewind_config=rewind_config, run_id=run_id,
+        )
 
     results: dict[str, str] = {}
     total_tiers = len(tiers)
@@ -236,6 +274,23 @@ def _run_transform_parallel(
                 console.print(f"  [green]done[/green]  {label}{suffix}")
                 results[model.full_name] = "built"
 
+                # Capture snapshot for Pipeline Rewind
+                if project_dir and run_id:
+                    try:
+                        from dp.engine.snapshots import RewindConfig as _RC, capture_snapshot as _cs
+                        _rw = None
+                        if rewind_config is not None:
+                            _rw = _RC(
+                                enabled=getattr(rewind_config, "enabled", True),
+                                retention=getattr(rewind_config, "retention", "7d"),
+                                max_storage=getattr(rewind_config, "max_storage", None),
+                                dedup=getattr(rewind_config, "dedup", True),
+                                exclude=getattr(rewind_config, "exclude", []),
+                            )
+                        _cs(project_dir, conn, model.full_name, run_id, row_count, _rw)
+                    except Exception as snap_err:
+                        logger.warning("Snapshot capture failed for %s: %s", model.full_name, snap_err)
+
             except Exception as e:
                 log_run(conn, "transform", model.full_name, "error", error=str(e))
                 console.print(f"  [red]fail[/red]  {label}: {e}")
@@ -272,5 +327,23 @@ def _run_transform_parallel(
                     console.print(f"  [red]fail[/red]  {label}: {model_result.error}")
 
                 results[model_name] = model_result.status
+
+                # Capture snapshot for Pipeline Rewind (parallel tier)
+                if project_dir and run_id and model_result.status == "built":
+                    try:
+                        from dp.engine.snapshots import RewindConfig as _RC, capture_snapshot as _cs
+                        _rw = None
+                        if rewind_config is not None:
+                            _rw = _RC(
+                                enabled=getattr(rewind_config, "enabled", True),
+                                retention=getattr(rewind_config, "retention", "7d"),
+                                max_storage=getattr(rewind_config, "max_storage", None),
+                                dedup=getattr(rewind_config, "dedup", True),
+                                exclude=getattr(rewind_config, "exclude", []),
+                            )
+                        _cs(project_dir, conn, model_name, run_id,
+                            model_result.row_count, _rw)
+                    except Exception as snap_err:
+                        logger.warning("Snapshot capture failed for %s: %s", model_name, snap_err)
 
     return results
