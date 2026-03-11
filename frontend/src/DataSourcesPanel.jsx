@@ -614,7 +614,7 @@ export default function DataSourcesPanel({ addOutput }) {
                     </tr>
                   </thead>
                   <tbody>
-                    {preview.rows.slice(0, 50).map((row, ri) => (
+                    {preview.rows.map((row, ri) => (
                       <tr key={ri}>
                         {row.map((v, ci) => (
                           <td key={ci} style={st.td}>

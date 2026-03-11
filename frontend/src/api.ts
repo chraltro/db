@@ -228,8 +228,8 @@ export const api = {
     request<StreamResult>(`/stream/${name}?force=${force}`, { method: "POST" }),
 
   // Query
-  runQuery: (sql: string, limit: number = 1000) =>
-    request<QueryResult>("/query", { method: "POST", body: JSON.stringify({ sql, limit }) }),
+  runQuery: (sql: string) =>
+    request<QueryResult>("/query", { method: "POST", body: JSON.stringify({ sql }) }),
 
   // Tables
   listTables: (schema: string | null = null) =>

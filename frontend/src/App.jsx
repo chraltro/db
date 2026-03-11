@@ -55,14 +55,14 @@ const GUIDE_STEPS = [
   },
   {
     id: "tabs",
-    title: "Navigation Tabs",
-    description: "The Overview shows pipeline health at a glance. Use Data Sources to connect your data, Query to explore, and Tables to browse.",
+    title: "Navigation",
+    description: "Sections group your workflow: Develop for code, Explore for data, Observe for monitoring, Configure for settings. Sub-tabs appear within each section.",
     position: "bottom",
   },
   {
     id: "actions",
-    title: "Action Buttons",
-    description: "Run transforms, streams, and lint checks from here. These buttons execute your data pipeline steps.",
+    title: "Run Menu",
+    description: "The Run button executes your pipeline. Click the arrow for more options: Transform, Lint, Contracts, and Full Refresh.",
     position: "bottom",
   },
   {
@@ -74,16 +74,41 @@ const GUIDE_STEPS = [
   {
     id: "ready",
     title: "You're Ready!",
-    description: "Start by connecting a data source from the Overview tab, or run a stream to kick off your pipeline. You can replay this guide from Settings.",
+    description: "Start by connecting a data source from the Overview, or run a stream to kick off your pipeline. You can replay this guide from Settings.",
     position: "center",
   },
 ];
 
-// Primary tabs always visible; secondary tabs collapsed under "More"
-const PRIMARY_TABS = ["Overview", "Editor", "Query", "Tables", "Data Sources"];
-const SECONDARY_TABS = ["Notebooks", "DAG", "Sentinel", "Diff", "Quality", "Masking", "Wiki", "Docs", "History", "Settings"];
+/* ------------------------------------------------------------------ */
+/* Section-based navigation                                            */
+/* ------------------------------------------------------------------ */
 
-function ActionDropdown({ label, onClick, options, disabled, primary }) {
+const SECTIONS = [
+  { id: "Overview", label: "Overview", tabs: [] },
+  { id: "Develop", label: "Develop", tabs: ["Editor", "Notebooks", "DAG"] },
+  { id: "Explore", label: "Explore", tabs: ["Query", "Tables", "Data Sources"] },
+  { id: "Observe", label: "Observe", tabs: ["Quality", "Sentinel", "Diff", "History"] },
+  { id: "Configure", label: "Configure", tabs: ["Masking", "Wiki", "Docs", "Settings"] },
+];
+
+// Quick lookup: tab name -> section id
+const TAB_TO_SECTION = {};
+for (const s of SECTIONS) {
+  if (s.tabs.length === 0) TAB_TO_SECTION[s.id] = s.id;
+  for (const t of s.tabs) TAB_TO_SECTION[t] = s.id;
+}
+
+// Default tab for each section (first sub-tab or the section itself)
+const SECTION_DEFAULT = {};
+for (const s of SECTIONS) {
+  SECTION_DEFAULT[s.id] = s.tabs.length > 0 ? s.tabs[0] : s.id;
+}
+
+/* ------------------------------------------------------------------ */
+/* Pipeline Run Menu (replaces 5 separate action buttons)              */
+/* ------------------------------------------------------------------ */
+
+function PipelineMenu({ running, streams, onRunStream, onTransform, onLint, onContracts, addOutput }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
 
@@ -96,67 +121,104 @@ function ActionDropdown({ label, onClick, options, disabled, primary }) {
     return () => document.removeEventListener("mousedown", handler);
   }, [open]);
 
-  const btnStyle = primary ? adStyles.btnPrimary : adStyles.btn;
-  const hasOptions = options && options.length > 0;
+  const streamNames = Object.keys(streams);
+  const defaultRun = () => {
+    if (streamNames.length > 0) onRunStream(streamNames[0]);
+    else addOutput("warn", "No streams defined in project.yml");
+  };
 
   return (
-    <div ref={ref} style={adStyles.wrapper}>
-      <button
-        onClick={onClick}
-        disabled={disabled}
-        style={{
-          ...btnStyle,
-          ...(hasOptions ? { borderTopRightRadius: 0, borderBottomRightRadius: 0 } : {}),
-        }}
-      >
-        {label}
+    <div ref={ref} style={pmStyles.wrapper}>
+      <button onClick={defaultRun} disabled={running} style={pmStyles.btn}>
+        {"\u25B6"} Run
       </button>
-      {hasOptions && (
-        <>
-          <button
-            onClick={() => setOpen(!open)}
-            disabled={disabled}
-            style={{
-              ...btnStyle,
-              padding: "5px 5px",
-              borderTopLeftRadius: 0,
-              borderBottomLeftRadius: 0,
-              borderLeft: `1px solid ${primary ? "rgba(255,255,255,0.2)" : "var(--dp-border-light)"}`,
-              marginLeft: "-1px",
-              fontSize: "10px",
-            }}
-          >
-            {"\u25BE"}
-          </button>
-          {open && (
-            <div style={adStyles.menu}>
-              {options.map((opt) => (
-                <button
-                  key={opt.label}
-                  onClick={() => { opt.action(); setOpen(false); }}
-                  disabled={disabled}
-                  style={adStyles.item}
-                  onMouseEnter={(e) => e.currentTarget.style.background = "var(--dp-btn-bg)"}
-                  onMouseLeave={(e) => e.currentTarget.style.background = "none"}
-                >
-                  {opt.label}
-                </button>
-              ))}
-            </div>
-          )}
-        </>
+      <button
+        onClick={() => setOpen(!open)}
+        disabled={running}
+        style={pmStyles.chevron}
+      >
+        {"\u25BE"}
+      </button>
+      {open && (
+        <div style={pmStyles.menu}>
+          <div style={pmStyles.groupLabel}>Pipeline</div>
+          <button style={pmStyles.item} disabled={running} onClick={() => { defaultRun(); setOpen(false); }}
+            onMouseEnter={(e) => e.currentTarget.style.background = "var(--dp-btn-bg)"}
+            onMouseLeave={(e) => e.currentTarget.style.background = "none"}
+          >Run Stream</button>
+          <button style={pmStyles.item} disabled={running} onClick={() => {
+            if (streamNames.length > 0) onRunStream(streamNames[0], true);
+            else addOutput("warn", "No streams defined");
+            setOpen(false);
+          }}
+            onMouseEnter={(e) => e.currentTarget.style.background = "var(--dp-btn-bg)"}
+            onMouseLeave={(e) => e.currentTarget.style.background = "none"}
+          >Full Refresh</button>
+
+          <div style={pmStyles.divider} />
+          <div style={pmStyles.groupLabel}>Build</div>
+          <button style={pmStyles.item} disabled={running} onClick={() => { onTransform(false); setOpen(false); }}
+            onMouseEnter={(e) => e.currentTarget.style.background = "var(--dp-btn-bg)"}
+            onMouseLeave={(e) => e.currentTarget.style.background = "none"}
+          >Transform</button>
+          <button style={pmStyles.item} disabled={running} onClick={() => { onTransform(true); setOpen(false); }}
+            onMouseEnter={(e) => e.currentTarget.style.background = "var(--dp-btn-bg)"}
+            onMouseLeave={(e) => e.currentTarget.style.background = "none"}
+          >Transform (Force)</button>
+
+          <div style={pmStyles.divider} />
+          <div style={pmStyles.groupLabel}>Validate</div>
+          <button style={pmStyles.item} disabled={running} onClick={() => { onLint(false); setOpen(false); }}
+            onMouseEnter={(e) => e.currentTarget.style.background = "var(--dp-btn-bg)"}
+            onMouseLeave={(e) => e.currentTarget.style.background = "none"}
+          >Lint</button>
+          <button style={pmStyles.item} disabled={running} onClick={() => { onLint(true); setOpen(false); }}
+            onMouseEnter={(e) => e.currentTarget.style.background = "var(--dp-btn-bg)"}
+            onMouseLeave={(e) => e.currentTarget.style.background = "none"}
+          >Lint (Fix)</button>
+          <button style={pmStyles.item} disabled={running} onClick={() => { onContracts(); setOpen(false); }}
+            onMouseEnter={(e) => e.currentTarget.style.background = "var(--dp-btn-bg)"}
+            onMouseLeave={(e) => e.currentTarget.style.background = "none"}
+          >Contracts</button>
+        </div>
       )}
     </div>
   );
 }
 
-const adStyles = {
+const pmStyles = {
   wrapper: { position: "relative", display: "inline-flex" },
-  btn: { padding: "5px 12px", background: "var(--dp-btn-bg)", border: "1px solid var(--dp-btn-border)", borderRadius: "var(--dp-radius-lg)", color: "var(--dp-text)", cursor: "pointer", fontSize: "12px", fontWeight: 500 },
-  btnPrimary: { padding: "5px 12px", background: "var(--dp-green)", border: "1px solid var(--dp-green-border)", borderRadius: "var(--dp-radius-lg)", color: "#fff", cursor: "pointer", fontSize: "12px", fontWeight: 500 },
-  menu: { position: "absolute", top: "100%", left: 0, marginTop: "4px", background: "var(--dp-bg-secondary)", border: "1px solid var(--dp-border)", borderRadius: "var(--dp-radius)", zIndex: 100, minWidth: "120px", boxShadow: "0 4px 12px rgba(0,0,0,0.3)" },
-  item: { display: "block", width: "100%", padding: "7px 12px", background: "none", border: "none", color: "var(--dp-text)", cursor: "pointer", fontSize: "12px", textAlign: "left", whiteSpace: "nowrap" },
+  btn: {
+    padding: "5px 14px", background: "var(--dp-green)", border: "1px solid var(--dp-green-border)",
+    borderRadius: "var(--dp-radius-lg) 0 0 var(--dp-radius-lg)", color: "#fff", cursor: "pointer",
+    fontSize: "12px", fontWeight: 600, letterSpacing: "0.3px",
+  },
+  chevron: {
+    padding: "5px 7px", background: "var(--dp-green)", border: "1px solid var(--dp-green-border)",
+    borderRadius: "0 var(--dp-radius-lg) var(--dp-radius-lg) 0", color: "#fff", cursor: "pointer",
+    fontSize: "10px", borderLeft: "1px solid rgba(255,255,255,0.2)", marginLeft: "-1px",
+  },
+  menu: {
+    position: "absolute", top: "100%", right: 0, marginTop: "4px",
+    background: "var(--dp-bg-secondary)", border: "1px solid var(--dp-border)",
+    borderRadius: "var(--dp-radius)", zIndex: 100, minWidth: "170px",
+    boxShadow: "0 4px 16px rgba(0,0,0,0.3)", padding: "4px 0",
+  },
+  groupLabel: {
+    padding: "6px 12px 2px", fontSize: "10px", fontWeight: 600,
+    color: "var(--dp-text-dim)", textTransform: "uppercase", letterSpacing: "0.5px",
+  },
+  item: {
+    display: "block", width: "100%", padding: "6px 12px", background: "none",
+    border: "none", color: "var(--dp-text)", cursor: "pointer", fontSize: "12px",
+    textAlign: "left", whiteSpace: "nowrap",
+  },
+  divider: { height: "1px", background: "var(--dp-border)", margin: "4px 0" },
 };
+
+/* ------------------------------------------------------------------ */
+/* Schema tree (sidebar)                                               */
+/* ------------------------------------------------------------------ */
 
 function groupBySchema(tables) {
   const schemas = {};
@@ -184,7 +246,6 @@ function SchemaTree({ tables, selectedTable, onSelectTable }) {
     return m;
   });
 
-  // Expand new schemas automatically
   useEffect(() => {
     setExpanded((prev) => {
       const next = { ...prev };
@@ -253,13 +314,16 @@ const stStyles = {
   tableNameActive: { color: "var(--dp-accent)", fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
 };
 
-/** Inner app component that consumes all three contexts */
+/* ------------------------------------------------------------------ */
+/* Main app content                                                    */
+/* ------------------------------------------------------------------ */
+
 function AppContent() {
   const { currentUser, handleLogout } = useAuth();
   const { tables, files, streams, loadFiles, refreshAll } = useWarehouse();
   const { running, output, runSummary, addOutput, clearOutput, setRunSummary, runTransformAll, runStream, runLint, runCurrentScript, runSingleModel, runContracts } = usePipeline();
 
-  // Editor state (local to this component)
+  // Editor state
   const [activeFile, setActiveFile] = useState(null);
   const [fileContent, setFileContent] = useState("");
   const [fileLang, setFileLang] = useState("sql");
@@ -271,12 +335,12 @@ function AppContent() {
 
   // Tab/UI state
   const [activeTab, setActiveTab] = useState("Overview");
-  const [moreOpen, setMoreOpen] = useState(false);
-  const moreRef = useRef(null);
-  const moreBtnRef = useRef(null);
-  const moreMenuRef = useRef(null);
-  const [moreMenuPos, setMoreMenuPos] = useState({ top: 0, left: 0 });
   const [selectedTable, setSelectedTable] = useState(null);
+
+  // Derive active section from active tab
+  const activeSection = TAB_TO_SECTION[activeTab] || "Overview";
+  const currentSectionDef = SECTIONS.find(s => s.id === activeSection);
+  const subTabs = currentSectionDef?.tabs || [];
 
   // Resizable panels
   const [sidebarWidth, onSidebarResize, onSidebarResizeStart] = useResizable("dp_sidebar_width", 240, 150, 500);
@@ -293,7 +357,6 @@ function AppContent() {
   const setHintTrigger = useHintTriggerFn();
   const tabSwitchCountRef = useRef(0);
 
-  // Keep warehouseHasTables hint flag in sync
   useEffect(() => {
     setHintTrigger("warehouseHasTables", tables.length > 0);
   }, [tables, setHintTrigger]);
@@ -303,7 +366,7 @@ function AppContent() {
   const [showNewDialog, setShowNewDialog] = useState(false);
 
   // Delete confirmation dialog state
-  const [deleteConfirm, setDeleteConfirm] = useState(null); // { path, schema, name, hasObject }
+  const [deleteConfirm, setDeleteConfirm] = useState(null);
   const deleteResolveRef = useRef(null);
 
   function handleGuideComplete() {
@@ -317,33 +380,20 @@ function AppContent() {
 
   function navigateToTab(tab) {
     setActiveTab(tab);
-    setMoreOpen(false);
     tabSwitchCountRef.current += 1;
     setHintTrigger("tabSwitchCount", tabSwitchCountRef.current);
   }
 
-  // Close "More" dropdown on outside click
-  useEffect(() => {
-    if (!moreOpen) return;
-    const handler = (e) => {
-      if (
-        moreRef.current && !moreRef.current.contains(e.target) &&
-        moreMenuRef.current && !moreMenuRef.current.contains(e.target)
-      ) setMoreOpen(false);
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, [moreOpen]);
-
-  // Keyboard shortcuts: Alt+1..5 for primary tabs
+  // Keyboard shortcuts: Alt+1..5 for sections
   useEffect(() => {
     function handleKeyDown(e) {
       if (!e.altKey) return;
       if (e.ctrlKey || e.metaKey || e.shiftKey) return;
       const num = parseInt(e.key);
-      if (num >= 1 && num <= PRIMARY_TABS.length) {
+      if (num >= 1 && num <= SECTIONS.length) {
         e.preventDefault();
-        navigateToTab(PRIMARY_TABS[num - 1]);
+        const section = SECTIONS[num - 1];
+        navigateToTab(SECTION_DEFAULT[section.id]);
       }
     }
     document.addEventListener("keydown", handleKeyDown);
@@ -468,7 +518,6 @@ function AppContent() {
       const fileName = parts[parts.length - 1];
       const name = fileName.replace(/\.(sql|csv)$/, "");
       const schema = isSeed ? "seeds" : (parts.length >= 3 ? parts[1] : "bronze");
-      // Show custom dialog with Delete & Drop / Delete Only / Cancel
       const choice = await new Promise((resolve) => {
         deleteResolveRef.current = resolve;
         setDeleteConfirm({ path, schema, name, hasObject: true });
@@ -585,53 +634,58 @@ function AppContent() {
 
   return (
     <div style={styles.container}>
-      {/* Header */}
+      {/* Header: logo + section nav + actions + user */}
       <header style={styles.header}>
-        <span style={styles.logo}>dp</span>
-        <div style={styles.actions} data-dp-guide="actions">
-          <ActionDropdown
-            label="Run"
-            onClick={() => {
-              const names = Object.keys(streams);
-              if (names.length > 0) runStream(names[0]);
-              else addOutput("warn", "No streams defined in project.yml");
-            }}
-            options={[{
-              label: "Full Refresh",
-              action: () => {
-                const names = Object.keys(streams);
-                if (names.length > 0) runStream(names[0], true);
-                else addOutput("warn", "No streams defined in project.yml");
-              },
-            }]}
-            disabled={running}
-            primary
+        <button
+          onClick={() => navigateToTab("Overview")}
+          style={styles.logo}
+          title="Home"
+        >
+          dp
+        </button>
+
+        {/* Section navigation */}
+        <nav style={styles.sectionNav} data-dp-guide="tabs">
+          {SECTIONS.map((section, i) => {
+            const isActive = activeSection === section.id;
+            return (
+              <button
+                key={section.id}
+                data-dp-tab=""
+                data-dp-active={isActive ? "true" : "false"}
+                onClick={() => navigateToTab(SECTION_DEFAULT[section.id])}
+                style={isActive ? styles.sectionActive : styles.section}
+                title={`${section.label} (Alt+${i + 1})`}
+              >
+                {section.label}
+              </button>
+            );
+          })}
+        </nav>
+
+        {/* Right side: run menu + new + env + user */}
+        <div style={styles.headerRight} data-dp-guide="actions">
+          <PipelineMenu
+            running={running}
+            streams={streams}
+            onRunStream={runStream}
+            onTransform={runTransformAll}
+            onLint={handleRunLintWithReload}
+            onContracts={runContracts}
+            addOutput={addOutput}
           />
-          <ActionDropdown
-            label="Transform"
-            onClick={() => runTransformAll(false)}
-            options={[{ label: "Force", action: () => runTransformAll(true) }]}
-            disabled={running}
-          />
-          <ActionDropdown
-            label="Lint"
-            onClick={() => handleRunLintWithReload(false)}
-            options={[{ label: "Fix", action: () => handleRunLintWithReload(true) }]}
-            disabled={running}
-          />
-          <button onClick={runContracts} disabled={running} style={styles.btn}>Contract</button>
           <button onClick={() => setShowNewDialog(true)} style={styles.btn}>+ New</button>
           <EnvironmentSwitcher />
+          {currentUser && (
+            <div style={styles.userInfo}>
+              <span style={styles.userName}>{currentUser.display_name || currentUser.username}</span>
+              <span style={styles.userRole}>{currentUser.role}</span>
+              {currentUser.username !== "local" && (
+                <button onClick={handleLogout} style={styles.logoutBtn}>Logout</button>
+              )}
+            </div>
+          )}
         </div>
-        {currentUser && (
-          <div style={styles.userInfo}>
-            <span style={styles.userName}>{currentUser.display_name || currentUser.username}</span>
-            <span style={styles.userRole}>{currentUser.role}</span>
-            {currentUser.username !== "local" && (
-              <button onClick={handleLogout} style={styles.logoutBtn}>Logout</button>
-            )}
-          </div>
-        )}
       </header>
 
       <div style={styles.main}>
@@ -667,87 +721,45 @@ function AppContent() {
 
         {/* Content */}
         <div style={styles.content}>
-          {/* Tabs */}
-          <div style={styles.tabs} data-dp-guide="tabs" data-dp-hint="tab-bar">
-            {PRIMARY_TABS.map((tab, i) => (
-              <button
-                key={tab}
-                data-dp-tab=""
-                data-dp-active={activeTab === tab ? "true" : "false"}
-                onClick={() => navigateToTab(tab)}
-                style={activeTab === tab ? styles.tabActive : styles.tab}
-                title={`${tab} (Ctrl+${i + 1})`}
-              >
-                {tab === "Editor" && dirty ? tab + " *" : tab}
-              </button>
-            ))}
-            {/* More dropdown for secondary tabs */}
-            <div ref={moreRef} style={styles.moreWrapper}>
-              <button
-                ref={moreBtnRef}
-                onClick={() => {
-                  if (!moreOpen && moreBtnRef.current) {
-                    const rect = moreBtnRef.current.getBoundingClientRect();
-                    setMoreMenuPos({ top: rect.bottom + 2, left: rect.left });
-                  }
-                  setMoreOpen(!moreOpen);
-                }}
-                style={SECONDARY_TABS.includes(activeTab) ? styles.tabActive : styles.tab}
-              >
-                {SECONDARY_TABS.includes(activeTab) ? activeTab : "More"}
-                <span style={styles.moreArrow}>{"\u25BE"}</span>
-              </button>
-              {moreOpen && createPortal(
-                <div ref={moreMenuRef} style={{ ...styles.moreMenu, position: "fixed", top: moreMenuPos.top, left: moreMenuPos.left }}>
-                  {SECONDARY_TABS.map((tab) => (
-                    <button
-                      key={tab}
-                      onClick={() => navigateToTab(tab)}
-                      style={{
-                        ...styles.moreItem,
-                        ...(activeTab === tab ? { color: "var(--dp-accent)", fontWeight: 600 } : {}),
-                      }}
-                      onMouseEnter={(e) => e.currentTarget.style.background = "var(--dp-btn-bg)"}
-                      onMouseLeave={(e) => e.currentTarget.style.background = "none"}
-                    >
-                      {tab}
+          {/* Sub-tab bar (shown when section has multiple tabs) */}
+          {subTabs.length > 0 && (
+            <div style={styles.subTabBar} data-dp-hint="tab-bar">
+              {subTabs.map((tab) => (
+                <button
+                  key={tab}
+                  data-dp-tab=""
+                  data-dp-active={activeTab === tab ? "true" : "false"}
+                  onClick={() => navigateToTab(tab)}
+                  style={activeTab === tab ? styles.subTabActive : styles.subTab}
+                >
+                  {tab === "Editor" && dirty ? tab + " *" : tab}
+                </button>
+              ))}
+              {/* Editor file actions inline */}
+              {activeFile && activeTab === "Editor" && (
+                <div style={styles.fileActions} data-dp-hint="editor-toolbar">
+                  <span style={styles.fileName}>
+                    {activeFile}
+                    {dirty && <span style={styles.modifiedDot}> *</span>}
+                  </span>
+                  <button onClick={saveFile} disabled={!dirty} style={styles.btn}>
+                    Save
+                  </button>
+                  {isTransformFile && (
+                    <button onClick={handleRunSingleModel} disabled={running} style={styles.btn} title="Run just this model">
+                      Run Model
                     </button>
-                  ))}
-                </div>,
-                document.body
+                  )}
+                  <button onClick={runCurrentFile} disabled={running} style={styles.btnPrimary}>
+                    Run
+                  </button>
+                </div>
               )}
             </div>
-            {activeFile && activeTab === "Editor" && (
-              <div style={styles.fileActions} data-dp-hint="editor-toolbar">
-                <span style={styles.fileName}>
-                  {activeFile}
-                  {dirty && <span style={styles.modifiedDot}> *</span>}
-                </span>
-                <button onClick={saveFile} disabled={!dirty} style={styles.btn}>
-                  Save
-                </button>
-                {isTransformFile && (
-                  <button onClick={handleRunSingleModel} disabled={running} style={styles.btn} title="Run just this model">
-                    Run Model
-                  </button>
-                )}
-                <button onClick={runCurrentFile} disabled={running} style={styles.btnPrimary}>
-                  Run
-                </button>
-              </div>
-            )}
-          </div>
+          )}
 
           {/* Panel */}
           <div style={styles.panel} data-dp-guide="editor">
-            {/* Breadcrumb for secondary tabs */}
-            {SECONDARY_TABS.includes(activeTab) && (
-              <div style={styles.breadcrumb}>
-                <button onClick={() => navigateToTab("Overview")} style={styles.breadcrumbLink}>Overview</button>
-                <span style={styles.breadcrumbSep}>/</span>
-                <span style={styles.breadcrumbCurrent}>{activeTab}</span>
-              </div>
-            )}
             {activeTab === "Overview" && (
               <ErrorBoundary name="Overview">
                 <OverviewPanel
@@ -790,9 +802,9 @@ function AppContent() {
                       <div style={{ height: previewHeight, flexShrink: 0, borderTop: "1px solid var(--dp-border)", display: "flex", flexDirection: "column", overflow: "hidden" }}>
                         <div style={{ padding: "4px 12px", fontSize: "11px", color: "var(--dp-text-secondary)", borderBottom: "1px solid var(--dp-border)", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
                           <span>
-                            {previewRunning ? "Running…" : previewError ? "Error" : `${preview.rows.length} row${preview.rows.length !== 1 ? "s" : ""}, ${preview.columns.length} col${preview.columns.length !== 1 ? "s" : ""}`}
+                            {previewRunning ? "Running\u2026" : previewError ? "Error" : `${preview.rows.length} row${preview.rows.length !== 1 ? "s" : ""}, ${preview.columns.length} col${preview.columns.length !== 1 ? "s" : ""}`}
                           </span>
-                          <button onClick={() => { setPreview(null); setPreviewError(null); }} style={{ background: "none", border: "none", color: "var(--dp-text-dim)", cursor: "pointer", fontSize: "14px", lineHeight: 1 }}>×</button>
+                          <button onClick={() => { setPreview(null); setPreviewError(null); }} style={{ background: "none", border: "none", color: "var(--dp-text-dim)", cursor: "pointer", fontSize: "14px", lineHeight: 1 }}>{"\u00D7"}</button>
                         </div>
                         <div style={{ flex: 1, overflow: "auto" }}>
                           {previewError
@@ -821,7 +833,7 @@ function AppContent() {
             {activeTab === "Settings" && <ErrorBoundary name="Settings"><SettingsPanel onShowGuide={showGuide} /></ErrorBoundary>}
           </div>
 
-          {/* Run summary (post-pipeline feedback) */}
+          {/* Run summary */}
           {runSummary && (
             <div data-dp-hint="run-summary">
               <RunSummary
@@ -847,7 +859,7 @@ function AppContent() {
       <Hint onNavigate={navigateToTab} />
       <GuideTour steps={GUIDE_STEPS} onComplete={handleGuideComplete} isOpen={guideOpen} />
 
-      {/* Delete confirmation dialog for transform/seed files */}
+      {/* Delete confirmation dialog */}
       {deleteConfirm && (
         <div style={dcStyles.overlay} onClick={() => resolveDeleteConfirm("cancel")}>
           <div style={dcStyles.dialog} onClick={(e) => e.stopPropagation()}>
@@ -905,7 +917,6 @@ function WarehouseConsumerBridge({ children, onPipelineComplete }) {
 export default function App() {
   const { authChecked, authRequired, needsSetup, handleLogin, isAuthenticated } = useAuth();
 
-  // Hint triggers for pipeline completion
   const setHintTrigger = useHintTriggerFn();
   const onPipelineComplete = useCallback(() => {
     setHintTrigger("pipelineJustCompleted", true);
@@ -929,16 +940,39 @@ export default function App() {
   );
 }
 
+/* ------------------------------------------------------------------ */
+/* Styles                                                              */
+/* ------------------------------------------------------------------ */
+
 const styles = {
   container: { display: "flex", flexDirection: "column", height: "100vh", background: "var(--dp-bg)", color: "var(--dp-text)", fontFamily: "var(--dp-font)" },
   loading: { display: "flex", alignItems: "center", justifyContent: "center", height: "100vh", background: "var(--dp-bg)", color: "var(--dp-text-secondary)", fontFamily: "var(--dp-font)", fontSize: "14px" },
-  header: { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 16px", borderBottom: "1px solid var(--dp-border)", background: "var(--dp-bg-secondary)", minHeight: "44px" },
-  logo: { fontSize: "18px", fontWeight: "bold", fontFamily: "var(--dp-font-mono)", color: "var(--dp-accent)", letterSpacing: "-0.5px" },
-  actions: { display: "flex", gap: "6px", flex: 1, justifyContent: "center", flexWrap: "wrap" },
-  userInfo: { display: "flex", alignItems: "center", gap: "8px" },
+
+  // Header
+  header: { display: "flex", alignItems: "center", padding: "0 16px", borderBottom: "1px solid var(--dp-border)", background: "var(--dp-bg-secondary)", minHeight: "44px", gap: "16px" },
+  logo: { fontSize: "18px", fontWeight: "bold", fontFamily: "var(--dp-font-mono)", color: "var(--dp-accent)", letterSpacing: "-0.5px", background: "none", border: "none", cursor: "pointer", padding: "8px 4px", flexShrink: 0 },
+
+  // Section navigation (in header)
+  sectionNav: { display: "flex", alignItems: "center", gap: "2px", flex: 1 },
+  section: {
+    padding: "10px 16px", background: "none", border: "none", borderBottom: "2px solid transparent",
+    color: "var(--dp-text-secondary)", cursor: "pointer", fontSize: "13px", whiteSpace: "nowrap",
+    fontWeight: 500, transition: "color 0.15s",
+  },
+  sectionActive: {
+    padding: "10px 16px", background: "none", border: "none", borderBottom: "2px solid var(--dp-accent)",
+    color: "var(--dp-text)", cursor: "pointer", fontSize: "13px", whiteSpace: "nowrap",
+    fontWeight: 600, transition: "color 0.15s",
+  },
+
+  // Header right side
+  headerRight: { display: "flex", alignItems: "center", gap: "8px", flexShrink: 0 },
+  userInfo: { display: "flex", alignItems: "center", gap: "8px", marginLeft: "4px" },
   userName: { fontSize: "12px", color: "var(--dp-text)", fontWeight: 500 },
   userRole: { fontSize: "10px", color: "var(--dp-text-secondary)", background: "var(--dp-btn-bg)", padding: "2px 8px", borderRadius: "10px", fontWeight: 500, textTransform: "capitalize" },
   logoutBtn: { padding: "3px 8px", background: "none", border: "1px solid var(--dp-border-light)", borderRadius: "var(--dp-radius)", color: "var(--dp-text-secondary)", cursor: "pointer", fontSize: "11px" },
+
+  // Layout
   main: { display: "flex", flex: 1, overflow: "hidden" },
   sidebar: { borderRight: "1px solid var(--dp-border)", overflow: "hidden", background: "var(--dp-bg-tertiary)", padding: "0", flexShrink: 0, display: "flex", flexDirection: "column" },
   sidebarPane: { flex: 1, minHeight: 0, display: "flex", flexDirection: "column" },
@@ -947,23 +981,32 @@ const styles = {
   sidebarSectionHeader: { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 12px 6px", fontSize: "10px", fontWeight: "600", color: "var(--dp-text-dim)", letterSpacing: "1px", textTransform: "uppercase", flexShrink: 0 },
   sidebarRefreshBtn: { background: "none", border: "none", color: "var(--dp-text-secondary)", cursor: "pointer", fontSize: "13px", padding: "0 2px", lineHeight: 1 },
   content: { flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" },
-  tabs: { display: "flex", alignItems: "center", borderBottom: "1px solid var(--dp-border)", padding: "0 8px", background: "var(--dp-bg-secondary)", overflowX: "auto", minHeight: "36px" },
-  tab: { padding: "8px 14px", background: "none", border: "none", borderBottom: "2px solid transparent", color: "var(--dp-text-secondary)", cursor: "pointer", fontSize: "13px", whiteSpace: "nowrap", fontWeight: 500 },
-  tabActive: { padding: "8px 14px", background: "none", border: "none", borderBottom: "2px solid var(--dp-accent)", color: "var(--dp-text)", cursor: "pointer", fontSize: "13px", whiteSpace: "nowrap", fontWeight: 600 },
+
+  // Sub-tab bar
+  subTabBar: {
+    display: "flex", alignItems: "center", borderBottom: "1px solid var(--dp-border)",
+    padding: "0 12px", background: "var(--dp-bg-tertiary)", minHeight: "32px",
+  },
+  subTab: {
+    padding: "6px 14px", background: "none", border: "none", borderBottom: "2px solid transparent",
+    color: "var(--dp-text-secondary)", cursor: "pointer", fontSize: "12px", whiteSpace: "nowrap", fontWeight: 500,
+  },
+  subTabActive: {
+    padding: "6px 14px", background: "none", border: "none", borderBottom: "2px solid var(--dp-accent)",
+    color: "var(--dp-text)", cursor: "pointer", fontSize: "12px", whiteSpace: "nowrap", fontWeight: 600,
+  },
+
+  // File actions (inline in sub-tab bar)
   fileActions: { marginLeft: "auto", display: "flex", alignItems: "center", gap: "8px", paddingLeft: "16px" },
   fileName: { fontSize: "12px", color: "var(--dp-text-secondary)", fontFamily: "var(--dp-font-mono)" },
   modifiedDot: { color: "var(--dp-accent)", fontWeight: 700 },
+
+  // Panel
   panel: { flex: 1, overflow: "hidden", minHeight: 0 },
+
+  // Buttons
   btn: { padding: "5px 12px", background: "var(--dp-btn-bg)", border: "1px solid var(--dp-btn-border)", borderRadius: "var(--dp-radius-lg)", color: "var(--dp-text)", cursor: "pointer", fontSize: "12px", fontWeight: 500 },
   btnPrimary: { padding: "5px 12px", background: "var(--dp-green)", border: "1px solid var(--dp-green-border)", borderRadius: "var(--dp-radius-lg)", color: "#fff", cursor: "pointer", fontSize: "12px", fontWeight: 500 },
-  moreWrapper: { position: "relative" },
-  moreArrow: { marginLeft: "4px", fontSize: "10px" },
-  moreMenu: { background: "var(--dp-bg-secondary)", border: "1px solid var(--dp-border)", borderRadius: "var(--dp-radius)", zIndex: 9999, minWidth: "130px", boxShadow: "0 4px 12px rgba(0,0,0,0.3)" },
-  moreItem: { display: "block", width: "100%", padding: "7px 14px", background: "none", border: "none", color: "var(--dp-text)", cursor: "pointer", fontSize: "13px", textAlign: "left", whiteSpace: "nowrap" },
-  breadcrumb: { display: "flex", alignItems: "center", gap: "6px", padding: "6px 16px", fontSize: "12px", borderBottom: "1px solid var(--dp-border)", background: "var(--dp-bg-tertiary)" },
-  breadcrumbLink: { background: "none", border: "none", color: "var(--dp-accent)", cursor: "pointer", fontSize: "12px", padding: 0, fontWeight: 500 },
-  breadcrumbSep: { color: "var(--dp-text-dim)" },
-  breadcrumbCurrent: { color: "var(--dp-text-secondary)", fontWeight: 500 },
 };
 
 const dcStyles = {

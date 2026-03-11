@@ -100,7 +100,7 @@ function CellOutput({ outputs }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {out.rows.slice(0, 200).map((row, ri) => (
+                  {out.rows.map((row, ri) => (
                     <tr key={ri}>
                       {row.map((v, ci) => (
                         <td key={ci} style={cs.td}>
@@ -111,8 +111,8 @@ function CellOutput({ outputs }) {
                   ))}
                 </tbody>
               </table>
-              {out.total_rows > 200 && (
-                <div style={cs.truncated}>Showing 200 of {out.total_rows} rows</div>
+              {out.truncated && (
+                <div style={cs.truncated}>Results truncated ({out.total_rows} rows shown)</div>
               )}
             </div>
           );

@@ -26,7 +26,7 @@ router = APIRouter()
 
 class QueryRequest(BaseModel):
     sql: str = Field(..., min_length=1, max_length=100_000)
-    limit: int = Field(default=1000, gt=0, le=50_000)
+    limit: int | None = Field(default=None, gt=0, le=50_000)
     offset: int = Field(default=0, ge=0)
 
 
@@ -113,17 +113,23 @@ def run_query(request: Request, req: QueryRequest, conn: DbConnReadOnly) -> dict
 
         def _exec_query():
             try:
-                if req.offset > 0:
+                if req.offset > 0 and req.limit is not None:
                     wrapped = f"SELECT * FROM ({req.sql}) AS _q OFFSET {req.offset} LIMIT {req.limit}"
+                    result = conn.execute(wrapped)
+                elif req.offset > 0:
+                    wrapped = f"SELECT * FROM ({req.sql}) AS _q OFFSET {req.offset}"
                     result = conn.execute(wrapped)
                 else:
                     result = conn.execute(req.sql)
                 columns = [desc[0] for desc in result.description]
-                rows = result.fetchmany(req.limit)
+                if req.limit is not None:
+                    rows = result.fetchmany(req.limit)
+                else:
+                    rows = result.fetchall()
                 query_result["data"] = {
                     "columns": columns,
                     "rows": [[_serialize(v) for v in row] for row in rows],
-                    "truncated": len(rows) == req.limit,
+                    "truncated": req.limit is not None and len(rows) == req.limit,
                     "offset": req.offset,
                     "limit": req.limit,
                 }
@@ -225,7 +231,7 @@ def sample_table(
     user = _require_permission(request, "read")
     _validate_identifier(schema, "schema")
     _validate_identifier(table, "table")
-    limit = max(1, min(limit, 10_000))
+    limit = max(1, min(limit, 100_000))
     offset = max(0, offset)
     try:
         quoted = f'"{schema}"."{table}"'
