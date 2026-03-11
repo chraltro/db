@@ -114,7 +114,7 @@ def validate(
     # 3. Validate streams reference valid actions
     for name, stream in config.streams.items():
         for step in stream.steps:
-            if step.action not in ("ingest", "transform", "export"):
+            if step.action not in ("ingest", "transform", "export", "seed"):
                 errors.append(f"Stream '{name}': unknown action '{step.action}'")
 
     # 4. Discover and validate SQL models
@@ -148,9 +148,11 @@ def validate(
         errors.append(f"Circular dependency detected: {e}")
 
     # 6. Check .env variables referenced in config
-    config_text = (project_dir / "project.yml").read_text() if (project_dir / "project.yml").exists() else ""
     import re
-    env_refs = set(re.findall(r"\$\{(\w+)\}", config_text))
+    config_lines = (project_dir / "project.yml").read_text().splitlines() if (project_dir / "project.yml").exists() else []
+    # Only check non-comment lines for env var references
+    active_text = "\n".join(line for line in config_lines if not line.strip().startswith("#"))
+    env_refs = set(re.findall(r"\$\{(\w+)\}", active_text))
     if env_refs:
         import os
         missing = [v for v in env_refs if not os.environ.get(v)]
