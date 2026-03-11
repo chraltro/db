@@ -66,7 +66,7 @@ class TestAssertions:
         results = run_assertions(db, model)
         assert len(results) == 1
         assert results[0].passed is True
-        assert "row_count=1" in results[0].detail
+        assert "got 1 rows" in results[0].detail
 
     def test_assert_row_count_fails(self, db):
         db.execute("CREATE SCHEMA IF NOT EXISTS gold")
@@ -101,7 +101,7 @@ class TestAssertions:
         )
         results = run_assertions(db, model)
         assert results[0].passed is False
-        assert "null_count=1" in results[0].detail
+        assert "1 nulls out of 1 rows" in results[0].detail
 
     def test_assert_unique(self, db):
         db.execute("CREATE SCHEMA IF NOT EXISTS gold")
@@ -124,7 +124,7 @@ class TestAssertions:
         )
         results = run_assertions(db, model)
         assert results[0].passed is False
-        assert "duplicate_count=1" in results[0].detail
+        assert "1 duplicate(s)" in results[0].detail
 
     def test_assert_accepted_values(self, db):
         db.execute("CREATE SCHEMA IF NOT EXISTS gold")
