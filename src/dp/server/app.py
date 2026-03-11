@@ -60,6 +60,8 @@ from dp.server.routes.collaboration import (  # noqa: E402
     router as collaboration_router,
 )
 from dp.server.routes.lint import router as lint_router  # noqa: E402
+from dp.server.routes.rewind import router as rewind_router  # noqa: E402
+from dp.server.routes.sentinel import router as sentinel_router  # noqa: E402
 
 app.include_router(auth_router)
 app.include_router(files_router)
@@ -73,6 +75,8 @@ app.include_router(quality_router)
 app.include_router(catalog_router)
 app.include_router(collaboration_router)
 app.include_router(lint_router)
+app.include_router(rewind_router)
+app.include_router(sentinel_router)
 
 # Register WebSocket endpoint (can't use APIRouter for WebSocket)
 register_websocket(app)

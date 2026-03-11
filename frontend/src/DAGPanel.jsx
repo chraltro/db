@@ -13,16 +13,23 @@ const SCHEMA_COLORS = {
 };
 
 const NODE_W = 160;
-const NODE_H = 40;
+const NODE_H = 56;
 const LAYER_GAP_X = 220;
-const NODE_GAP_Y = 70;
+const NODE_GAP_Y = 78;
 
 function getCV(prop) {
   return getComputedStyle(document.documentElement).getPropertyValue(prop).trim();
 }
 
+function formatRowDelta(current, previous) {
+  if (previous == null || current == null) return null;
+  const delta = current - previous;
+  if (delta === 0) return null;
+  const sign = delta > 0 ? "+" : "";
+  return `${sign}${delta.toLocaleString()}`;
+}
+
 function layoutDAG(nodes, edges) {
-  // Assign layers via longest path from sources
   const adj = {};
   const radj = {};
   const inDeg = {};
@@ -37,7 +44,6 @@ function layoutDAG(nodes, edges) {
     if (inDeg[e.target] !== undefined) inDeg[e.target]++;
   }
 
-  // Topological layer assignment (longest path)
   const layer = {};
   const queue = nodes.filter((n) => inDeg[n.id] === 0).map((n) => n.id);
   for (const id of queue) layer[id] = 0;
@@ -55,7 +61,6 @@ function layoutDAG(nodes, edges) {
     }
   }
 
-  // Group by layer
   const layers = {};
   for (const n of nodes) {
     const l = layer[n.id] || 0;
@@ -65,8 +70,6 @@ function layoutDAG(nodes, edges) {
 
   const maxLayer = Math.max(...Object.keys(layers).map(Number), 0);
 
-  // Barycenter crossing minimization (4 alternating sweeps)
-  // Build position indices for each node within its layer
   const posIndex = {};
   for (let l = 0; l <= maxLayer; l++) {
     const group = layers[l] || [];
@@ -75,7 +78,6 @@ function layoutDAG(nodes, edges) {
 
   for (let sweep = 0; sweep < 4; sweep++) {
     if (sweep % 2 === 0) {
-      // Forward sweep: reorder based on predecessors
       for (let l = 1; l <= maxLayer; l++) {
         const group = layers[l] || [];
         for (const n of group) {
@@ -89,7 +91,6 @@ function layoutDAG(nodes, edges) {
         layers[l] = group;
       }
     } else {
-      // Backward sweep: reorder based on successors
       for (let l = maxLayer - 1; l >= 0; l--) {
         const group = layers[l] || [];
         for (const n of group) {
@@ -105,7 +106,6 @@ function layoutDAG(nodes, edges) {
     }
   }
 
-  // Position nodes - center each layer vertically
   const positions = {};
   const maxNodes = Math.max(...Object.values(layers).map((g) => g.length), 1);
   const canvasH = 80 + maxNodes * (NODE_H + NODE_GAP_Y);
@@ -122,9 +122,6 @@ function layoutDAG(nodes, edges) {
     });
   }
 
-  // Waypoint edge routing for long-range edges (spanning 2+ layers)
-  // Waypoints are placed in the horizontal gap between layer columns so
-  // the curve never crosses through a node box.
   const edgeRoutes = {};
   const ROUTE_MARGIN = 10;
   for (const e of edges) {
@@ -142,16 +139,12 @@ function layoutDAG(nodes, edges) {
     const waypoints = [];
 
     for (let il = srcLayer + 1; il < tgtLayer; il++) {
-      // Place waypoint X in the gap *before* this layer's nodes
-      // (halfway between previous layer's right edge and this layer's left edge)
       const layerX = 60 + il * LAYER_GAP_X;
       const wpX = layerX - (LAYER_GAP_X - NODE_W) / 2;
-
       const t = (il - srcLayer) / span;
       const naturalY = y1 + (y2 - y1) * t;
       const group = layers[il] || [];
 
-      // Check if the straight-line Y would pass through any node in this layer
       let blocked = false;
       for (const n of group) {
         const np = positions[n.id];
@@ -166,18 +159,15 @@ function layoutDAG(nodes, edges) {
         continue;
       }
 
-      // Find nearest vertical gap between nodes in this layer
       const ys = group.map((n) => positions[n.id].y).sort((a, b) => a - b);
       let bestGapY = null;
       let bestDist = Infinity;
 
-      // Gap above first node
       const aboveY = ys[0] - ROUTE_MARGIN - 5;
       if (aboveY > 0) {
         const d = Math.abs(naturalY - aboveY);
         if (d < bestDist) { bestDist = d; bestGapY = aboveY; }
       }
-      // Gaps between nodes
       for (let i = 0; i < ys.length - 1; i++) {
         const gapTop = ys[i] + NODE_H + ROUTE_MARGIN;
         const gapBot = ys[i + 1] - ROUTE_MARGIN;
@@ -187,7 +177,6 @@ function layoutDAG(nodes, edges) {
           if (d < bestDist) { bestDist = d; bestGapY = mid; }
         }
       }
-      // Gap below last node
       const belowY = ys[ys.length - 1] + NODE_H + ROUTE_MARGIN + 5;
       const d = Math.abs(naturalY - belowY);
       if (d < bestDist) { bestDist = d; bestGapY = belowY; }
@@ -205,44 +194,259 @@ function layoutDAG(nodes, edges) {
   return { positions, width, height: canvasH, edgeRoutes };
 }
 
+// ---------------------------------------------------------------------------
+// Detail Panel (shown when a node is clicked in rewind mode)
+// ---------------------------------------------------------------------------
+
+function DetailPanel({ modelName, runId, runs, snapshotsByRun, onClose, onRestore }) {
+  const [sample, setSample] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [restoring, setRestoring] = useState(false);
+
+  const snapshot = snapshotsByRun?.[runId]?.[modelName];
+
+  useEffect(() => {
+    if (!runId || !modelName || !snapshot?.file_path) { setSample(null); return; }
+    setLoading(true);
+    api.getSnapshotSample(runId, modelName, 50)
+      .then(setSample)
+      .catch(() => setSample(null))
+      .finally(() => setLoading(false));
+  }, [runId, modelName]);
+
+  // Row count history across runs
+  const history = useMemo(() => {
+    if (!runs || !snapshotsByRun) return [];
+    return runs.slice().reverse().map(r => {
+      const s = snapshotsByRun[r.run_id]?.[modelName];
+      return s ? { run_id: r.run_id, ts: r.started_at, row_count: s.row_count } : null;
+    }).filter(Boolean);
+  }, [runs, snapshotsByRun, modelName]);
+
+  async function handleRestore() {
+    if (!confirm(`Restore ${modelName} from this run? Downstream models will be re-built.`)) return;
+    setRestoring(true);
+    try {
+      await onRestore(runId, modelName);
+    } finally {
+      setRestoring(false);
+    }
+  }
+
+  return (
+    <div style={ds.panel}>
+      <div style={ds.panelHeader}>
+        <span style={ds.panelTitle}>{modelName}</span>
+        <button onClick={onClose} style={ds.closeBtn}>x</button>
+      </div>
+
+      {snapshot ? (
+        <div style={ds.panelBody}>
+          <div style={ds.statRow}>
+            <span style={ds.statLabel}>Rows</span>
+            <span style={ds.statValue}>{snapshot.row_count?.toLocaleString()}</span>
+          </div>
+          <div style={ds.statRow}>
+            <span style={ds.statLabel}>Columns</span>
+            <span style={ds.statValue}>{snapshot.col_count}</span>
+          </div>
+          <div style={ds.statRow}>
+            <span style={ds.statLabel}>Size</span>
+            <span style={ds.statValue}>
+              {snapshot.size_bytes < 1048576
+                ? `${(snapshot.size_bytes / 1024).toFixed(1)} KB`
+                : `${(snapshot.size_bytes / 1048576).toFixed(1)} MB`}
+            </span>
+          </div>
+          <div style={ds.statRow}>
+            <span style={ds.statLabel}>Status</span>
+            <span style={{ ...ds.statValue, color: snapshot.file_path ? "#3fb950" : "#8b949e" }}>
+              {snapshot.file_path ? "Restorable" : "Expired"}
+            </span>
+          </div>
+
+          {/* Row count history sparkline */}
+          {history.length > 1 && (
+            <div style={ds.histSection}>
+              <span style={ds.statLabel}>Row count history</span>
+              <div style={ds.sparkContainer}>
+                {(() => {
+                  const counts = history.map(h => h.row_count);
+                  const max = Math.max(...counts, 1);
+                  const w = 200, h = 40;
+                  return (
+                    <svg width={w} height={h} style={{ display: "block" }}>
+                      <polyline
+                        fill="none"
+                        stroke="var(--dp-accent, #58a6ff)"
+                        strokeWidth="1.5"
+                        points={counts.map((c, i) =>
+                          `${(i / (counts.length - 1)) * w},${h - (c / max) * (h - 4) - 2}`
+                        ).join(" ")}
+                      />
+                    </svg>
+                  );
+                })()}
+              </div>
+            </div>
+          )}
+
+          {/* Sample data preview */}
+          {loading && <div style={ds.loadingText}>Loading sample...</div>}
+          {sample && sample.columns && sample.rows && sample.rows.length > 0 && (
+            <div style={ds.sampleSection}>
+              <span style={ds.statLabel}>Sample data</span>
+              <div style={ds.sampleTable}>
+                <table style={ds.table}>
+                  <thead>
+                    <tr>{sample.columns.map((c, i) => <th key={i} style={ds.th}>{c}</th>)}</tr>
+                  </thead>
+                  <tbody>
+                    {sample.rows.slice(0, 10).map((row, ri) => (
+                      <tr key={ri}>
+                        {row.map((v, ci) => <td key={ci} style={ds.td}>{v ?? ""}</td>)}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* Restore button */}
+          {snapshot.file_path && (
+            <button
+              onClick={handleRestore}
+              disabled={restoring}
+              style={ds.restoreBtn}
+            >
+              {restoring ? "Restoring..." : "Restore to this point"}
+            </button>
+          )}
+        </div>
+      ) : (
+        <div style={ds.panelBody}>
+          <div style={ds.loadingText}>No snapshot for this model at this run.</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Detail panel styles
+const ds = {
+  panel: { width: 320, borderLeft: "1px solid var(--dp-border)", display: "flex", flexDirection: "column", overflow: "hidden", background: "var(--dp-bg-secondary)" },
+  panelHeader: { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 12px", borderBottom: "1px solid var(--dp-border)" },
+  panelTitle: { fontWeight: 600, fontSize: 13 },
+  closeBtn: { background: "none", border: "none", color: "var(--dp-text-secondary)", cursor: "pointer", fontSize: 14, padding: "2px 6px" },
+  panelBody: { flex: 1, overflow: "auto", padding: "10px 12px", fontSize: 12 },
+  statRow: { display: "flex", justifyContent: "space-between", padding: "4px 0", borderBottom: "1px solid var(--dp-border-light)" },
+  statLabel: { color: "var(--dp-text-secondary)", fontSize: 11, fontWeight: 500 },
+  statValue: { fontWeight: 600, fontSize: 12 },
+  histSection: { marginTop: 12 },
+  sparkContainer: { marginTop: 4 },
+  sampleSection: { marginTop: 12 },
+  sampleTable: { marginTop: 4, overflow: "auto", maxHeight: 200, border: "1px solid var(--dp-border-light)", borderRadius: 4 },
+  table: { width: "100%", borderCollapse: "collapse", fontSize: 10 },
+  th: { textAlign: "left", padding: "3px 6px", background: "var(--dp-bg-tertiary)", borderBottom: "1px solid var(--dp-border-light)", position: "sticky", top: 0, fontWeight: 600 },
+  td: { padding: "2px 6px", borderBottom: "1px solid var(--dp-border-light)", maxWidth: 120, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
+  restoreBtn: { marginTop: 12, padding: "6px 14px", background: "var(--dp-accent, #58a6ff)", color: "#fff", border: "none", borderRadius: 4, cursor: "pointer", fontSize: 12, fontWeight: 600, width: "100%" },
+  loadingText: { color: "var(--dp-text-dim)", fontStyle: "italic", padding: "8px 0" },
+};
+
+// ---------------------------------------------------------------------------
+// Main DAG Panel
+// ---------------------------------------------------------------------------
+
 export default function DAGPanel({ onOpenFile }) {
   const canvasRef = useRef(null);
   const [dag, setDag] = useState(null);
   const [hovered, setHovered] = useState(null);
   const setHintTrigger = useHintTriggerFn();
-
   const [error, setError] = useState(null);
+
+  // Rewind state
+  const [runs, setRuns] = useState([]);
+  const [snapshots, setSnapshots] = useState([]);
+  const [sliderIndex, setSliderIndex] = useState(-1);
+  const [rewindMode, setRewindMode] = useState(false);
+  const [selectedNode, setSelectedNode] = useState(null);
+  const [playing, setPlaying] = useState(false);
+  const playRef = useRef(false);
 
   useEffect(() => {
     api.getDAG().then(setDag).catch((e) => setError(e.message || "Failed to load DAG"));
     setHintTrigger("dagOpened", true);
   }, []);
 
-  // Memoize layout so it only recomputes when dag data changes
+  // Load rewind data when entering rewind mode
+  useEffect(() => {
+    if (!rewindMode) return;
+    Promise.all([
+      api.getRewindRuns(),
+      api.getRewindSnapshots(),
+    ]).then(([r, s]) => {
+      setRuns(r);
+      setSnapshots(s);
+      if (r.length > 0) setSliderIndex(0);
+    }).catch(() => {});
+  }, [rewindMode]);
+
+  // Index snapshots by run_id -> model_name
+  const snapshotsByRun = useMemo(() => {
+    const map = {};
+    for (const s of snapshots) {
+      if (!map[s.run_id]) map[s.run_id] = {};
+      map[s.run_id][s.model_name] = s;
+    }
+    return map;
+  }, [snapshots]);
+
+  // Previous run snapshots (for delta calculation)
+  const currentRunId = runs[sliderIndex]?.run_id;
+  const prevRunId = runs[sliderIndex + 1]?.run_id;
+
+  const currentSnaps = snapshotsByRun[currentRunId] || {};
+  const prevSnaps = snapshotsByRun[prevRunId] || {};
+
+  // Memoize layout
   const layout = useMemo(() => {
     if (!dag || dag.nodes.length === 0) return null;
     return layoutDAG(dag.nodes, dag.edges);
   }, [dag]);
+
+  // Playback animation
+  useEffect(() => {
+    if (!playing) { playRef.current = false; return; }
+    playRef.current = true;
+    let idx = runs.length - 1;
+    function tick() {
+      if (!playRef.current) return;
+      setSliderIndex(idx);
+      idx--;
+      if (idx >= 0) setTimeout(tick, 800);
+      else { setPlaying(false); playRef.current = false; }
+    }
+    tick();
+    return () => { playRef.current = false; };
+  }, [playing, runs.length]);
 
   const draw = useCallback(() => {
     if (!layout || !canvasRef.current) return;
     const canvas = canvasRef.current;
     const ctx = canvas.getContext("2d");
     const { nodes, edges } = dag;
-
     const { positions, width, height, edgeRoutes } = layout;
 
-    // High DPI support
     const dpr = window.devicePixelRatio || 1;
     canvas.width = width * dpr;
     canvas.height = height * dpr;
     canvas.style.width = width + "px";
     canvas.style.height = height + "px";
     ctx.scale(dpr, dpr);
-
     ctx.clearRect(0, 0, width, height);
 
-    // Draw edges with smooth bezier curves
+    // Draw edges
     for (const e of edges) {
       const from = positions[e.source];
       const to = positions[e.target];
@@ -262,12 +466,7 @@ export default function DAGPanel({ onOpenFile }) {
       const waypoints = edgeRoutes[routeKey];
 
       if (waypoints && waypoints.length > 0) {
-        // Draw Catmull-Rom spline through waypoints (curve passes through every point)
-        const pts = [
-          { x: x1, y: y1 },
-          ...waypoints,
-          { x: x2, y: y2 },
-        ];
+        const pts = [{ x: x1, y: y1 }, ...waypoints, { x: x2, y: y2 }];
         ctx.beginPath();
         ctx.moveTo(pts[0].x, pts[0].y);
         const tension = 0.5;
@@ -284,7 +483,6 @@ export default function DAGPanel({ onOpenFile }) {
         }
         ctx.stroke();
       } else {
-        // Simple single bezier for short edges
         ctx.beginPath();
         const cpx = (x1 + x2) / 2;
         ctx.moveTo(x1, y1);
@@ -292,7 +490,6 @@ export default function DAGPanel({ onOpenFile }) {
         ctx.stroke();
       }
 
-      // Arrowhead
       ctx.fillStyle = ctx.strokeStyle;
       ctx.beginPath();
       ctx.moveTo(x2, y2);
@@ -314,9 +511,11 @@ export default function DAGPanel({ onOpenFile }) {
 
       const color = SCHEMA_COLORS[n.schema] || getCV("--dp-accent");
       const isHovered = hovered === n.id;
+      const isSelected = selectedNode === n.id;
       const isTable = n.type === "table";
+      const snap = rewindMode ? currentSnaps[n.id] : null;
+      const prevSnap = rewindMode ? prevSnaps[n.id] : null;
 
-      // Dim non-connected nodes when hovering
       if (hovered && !isHovered) {
         const connected = dag.edges.some(
           (e) => (e.source === hovered && e.target === n.id) || (e.target === hovered && e.source === n.id)
@@ -327,14 +526,13 @@ export default function DAGPanel({ onOpenFile }) {
       }
 
       // Node background
-      ctx.fillStyle = isHovered ? getCV("--dp-bg") : getCV("--dp-bg-secondary");
-      ctx.strokeStyle = color;
-      ctx.lineWidth = isHovered ? 2.5 : (isTable ? 2 : 1.5);
+      ctx.fillStyle = isHovered || isSelected ? getCV("--dp-bg") : getCV("--dp-bg-secondary");
+      ctx.strokeStyle = isSelected ? getCV("--dp-accent") : color;
+      ctx.lineWidth = isHovered || isSelected ? 2.5 : (isTable ? 2 : 1.5);
 
-      // Rounded rect for all nodes, with subtle shadow on hover
       const r = 6;
-      if (isHovered) {
-        ctx.shadowColor = color;
+      if (isHovered || isSelected) {
+        ctx.shadowColor = isSelected ? getCV("--dp-accent") : color;
         ctx.shadowBlur = 12;
         ctx.shadowOffsetX = 0;
         ctx.shadowOffsetY = 2;
@@ -348,21 +546,57 @@ export default function DAGPanel({ onOpenFile }) {
 
       // Label
       ctx.fillStyle = isHovered ? getCV("--dp-accent") : getCV("--dp-text");
-      ctx.font = `500 12px ${fontFamily}`;
+      ctx.font = `500 11px ${fontFamily}`;
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
-      ctx.fillText(n.label, pos.x + NODE_W / 2, pos.y + NODE_H / 2, NODE_W - 20);
+      ctx.fillText(n.label, pos.x + NODE_W / 2, pos.y + 16, NODE_W - 20);
 
-      // Type badge
-      const badge = n.type === "ingest" ? "I" : n.type === "import" ? "↑" : n.type === "source" ? "S" : n.type === "table" ? "T" : "V";
-      ctx.fillStyle = color;
-      ctx.font = `bold 9px ${monoFamily}`;
-      ctx.textAlign = "right";
-      ctx.fillText(badge, pos.x + NODE_W - 6, pos.y + 12);
+      // Rewind mode: show row count + delta
+      if (rewindMode && snap) {
+        const rowStr = snap.row_count?.toLocaleString() ?? "?";
+        ctx.fillStyle = "var(--dp-text-secondary, #8b949e)";
+        ctx.font = `500 10px ${monoFamily}`;
+        ctx.textAlign = "center";
+        ctx.fillText(`${rowStr} rows`, pos.x + NODE_W / 2, pos.y + NODE_H - 14, NODE_W - 16);
+
+        // Delta from previous run
+        const delta = formatRowDelta(snap.row_count, prevSnap?.row_count);
+        if (delta) {
+          ctx.fillStyle = delta.startsWith("+") ? "#3fb950" : "#f85149";
+          ctx.font = `bold 9px ${monoFamily}`;
+          ctx.textAlign = "right";
+          ctx.fillText(delta, pos.x + NODE_W - 6, pos.y + NODE_H - 4);
+        }
+
+        // Schema change indicator
+        if (prevSnap && snap.schema_hash && prevSnap.schema_hash && snap.schema_hash !== prevSnap.schema_hash) {
+          ctx.fillStyle = "#d29922";
+          ctx.beginPath();
+          ctx.arc(pos.x + 10, pos.y + 10, 4, 0, Math.PI * 2);
+          ctx.fill();
+        }
+
+        // Restorable indicator
+        if (!snap.file_path) {
+          ctx.globalAlpha = 0.5;
+          ctx.fillStyle = "#8b949e";
+          ctx.font = `9px ${monoFamily}`;
+          ctx.textAlign = "left";
+          ctx.fillText("expired", pos.x + 4, pos.y + NODE_H - 4);
+          ctx.globalAlpha = 1;
+        }
+      } else if (!rewindMode) {
+        // Type badge (original)
+        const badge = n.type === "ingest" ? "I" : n.type === "import" ? "?" : n.type === "source" ? "S" : n.type === "table" ? "T" : "V";
+        ctx.fillStyle = color;
+        ctx.font = `bold 9px ${monoFamily}`;
+        ctx.textAlign = "right";
+        ctx.fillText(badge, pos.x + NODE_W - 6, pos.y + 12);
+      }
     }
 
     ctx.globalAlpha = 1;
-  }, [dag, layout, hovered]);
+  }, [dag, layout, hovered, rewindMode, currentSnaps, prevSnaps, selectedNode]);
 
   useEffect(() => {
     draw();
@@ -388,7 +622,7 @@ export default function DAGPanel({ onOpenFile }) {
   }
 
   function handleClick(e) {
-    if (!layout || !canvasRef.current || !onOpenFile) return;
+    if (!layout || !canvasRef.current) return;
     const rect = canvasRef.current.getBoundingClientRect();
     const mx = (e.clientX - rect.left) * (canvasRef.current.width / rect.width / (window.devicePixelRatio || 1));
     const my = (e.clientY - rect.top) * (canvasRef.current.height / rect.height / (window.devicePixelRatio || 1));
@@ -397,9 +631,29 @@ export default function DAGPanel({ onOpenFile }) {
     for (const n of dag.nodes) {
       const p = positions[n.id];
       if (p && mx >= p.x && mx <= p.x + NODE_W && my >= p.y && my <= p.y + NODE_H) {
-        if (n.path) onOpenFile(n.path);
-        break;
+        if (rewindMode) {
+          setSelectedNode(selectedNode === n.id ? null : n.id);
+        } else if (onOpenFile && n.path) {
+          onOpenFile(n.path);
+        }
+        return;
       }
+    }
+    setSelectedNode(null);
+  }
+
+  async function handleRestore(runId, modelName) {
+    try {
+      const result = await api.restoreSnapshot(runId, modelName, true);
+      if (result.status === "success") {
+        alert(`Restored ${modelName}. ${result.cascade_results ? Object.keys(result.cascade_results).length + " downstream models rebuilt." : ""}`);
+        // Refresh rewind data
+        const [r, s] = await Promise.all([api.getRewindRuns(), api.getRewindSnapshots()]);
+        setRuns(r);
+        setSnapshots(s);
+      }
+    } catch (err) {
+      alert("Restore failed: " + (err.message || err));
     }
   }
 
@@ -419,52 +673,120 @@ export default function DAGPanel({ onOpenFile }) {
     );
   }
 
+  const currentRun = runs[sliderIndex];
+
   return (
     <div style={styles.container}>
       <div style={styles.header}>
-        <span style={styles.headerTitle}>Model Lineage</span>
-        <div style={styles.legend}>
-          <span style={styles.legendItem}>
-            <span style={{ ...styles.legendDot, background: SCHEMA_COLORS.import }} />
-            imported
-          </span>
-          <span style={styles.legendItem}>
-            <span style={{ ...styles.legendDot, background: SCHEMA_COLORS.ingest }} />
-            ingest
-          </span>
-          <span style={styles.legendItem}>
-            <span style={{ ...styles.legendDot, background: SCHEMA_COLORS.landing }} />
-            landing
-          </span>
-          <span style={styles.legendItem}>
-            <span style={{ ...styles.legendDot, background: SCHEMA_COLORS.bronze }} />
-            bronze
-          </span>
-          <span style={styles.legendItem}>
-            <span style={{ ...styles.legendDot, background: SCHEMA_COLORS.silver }} />
-            silver
-          </span>
-          <span style={styles.legendItem}>
-            <span style={{ ...styles.legendDot, background: SCHEMA_COLORS.gold }} />
-            gold
-          </span>
-          <span style={styles.legendSep}>|</span>
-          <span style={styles.legendItem}>↑ = imported file</span>
-          <span style={styles.legendItem}>I = ingest</span>
-          <span style={styles.legendItem}>S = source</span>
-          <span style={styles.legendItem}>V = view</span>
-          <span style={styles.legendItem}>T = table</span>
+        <span style={styles.headerTitle}>
+          {rewindMode ? "Pipeline Rewind" : "Model Lineage"}
+        </span>
+        <div style={styles.headerRight}>
+          {!rewindMode && (
+            <div style={styles.legend}>
+              <span style={styles.legendItem}>
+                <span style={{ ...styles.legendDot, background: SCHEMA_COLORS.import }} />imported
+              </span>
+              <span style={styles.legendItem}>
+                <span style={{ ...styles.legendDot, background: SCHEMA_COLORS.ingest }} />ingest
+              </span>
+              <span style={styles.legendItem}>
+                <span style={{ ...styles.legendDot, background: SCHEMA_COLORS.bronze }} />bronze
+              </span>
+              <span style={styles.legendItem}>
+                <span style={{ ...styles.legendDot, background: SCHEMA_COLORS.silver }} />silver
+              </span>
+              <span style={styles.legendItem}>
+                <span style={{ ...styles.legendDot, background: SCHEMA_COLORS.gold }} />gold
+              </span>
+            </div>
+          )}
+          <button
+            onClick={() => { setRewindMode(!rewindMode); setSelectedNode(null); }}
+            style={{
+              ...styles.rewindBtn,
+              background: rewindMode ? "var(--dp-accent, #58a6ff)" : "transparent",
+              color: rewindMode ? "#fff" : "var(--dp-text-secondary)",
+            }}
+          >
+            Rewind
+          </button>
         </div>
       </div>
-      <div style={styles.canvasWrap} data-dp-hint="dag-canvas">
-        <canvas
-          ref={canvasRef}
-          onMouseMove={handleMouseMove}
-          onMouseLeave={() => setHovered(null)}
-          onClick={handleClick}
-          style={styles.canvas}
-        />
+
+      <div style={styles.mainArea}>
+        <div style={{ flex: 1, overflow: "auto", background: "var(--dp-bg-tertiary)" }} data-dp-hint="dag-canvas">
+          <canvas
+            ref={canvasRef}
+            onMouseMove={handleMouseMove}
+            onMouseLeave={() => setHovered(null)}
+            onClick={handleClick}
+            style={styles.canvas}
+          />
+        </div>
+
+        {/* Detail panel */}
+        {rewindMode && selectedNode && currentRun && (
+          <DetailPanel
+            modelName={selectedNode}
+            runId={currentRun.run_id}
+            runs={runs}
+            snapshotsByRun={snapshotsByRun}
+            onClose={() => setSelectedNode(null)}
+            onRestore={handleRestore}
+          />
+        )}
       </div>
+
+      {/* Time slider */}
+      {rewindMode && runs.length > 0 && (
+        <div style={styles.sliderContainer}>
+          <button
+            onClick={() => setPlaying(!playing)}
+            style={styles.playBtn}
+            title={playing ? "Pause" : "Play"}
+          >
+            {playing ? "||" : "\u25B6"}
+          </button>
+          <input
+            type="range"
+            min={0}
+            max={runs.length - 1}
+            value={sliderIndex}
+            onChange={(e) => { setSliderIndex(Number(e.target.value)); setPlaying(false); }}
+            style={styles.slider}
+          />
+          <div style={styles.sliderLabel}>
+            {currentRun ? (
+              <>
+                <span style={{ fontWeight: 600 }}>
+                  {currentRun.started_at?.slice(0, 19)}
+                </span>
+                <span style={{ color: "var(--dp-text-dim)", marginLeft: 8, fontSize: 10 }}>
+                  {currentRun.run_id?.slice(0, 8)}
+                </span>
+                <span style={{
+                  marginLeft: 8, fontSize: 10, fontWeight: 600,
+                  color: currentRun.status === "success" ? "#3fb950" : currentRun.status === "failed" ? "#f85149" : "#d29922",
+                }}>
+                  {currentRun.status}
+                </span>
+                <span style={{ color: "var(--dp-text-dim)", marginLeft: 8, fontSize: 10 }}>
+                  {currentRun.trigger}
+                </span>
+              </>
+            ) : "No runs"}
+          </div>
+        </div>
+      )}
+
+      {rewindMode && runs.length === 0 && (
+        <div style={styles.sliderContainer}>
+          <span style={{ color: "var(--dp-text-dim)", fontSize: 12 }}>
+            No pipeline runs recorded. Run a transform to start capturing snapshots.
+          </span>
+        </div>
+      )}
     </div>
   );
 }
@@ -473,12 +795,17 @@ const styles = {
   container: { display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" },
   header: { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 12px", borderBottom: "1px solid var(--dp-border)", fontSize: "13px" },
   headerTitle: { fontWeight: 600 },
-  legend: { display: "flex", gap: "12px", fontSize: "11px", color: "var(--dp-text-secondary)", alignItems: "center" },
+  headerRight: { display: "flex", alignItems: "center", gap: 12 },
+  legend: { display: "flex", gap: "10px", fontSize: "11px", color: "var(--dp-text-secondary)", alignItems: "center" },
   legendItem: { display: "flex", alignItems: "center", gap: "4px" },
   legendDot: { width: "8px", height: "8px", borderRadius: "50%", display: "inline-block" },
-  legendSep: { color: "var(--dp-border-light)" },
-  canvasWrap: { flex: 1, overflow: "auto", background: "var(--dp-bg-tertiary)" },
+  mainArea: { flex: 1, display: "flex", overflow: "hidden" },
   canvas: { display: "block" },
   loading: { padding: "24px", color: "var(--dp-text-secondary)", textAlign: "center" },
   empty: { padding: "24px", color: "var(--dp-text-dim)", textAlign: "center" },
+  rewindBtn: { border: "1px solid var(--dp-border)", borderRadius: 4, padding: "3px 10px", fontSize: 11, fontWeight: 600, cursor: "pointer" },
+  sliderContainer: { display: "flex", alignItems: "center", gap: 10, padding: "8px 16px", borderTop: "1px solid var(--dp-border)", background: "var(--dp-bg-secondary)", fontSize: 12 },
+  playBtn: { background: "none", border: "1px solid var(--dp-border)", borderRadius: 4, padding: "2px 8px", cursor: "pointer", fontSize: 12, color: "var(--dp-text)", minWidth: 28, textAlign: "center" },
+  slider: { flex: 1, accentColor: "var(--dp-accent, #58a6ff)" },
+  sliderLabel: { minWidth: 300, textAlign: "right", fontSize: 11 },
 };
