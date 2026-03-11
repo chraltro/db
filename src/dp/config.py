@@ -125,6 +125,18 @@ class RewindConfig(BaseModel):
     exclude: list[str] = Field(default_factory=list)
 
 
+class SentinelConfig(BaseModel):
+    """Configuration for Schema Sentinel (upstream schema change detection)."""
+    model_config = ConfigDict(extra="ignore")
+
+    enabled: bool = True
+    on_change: str = "pause"  # 'pause', 'warn', 'continue'
+    track_ordering: bool = False
+    rename_inference: bool = True
+    auto_fix: bool = False
+    select_star_warning: bool = True
+
+
 class ProjectConfig(BaseModel):
     model_config = ConfigDict(extra="ignore", arbitrary_types_allowed=True)
 
@@ -136,6 +148,7 @@ class ProjectConfig(BaseModel):
     lint: LintConfig = Field(default_factory=LintConfig)
     alerts: AlertsConfig = Field(default_factory=AlertsConfig)
     rewind: RewindConfig = Field(default_factory=RewindConfig)
+    sentinel: SentinelConfig = Field(default_factory=SentinelConfig)
     environments: dict[str, EnvironmentConfig] = Field(default_factory=dict)
     active_environment: str | None = None
     sources: list[SourceConfig] = Field(default_factory=list)
@@ -283,6 +296,17 @@ def load_project(project_dir: Path | None = None, env: str | None = None) -> Pro
         exclude=rewind_raw.get("exclude", []),
     )
 
+    # Sentinel
+    sentinel_raw = raw.get("sentinel", {})
+    sentinel = SentinelConfig(
+        enabled=sentinel_raw.get("enabled", True),
+        on_change=sentinel_raw.get("on_change", "pause"),
+        track_ordering=sentinel_raw.get("track_ordering", False),
+        rename_inference=sentinel_raw.get("rename_inference", True),
+        auto_fix=sentinel_raw.get("auto_fix", False),
+        select_star_warning=sentinel_raw.get("select_star_warning", True),
+    )
+
     # Alerts
     alerts_raw = raw.get("alerts", {})
     alerts = AlertsConfig(
@@ -333,6 +357,7 @@ def load_project(project_dir: Path | None = None, env: str | None = None) -> Pro
         lint=lint,
         alerts=alerts,
         rewind=rewind,
+        sentinel=sentinel,
         environments=environments,
         active_environment=active_env if active_env and active_env in environments else None,
         sources=sources,

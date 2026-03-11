@@ -418,4 +418,22 @@ export const api = {
     }),
   getDownstreamModels: (modelName: string) => request(`/rewind/downstream/${modelName}`),
   runRewindGC: () => request("/rewind/gc", { method: "POST" }),
+
+  // Schema Sentinel
+  runSentinelCheck: () => request("/sentinel/check", { method: "POST" }),
+  getSentinelDiffs: (limit: number = 50) => request(`/sentinel/diffs?limit=${limit}`),
+  getSentinelImpacts: (diffId: string) => request(`/sentinel/impacts/${diffId}`),
+  getSentinelHistory: (sourceName: string, limit: number = 20) =>
+    request(`/sentinel/history/${sourceName}?limit=${limit}`),
+  getSentinelSources: () => request("/sentinel/sources"),
+  applySentinelFix: (modelPath: string, oldName: string, newName: string) =>
+    request("/sentinel/apply-fix", {
+      method: "POST",
+      body: JSON.stringify({ model_path: modelPath, old_name: oldName, new_name: newName }),
+    }),
+  resolveSentinelImpact: (diffId: string, modelName: string) =>
+    request("/sentinel/resolve", {
+      method: "POST",
+      body: JSON.stringify({ diff_id: diffId, model_name: modelName }),
+    }),
 };
