@@ -42,6 +42,110 @@ function ThemeSection() {
   );
 }
 
+function SchedulerSection() {
+  const [streams, setStreams] = useState([]);
+  const [history, setHistory] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [running, setRunning] = useState(null);
+
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  const loadData = async () => {
+    setLoading(true);
+    try {
+      const [sched, hist] = await Promise.all([
+        api.getScheduler(),
+        api.getHistory()
+      ]);
+      setStreams(sched.streams || []);
+      setHistory(hist || []);
+    } catch (e) {
+      console.error('Failed to load scheduler data:', e);
+    }
+    setLoading(false);
+  };
+
+  const formatCron = (cron) => {
+    if (!cron) return '—';
+    const parts = cron.split(' ');
+    if (parts.length !== 5) return cron;
+    const [min, hour, dom, mon, dow] = parts;
+    if (dom === '*' && mon === '*' && dow === '*') return `Daily at ${hour.padStart(2,'0')}:${min.padStart(2,'0')}`;
+    if (dom === '*' && mon === '*') return `${cron} (weekly)`;
+    return cron;
+  };
+
+  const getLastRun = (streamName) => {
+    const runs = history.filter(h => h.stream === streamName || h.name === streamName);
+    if (runs.length === 0) return { status: '—', time: '—' };
+    const last = runs[0];
+    return { status: last.status || last.result || '—', time: last.started_at || last.timestamp || '—' };
+  };
+
+  const handleRunNow = async (streamName) => {
+    setRunning(streamName);
+    try {
+      await api.runStream(streamName);
+      await loadData();
+    } catch (e) {
+      console.error('Failed to run stream:', e);
+    }
+    setRunning(null);
+  };
+
+  return (
+    <div style={sec.section}>
+      <h3 style={sec.heading}>Scheduler</h3>
+      <p style={sec.desc}>Configured pipeline schedules and their status.</p>
+      {loading ? <p style={{ color: 'var(--dp-text-secondary)' }}>Loading...</p> : streams.length === 0 ? (
+        <p style={{ color: 'var(--dp-text-secondary)' }}>No streams configured in project.yml</p>
+      ) : (
+        <table style={sec.table}>
+          <thead>
+            <tr>
+              <th style={sec.th}>Stream</th>
+              <th style={sec.th}>Description</th>
+              <th style={sec.th}>Schedule</th>
+              <th style={sec.th}>Last Run</th>
+              <th style={sec.th}>Status</th>
+              <th style={sec.th}>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {streams.map(s => {
+              const last = getLastRun(s.name);
+              return (
+                <tr key={s.name}>
+                  <td style={sec.td}>{s.name}</td>
+                  <td style={sec.td}>{s.description || '—'}</td>
+                  <td style={sec.td}><code style={sec.code}>{formatCron(s.schedule)}</code></td>
+                  <td style={sec.td}>{last.time}</td>
+                  <td style={sec.td}>
+                    <span style={{
+                      padding: '2px 8px', borderRadius: 'var(--dp-radius)', fontSize: 11,
+                      background: last.status === 'success' ? 'var(--dp-green-bg)' : last.status === 'error' ? 'var(--dp-red-bg)' : 'var(--dp-btn-bg)',
+                      color: last.status === 'success' ? 'var(--dp-green)' : last.status === 'error' ? 'var(--dp-red)' : 'var(--dp-text-secondary)'
+                    }}>{last.status}</span>
+                  </td>
+                  <td style={sec.td}>
+                    <button
+                      onClick={() => handleRunNow(s.name)}
+                      disabled={running === s.name}
+                      style={{ ...sec.addBtn, opacity: running === s.name ? 0.5 : 1 }}
+                    >{running === s.name ? 'Running...' : 'Run Now'}</button>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
+}
+
 function SecretsSection() {
   const [secrets, setSecrets] = useState([]);
   const [newKey, setNewKey] = useState("");
@@ -196,6 +300,114 @@ function UsersSection() {
   );
 }
 
+function AlertsSection() {
+  const [history, setHistory] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [slackUrl, setSlackUrl] = useState('');
+  const [webhookUrl, setWebhookUrl] = useState('');
+  const [testing, setTesting] = useState(null);
+  const [testResult, setTestResult] = useState(null);
+
+  useEffect(() => { loadHistory(); }, []);
+
+  const loadHistory = async () => {
+    setLoading(true);
+    try {
+      const data = await api.getAlertHistory(50);
+      setHistory(data || []);
+    } catch (e) {
+      console.error('Failed to load alert history:', e);
+    }
+    setLoading(false);
+  };
+
+  const handleTest = async (channel) => {
+    setTesting(channel);
+    setTestResult(null);
+    try {
+      const config = channel === 'slack' ? { slack_webhook_url: slackUrl } : { webhook_url: webhookUrl };
+      await api.testAlert(channel, config);
+      setTestResult({ channel, success: true, message: 'Test alert sent successfully!' });
+    } catch (e) {
+      setTestResult({ channel, success: false, message: e.message || 'Test failed' });
+    }
+    setTesting(null);
+  };
+
+  return (
+    <div style={sec.section}>
+      <h3 style={sec.heading}>Alerts</h3>
+      <p style={sec.desc}>Configure and test alert channels. View alert history.</p>
+
+      <div style={{ display: 'flex', gap: 16, marginBottom: 16, flexWrap: 'wrap' }}>
+        <div style={{ flex: 1, minWidth: 280 }}>
+          <label style={sec.label}>Slack Webhook URL</label>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <input style={{ ...sec.input, flex: 1 }} placeholder="https://hooks.slack.com/services/..." value={slackUrl} onChange={e => setSlackUrl(e.target.value)} />
+            <button style={sec.addBtn} disabled={!slackUrl || testing === 'slack'} onClick={() => handleTest('slack')}>
+              {testing === 'slack' ? 'Testing...' : 'Test Slack'}
+            </button>
+          </div>
+        </div>
+        <div style={{ flex: 1, minWidth: 280 }}>
+          <label style={sec.label}>Generic Webhook URL</label>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <input style={{ ...sec.input, flex: 1 }} placeholder="https://example.com/webhook" value={webhookUrl} onChange={e => setWebhookUrl(e.target.value)} />
+            <button style={sec.addBtn} disabled={!webhookUrl || testing === 'webhook'} onClick={() => handleTest('webhook')}>
+              {testing === 'webhook' ? 'Testing...' : 'Test Webhook'}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {testResult && (
+        <div style={{
+          padding: '8px 12px', borderRadius: 'var(--dp-radius-lg)', marginBottom: 12, fontSize: 13,
+          background: testResult.success ? 'var(--dp-green-bg)' : 'var(--dp-red-bg)',
+          color: testResult.success ? 'var(--dp-green)' : 'var(--dp-red)',
+          border: `1px solid ${testResult.success ? 'var(--dp-green-border)' : 'var(--dp-red-border)'}`
+        }}>{testResult.message}</div>
+      )}
+
+      <h4 style={{ ...sec.heading, fontSize: 14, marginTop: 16 }}>Alert History</h4>
+      {loading ? <p style={{ color: 'var(--dp-text-secondary)' }}>Loading...</p> : history.length === 0 ? (
+        <p style={{ color: 'var(--dp-text-secondary)' }}>No alerts sent yet.</p>
+      ) : (
+        <table style={sec.table}>
+          <thead>
+            <tr>
+              <th style={sec.th}>Type</th>
+              <th style={sec.th}>Channel</th>
+              <th style={sec.th}>Target</th>
+              <th style={sec.th}>Message</th>
+              <th style={sec.th}>Status</th>
+              <th style={sec.th}>Sent At</th>
+            </tr>
+          </thead>
+          <tbody>
+            {history.map((a, i) => (
+              <tr key={i}>
+                <td style={sec.td}>{a.type || a.alert_type || '—'}</td>
+                <td style={sec.td}>{a.channel || '—'}</td>
+                <td style={sec.td} title={a.target || a.webhook_url || ''}>{(a.target || a.webhook_url || '—').slice(0, 30)}</td>
+                <td style={sec.td} title={a.message || ''}>{(a.message || '—').slice(0, 50)}</td>
+                <td style={sec.td}>
+                  <span style={{
+                    padding: '2px 8px', borderRadius: 'var(--dp-radius)', fontSize: 11,
+                    background: a.status === 'sent' || a.status === 'success' ? 'var(--dp-green-bg)' : 'var(--dp-red-bg)',
+                    color: a.status === 'sent' || a.status === 'success' ? 'var(--dp-green)' : 'var(--dp-red)'
+                  }}>{a.status || '—'}</span>
+                </td>
+                <td style={sec.td}>{a.sent_at || a.created_at || '—'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
+}
+
 const DEFAULT_SQLFLUFF = `[sqlfluff]
 dialect = duckdb
 max_line_length = 120
@@ -319,8 +531,10 @@ export default function SettingsPanel({ onShowGuide }) {
         <HintsSection />
         <ThemeSection />
         <LintConfigSection />
+        <SchedulerSection />
         <SecretsSection />
         <UsersSection />
+        <AlertsSection />
       </div>
     </div>
   );
@@ -343,6 +557,7 @@ const sec = {
   roleSelect: { padding: "4px 8px", background: "var(--dp-bg-tertiary)", border: "1px solid var(--dp-border-light)", borderRadius: "var(--dp-radius)", color: "var(--dp-text)", fontSize: "12px" },
   addBtn: { padding: "6px 14px", background: "var(--dp-green)", border: "1px solid var(--dp-green-border)", borderRadius: "var(--dp-radius-lg)", color: "#fff", cursor: "pointer", fontSize: "12px", fontWeight: 500, whiteSpace: "nowrap" },
   delBtn: { padding: "3px 8px", background: "var(--dp-btn-bg)", border: "1px solid var(--dp-btn-border)", borderRadius: "var(--dp-radius)", color: "var(--dp-red)", cursor: "pointer", fontSize: "11px" },
+  label: { display: "block", fontSize: "12px", color: "var(--dp-text-secondary)", marginBottom: "4px" },
   configTextarea: { width: "100%", padding: "10px 12px", background: "var(--dp-bg-tertiary)", border: "1px solid var(--dp-border-light)", borderRadius: "var(--dp-radius-lg)", color: "var(--dp-text)", fontFamily: "var(--dp-font-mono)", fontSize: "12px", lineHeight: 1.6, resize: "vertical", boxSizing: "border-box", outline: "none" },
   themeGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: "10px" },
   themeCard: { padding: "12px", borderRadius: "var(--dp-radius-lg)", cursor: "pointer", textAlign: "left", display: "block" },

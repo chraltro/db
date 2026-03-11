@@ -13,6 +13,100 @@ function _timeAgo(dateStr) {
   return `${Math.floor(hours / 24)}d ago`;
 }
 
+const thStyle = { textAlign: 'left', padding: '8px 12px', borderBottom: '1px solid #333', color: '#888', fontSize: 11, textTransform: 'uppercase' };
+const tdStyle = { padding: '8px 12px', borderBottom: '1px solid #222' };
+
+function CDCSection() {
+  const [cdcStatus, setCdcStatus] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [resetting, setResetting] = useState(null);
+  const [confirmReset, setConfirmReset] = useState(null);
+
+  useEffect(() => { loadCDC(); }, []);
+
+  const loadCDC = async () => {
+    setLoading(true);
+    try {
+      const data = await api.getCDCStatus();
+      setCdcStatus(data || []);
+    } catch (e) {
+      console.error('Failed to load CDC status:', e);
+    }
+    setLoading(false);
+  };
+
+  const handleReset = async (name) => {
+    setResetting(name);
+    try {
+      await api.resetCDCWatermark(name);
+      setConfirmReset(null);
+      await loadCDC();
+    } catch (e) {
+      console.error('Failed to reset watermark:', e);
+    }
+    setResetting(null);
+  };
+
+  if (loading) return <p style={{ color: '#888', padding: 16 }}>Loading CDC status...</p>;
+  if (cdcStatus.length === 0) return null;
+
+  return (
+    <div style={{ marginTop: 24 }}>
+      <h3 style={{ fontSize: 15, fontWeight: 600, color: '#e0e0e0', marginBottom: 12 }}>Change Data Capture</h3>
+      <p style={{ fontSize: 13, color: '#888', marginBottom: 12 }}>Track incremental data changes from connected sources.</p>
+      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+        <thead>
+          <tr>
+            <th style={thStyle}>Connector</th>
+            <th style={thStyle}>Table</th>
+            <th style={thStyle}>CDC Mode</th>
+            <th style={thStyle}>Watermark</th>
+            <th style={thStyle}>Last Sync</th>
+            <th style={thStyle}>Rows Synced</th>
+            <th style={thStyle}>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {cdcStatus.map((c, i) => (
+            <tr key={i}>
+              <td style={tdStyle}>{c.connector || c.name || '—'}</td>
+              <td style={tdStyle}>{c.table || c.table_name || '—'}</td>
+              <td style={tdStyle}>
+                <span style={{
+                  padding: '2px 8px', borderRadius: 4, fontSize: 11,
+                  background: '#1a2a3a', color: '#60a5fa'
+                }}>{c.cdc_mode || c.mode || '—'}</span>
+              </td>
+              <td style={tdStyle}><code style={{ fontSize: 12 }}>{c.watermark || c.high_watermark || '—'}</code></td>
+              <td style={tdStyle}>{c.last_sync || c.synced_at || '—'}</td>
+              <td style={tdStyle}>{c.rows_synced != null ? c.rows_synced.toLocaleString() : '—'}</td>
+              <td style={tdStyle}>
+                {confirmReset === (c.connector || c.name) ? (
+                  <span style={{ display: 'flex', gap: 4 }}>
+                    <button onClick={() => handleReset(c.connector || c.name)} disabled={resetting === (c.connector || c.name)}
+                      style={{ padding: '4px 10px', background: '#5a2d2d', color: '#f87171', border: '1px solid #7a3d3d', borderRadius: 4, cursor: 'pointer', fontSize: 12 }}>
+                      {resetting === (c.connector || c.name) ? 'Resetting...' : 'Confirm'}
+                    </button>
+                    <button onClick={() => setConfirmReset(null)}
+                      style={{ padding: '4px 10px', background: '#2a2a2a', color: '#888', border: '1px solid #444', borderRadius: 4, cursor: 'pointer', fontSize: 12 }}>
+                      Cancel
+                    </button>
+                  </span>
+                ) : (
+                  <button onClick={() => setConfirmReset(c.connector || c.name)}
+                    style={{ padding: '4px 10px', background: '#2a2a2a', color: '#e0e0e0', border: '1px solid #444', borderRadius: 4, cursor: 'pointer', fontSize: 12 }}>
+                    Reset Watermark
+                  </button>
+                )}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 /**
  * Unified Data Sources panel — merges the old Import and Connectors panels
  * into a single flow. Users pick a method (file, database, connector) and
@@ -676,6 +770,7 @@ export default function DataSourcesPanel({ addOutput }) {
               })}
             </div>
           )}
+          <CDCSection />
         </div>
       </div>
     );

@@ -1,5 +1,70 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { api } from "./api";
+
+const LINE_HEIGHT = 19.5; // 13px font * 1.5 line-height
+const MAX_VISIBLE_LINES = 1000;
+
+function CodeArea({ value, onChange, onKeyDown, minLines = 3, spellCheck = false }) {
+  const textRef = useRef(null);
+  const gutterRef = useRef(null);
+  const [measuredHeight, setMeasuredHeight] = useState(null);
+  const lineCount = value.split("\n").length;
+  const capped = lineCount > MAX_VISIBLE_LINES;
+  const cappedHeight = MAX_VISIBLE_LINES * LINE_HEIGHT + 16;
+  const minHeight = Math.max(minLines, lineCount) * LINE_HEIGHT + 16;
+
+  useEffect(() => {
+    if (!capped && textRef.current) {
+      // Reset height to auto so scrollHeight is accurate
+      textRef.current.style.height = "0px";
+      const sh = textRef.current.scrollHeight;
+      textRef.current.style.height = "";
+      setMeasuredHeight(Math.max(sh, minHeight));
+    }
+  }, [value, capped, minHeight]);
+
+  const height = capped ? cappedHeight : (measuredHeight || minHeight);
+
+  const handleScroll = () => {
+    if (gutterRef.current && textRef.current) {
+      gutterRef.current.scrollTop = textRef.current.scrollTop;
+    }
+  };
+
+  return (
+    <div style={{ display: "flex", height }}>
+      <div
+        ref={gutterRef}
+        style={{
+          width: 40, flexShrink: 0, padding: "8px 0",
+          overflow: "hidden",
+          textAlign: "right", fontFamily: "var(--dp-font-mono)", fontSize: "13px",
+          lineHeight: 1.5, color: "var(--dp-text-dim)", userSelect: "none",
+          borderRight: "1px solid var(--dp-border)", background: "var(--dp-bg-secondary)",
+          boxSizing: "border-box",
+        }}
+      >
+        {Array.from({ length: lineCount }, (_, i) => (
+          <div key={i} style={{ paddingRight: 8, height: LINE_HEIGHT }}>{i + 1}</div>
+        ))}
+      </div>
+      <textarea
+        ref={textRef}
+        value={value}
+        onChange={onChange}
+        onKeyDown={onKeyDown}
+        onScroll={handleScroll}
+        spellCheck={spellCheck}
+        style={{
+          flex: 1, padding: "8px 12px", background: "transparent", border: "none",
+          color: "var(--dp-text)", fontFamily: "var(--dp-font-mono)", fontSize: "13px",
+          resize: "none", outline: "none", boxSizing: "border-box", lineHeight: 1.5,
+          height: "100%", overflow: capped ? "auto" : "hidden",
+        }}
+      />
+    </div>
+  );
+}
 
 const SOURCE_TYPES = [
   { value: "csv", label: "CSV File" },
@@ -176,15 +241,13 @@ function IngestCellEditor({ cell, notebookName, onUpdate, onDelete, externalRunn
       </div>
 
       {showSource ? (
-        <textarea
+        <CodeArea
           value={rawSource}
           onChange={(e) => handleRawSourceChange(e.target.value)}
           onKeyDown={(e) => {
             if ((e.ctrlKey || e.metaKey) && e.key === "Enter") { e.preventDefault(); runCell(); }
           }}
-          style={cs.codeInput}
-          rows={Math.max(4, rawSource.split("\n").length + 1)}
-          spellCheck={false}
+          minLines={4}
         />
       ) : (
         <div style={ig.form}>
@@ -346,7 +409,7 @@ function SqlCell({ cell, notebookName, onUpdate, onDelete, externalRunning }) {
         {duration != null && <span style={cs.duration}>{duration}ms</span>}
         <button data-dp-danger="" onClick={onDelete} style={cs.deleteBtn} title="Delete cell">&times;</button>
       </div>
-      <textarea
+      <CodeArea
         value={source}
         onChange={(e) => {
           setSource(e.target.value);
@@ -355,9 +418,6 @@ function SqlCell({ cell, notebookName, onUpdate, onDelete, externalRunning }) {
         onKeyDown={(e) => {
           if ((e.ctrlKey || e.metaKey) && e.key === "Enter") { e.preventDefault(); runCell(); }
         }}
-        style={cs.codeInput}
-        rows={Math.max(3, source.split("\n").length + 1)}
-        spellCheck={false}
       />
       <CellOutput outputs={outputs} />
     </div>
@@ -404,7 +464,7 @@ function CodeCell({ cell, notebookName, onUpdate, onDelete, externalRunning }) {
         {duration != null && <span style={cs.duration}>{duration}ms</span>}
         <button data-dp-danger="" onClick={onDelete} style={cs.deleteBtn} title="Delete cell">&times;</button>
       </div>
-      <textarea
+      <CodeArea
         value={source}
         onChange={(e) => {
           setSource(e.target.value);
@@ -413,9 +473,6 @@ function CodeCell({ cell, notebookName, onUpdate, onDelete, externalRunning }) {
         onKeyDown={(e) => {
           if ((e.ctrlKey || e.metaKey) && e.key === "Enter") { e.preventDefault(); runCell(); }
         }}
-        style={cs.codeInput}
-        rows={Math.max(3, source.split("\n").length + 1)}
-        spellCheck={false}
       />
       <CellOutput outputs={outputs} />
     </div>
@@ -456,14 +513,13 @@ function MarkdownCell({ cell, onUpdate, onDelete }) {
         <span style={{ flex: 1 }} />
         <button data-dp-danger="" onClick={onDelete} style={cs.deleteBtn} title="Delete cell">&times;</button>
       </div>
-      <textarea
+      <CodeArea
         value={source}
         onChange={(e) => {
           setSource(e.target.value);
           onUpdate({ ...cell, source: e.target.value });
         }}
-        style={cs.mdInput}
-        rows={Math.max(2, source.split("\n").length)}
+        minLines={2}
       />
     </div>
   );
@@ -667,7 +723,7 @@ const s = {
   nbTitle: { fontWeight: 600, fontSize: "14px", flex: 1 },
   nbActions: { display: "flex", gap: "6px" },
   runAllBtn: { padding: "5px 12px", background: "var(--dp-green)", border: "1px solid var(--dp-green-border)", borderRadius: "var(--dp-radius-lg)", color: "#fff", cursor: "pointer", fontSize: "12px", fontWeight: 500 },
-  cells: { flex: 1, overflow: "auto", padding: "12px 16px" },
+  cells: { flex: 1, overflow: "auto", padding: "12px 16px", maxWidth: "900px", margin: "0 auto", width: "100%", boxSizing: "border-box" },
 };
 
 const cs = {

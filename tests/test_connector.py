@@ -747,9 +747,10 @@ def test_regenerate_preserves_config(tmp_path):
     regen_result = regenerate_connector(project_dir, "cfg_test")
     assert regen_result["status"] == "success"
 
-    # Script should still reference the CSV path
+    # Script should still reference the CSV path (backslashes are escaped in the script)
     script_content = (project_dir / "ingest" / "connector_cfg_test.py").read_text()
-    assert str(csv_file) in script_content
+    escaped_path = str(csv_file).replace("\\", "\\\\")
+    assert escaped_path in script_content
 
 
 # ---------------------------------------------------------------------------

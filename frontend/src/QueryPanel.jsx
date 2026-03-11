@@ -8,6 +8,8 @@ import ResizeHandle from "./ResizeHandle";
 import useResizable from "./useResizable";
 
 const MAX_HISTORY = 50;
+const FMT_OPTS = { language: "sql", keywordCase: "upper", indentStyle: "standard" };
+function fmt(sql) { try { return formatSQL(sql, FMT_OPTS); } catch { return sql; } }
 
 function getHistory() {
   try {
@@ -155,7 +157,7 @@ export default function QueryPanel({ addOutput }) {
     delete window.__dp_prefill_query;
     const query = typeof pf === "string" ? pf : pf.sql;
     const autoRun = typeof pf === "object" && pf.run;
-    setSql(query);
+    setSql(fmt(query));
     if (autoRun) {
       // Run after state settles
       setTimeout(async () => {
@@ -209,12 +211,7 @@ export default function QueryPanel({ addOutput }) {
 
   function formatQuery() {
     if (!sql.trim()) return;
-    try {
-      const formatted = formatSQL(sql, { language: "sql", keywordCase: "upper", indentStyle: "standard" });
-      setSql(formatted);
-    } catch {
-      // leave as-is if formatter fails
-    }
+    setSql(fmt(sql));
   }
 
   function handleKeyDown(e) {
@@ -341,16 +338,16 @@ export default function QueryPanel({ addOutput }) {
     for (const tier of TIER) {
       const t = tables.find((t) => t.schema === tier);
       if (t) {
-        suggestions.push({ sql: `SELECT * FROM ${t.schema}.${t.name} LIMIT 10`, label: `Preview ${t.schema}.${t.name}` });
+        suggestions.push({ sql: fmt(`SELECT * FROM ${t.schema}.${t.name} LIMIT 10`), label: `Preview ${t.schema}.${t.name}` });
         if (suggestions.length === 1) {
-          suggestions.push({ sql: `SELECT COUNT(*) AS total FROM ${t.schema}.${t.name}`, label: `Count ${t.schema}.${t.name}` });
+          suggestions.push({ sql: fmt(`SELECT COUNT(*) AS total FROM ${t.schema}.${t.name}`), label: `Count ${t.schema}.${t.name}` });
         }
       }
       if (suggestions.length >= 3) break;
     }
     if (suggestions.length < 4) {
       suggestions.push({
-        sql: "SELECT table_schema, table_name FROM information_schema.tables\nWHERE table_schema NOT IN ('information_schema', '_dp_internal')\nORDER BY table_schema, table_name",
+        sql: fmt("SELECT table_schema, table_name FROM information_schema.tables WHERE table_schema NOT IN ('information_schema', '_dp_internal') ORDER BY table_schema, table_name"),
         label: "List all tables",
       });
     }
@@ -370,50 +367,6 @@ export default function QueryPanel({ addOutput }) {
 
         {/* Query area */}
         <div style={st.queryArea}>
-          {/* Toolbar */}
-          <div style={st.toolbar}>
-            <button onClick={runQuery} disabled={queryRunning || !sql.trim()} style={st.runBtn}>
-              {queryRunning ? "Running..." : "Run"} <span style={st.shortcut}>Ctrl+Enter</span>
-            </button>
-            <button onClick={formatQuery} disabled={!sql.trim()} style={st.fmtBtn} title="Format SQL (Ctrl+Shift+F)">
-              Format <span style={st.shortcut}>Ctrl+Shift+F</span>
-            </button>
-
-            {/* History dropdown */}
-            <div ref={historyRef} style={st.historyWrapper}>
-              <button onClick={() => setHistoryOpen(!historyOpen)} style={st.historyBtn} title="Query history">
-                {"\u23F0"} {history.length > 0 && <span style={st.historyCount}>{history.length}</span>}
-              </button>
-              {historyOpen && (
-                <div style={st.historyDropdown}>
-                  <div style={st.historyHeader}>Recent Queries</div>
-                  {history.length === 0 ? (
-                    <div style={st.historyEmpty}>No history yet</div>
-                  ) : (
-                    history.slice(0, 20).map((h, i) => (
-                      <button
-                        key={i}
-                        onClick={() => { setSql(h.sql); setHistoryOpen(false); }}
-                        style={st.historyItem}
-                        onMouseEnter={(e) => e.currentTarget.style.background = "var(--dp-btn-bg)"}
-                        onMouseLeave={(e) => e.currentTarget.style.background = "none"}
-                      >
-                        <span style={st.historySQL}>{h.sql.substring(0, 80)}{h.sql.length > 80 ? "..." : ""}</span>
-                      </button>
-                    ))
-                  )}
-                </div>
-              )}
-            </div>
-
-            {results && (
-              <div style={st.viewToggle}>
-                <button onClick={() => setViewMode("table")} style={viewMode === "table" ? st.viewBtnActive : st.viewBtn}>Table</button>
-                <button onClick={() => setViewMode("chart")} style={viewMode === "chart" ? st.viewBtnActive : st.viewBtn}>Chart</button>
-              </div>
-            )}
-          </div>
-
           {/* SQL textarea */}
           <div style={{ ...st.editorWrapper, height: editorHeight }}>
             <textarea
@@ -447,6 +400,50 @@ export default function QueryPanel({ addOutput }) {
             </div>
           )}
           <ResizeHandle direction="vertical" onResize={onEditorResize} onResizeStart={onEditorResizeStart} />
+
+          {/* Toolbar */}
+          <div style={st.toolbar}>
+            <button onClick={runQuery} disabled={queryRunning || !sql.trim()} style={st.runBtn}>
+              {queryRunning ? "Running..." : "Run"} <span style={st.shortcut}>Ctrl+Enter</span>
+            </button>
+            <button onClick={formatQuery} disabled={!sql.trim()} style={st.fmtBtn} title="Format SQL (Ctrl+Shift+F)">
+              Format <span style={st.shortcut}>Ctrl+Shift+F</span>
+            </button>
+
+            {/* History dropdown */}
+            <div ref={historyRef} style={st.historyWrapper}>
+              <button onClick={() => setHistoryOpen(!historyOpen)} style={st.historyBtn} title="Query history">
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="8" cy="8" r="6.5"/><path d="M8 4.5V8l2.5 1.5"/></svg> {history.length > 0 && <span style={st.historyCount}>{history.length}</span>}
+              </button>
+              {historyOpen && (
+                <div style={st.historyDropdown}>
+                  <div style={st.historyHeader}>Recent Queries</div>
+                  {history.length === 0 ? (
+                    <div style={st.historyEmpty}>No history yet</div>
+                  ) : (
+                    history.slice(0, 20).map((h, i) => (
+                      <button
+                        key={i}
+                        onClick={() => { setSql(h.sql); setHistoryOpen(false); }}
+                        style={st.historyItem}
+                        onMouseEnter={(e) => e.currentTarget.style.background = "var(--dp-btn-bg)"}
+                        onMouseLeave={(e) => e.currentTarget.style.background = "none"}
+                      >
+                        <span style={st.historySQL}>{h.sql.substring(0, 80)}{h.sql.length > 80 ? "..." : ""}</span>
+                      </button>
+                    ))
+                  )}
+                </div>
+              )}
+            </div>
+
+            {results && (
+              <div style={st.viewToggle}>
+                <button onClick={() => setViewMode("table")} style={viewMode === "table" ? st.viewBtnActive : st.viewBtn}>Table</button>
+                <button onClick={() => setViewMode("chart")} style={viewMode === "chart" ? st.viewBtnActive : st.viewBtn}>Chart</button>
+              </div>
+            )}
+          </div>
 
           {/* Starter suggestions when textarea is empty */}
           {!sql.trim() && suggestions.length > 0 && (

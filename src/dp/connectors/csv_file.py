@@ -94,19 +94,22 @@ class CSVConnector(BaseConnector):
         table_name = tables[0] if tables else "data"
         is_url = path.startswith("http://") or path.startswith("https://")
 
+        # Escape backslashes for safe embedding in Python string literals
+        safe_path = path.replace("\\", "\\\\")
+
         if is_url:
             reader = self._reader_call(fmt, "tmp_path")
             lines = [
                 f'"""Auto-generated CSV/file ingest script.',
                 f"",
-                f"Imports data from {path} into {target_schema}.{table_name}.",
+                f"Imports data from {safe_path} into {target_schema}.{table_name}.",
                 f'"""',
                 f"",
                 f"import os",
                 f"import tempfile",
                 f"from urllib.request import urlopen",
                 f"",
-                f'url = "{path}"',
+                f'url = "{safe_path}"',
                 f"",
                 f'print(f"Downloading {{url}}...")',
                 f"with urlopen(url, timeout=60) as resp:",
@@ -133,10 +136,10 @@ class CSVConnector(BaseConnector):
             lines = [
                 f'"""Auto-generated CSV/file ingest script.',
                 f"",
-                f"Imports data from {path} into {target_schema}.{table_name}.",
+                f"Imports data from {safe_path} into {target_schema}.{table_name}.",
                 f'"""',
                 f"",
-                f'file_path = "{path}"',
+                f'file_path = "{safe_path}"',
                 f"",
                 f'print(f"Reading {{file_path}}...")',
                 f'db.execute("CREATE SCHEMA IF NOT EXISTS {target_schema}")',

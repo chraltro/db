@@ -95,47 +95,16 @@ except Exception as e:
 """
 
 _INGEST_LOAD_SOURCE = """\
+rows = [
+    {**f["properties"], "id": f["id"],
+     "latitude": f["geometry"]["coordinates"][1],
+     "longitude": f["geometry"]["coordinates"][0],
+     "depth_km": f["geometry"]["coordinates"][2]}
+    for f in features
+]
+
 db.execute("CREATE SCHEMA IF NOT EXISTS landing")
-
-db.execute(\"\"\"
-    CREATE OR REPLACE TABLE landing.earthquakes (
-        id VARCHAR, magnitude DOUBLE, place VARCHAR,
-        event_time BIGINT, updated BIGINT,
-        latitude DOUBLE, longitude DOUBLE, depth_km DOUBLE,
-        felt INTEGER, tsunami INTEGER, sig INTEGER,
-        mag_type VARCHAR, event_type VARCHAR, status VARCHAR,
-        detail_url VARCHAR
-    )
-\"\"\")
-
-rows = []
-for f in features:
-    p = f.get("properties", {})
-    c = f.get("geometry", {}).get("coordinates", [0, 0, 0])
-    rows.append((
-        str(f.get("id", "")),
-        p.get("mag"),
-        str(p.get("place", "")),
-        p.get("time"),
-        p.get("updated"),
-        c[1] if len(c) > 1 else None,
-        c[0] if len(c) > 0 else None,
-        c[2] if len(c) > 2 else None,
-        p.get("felt"),
-        p.get("tsunami"),
-        p.get("sig"),
-        str(p.get("magType", "")),
-        str(p.get("type", "")),
-        str(p.get("status", "")),
-        str(p.get("detail", "")),
-    ))
-
-if rows:
-    db.executemany(
-        "INSERT INTO landing.earthquakes VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)",
-        rows,
-    )
-
+db.execute("CREATE OR REPLACE TABLE landing.earthquakes AS SELECT * FROM rows")
 print(f"Loaded {len(rows)} earthquakes into landing.earthquakes")\
 """
 
@@ -178,7 +147,7 @@ SAMPLE_INGEST_NOTEBOOK = json.dumps({
         {
             "id": "cell_6",
             "type": "code",
-            "source": 'db.execute("SELECT id, magnitude, place FROM landing.earthquakes ORDER BY magnitude DESC LIMIT 10")',
+            "source": 'db.execute("SELECT id, mag AS magnitude, place FROM landing.earthquakes ORDER BY magnitude DESC LIMIT 10")',
             "outputs": [],
         },
     ],
@@ -197,21 +166,21 @@ SAMPLE_BRONZE_SQL = """\
 
 SELECT
     id AS event_id,
-    magnitude,
-    mag_type,
+    mag AS magnitude,
+    magType AS mag_type,
     place,
     latitude,
     longitude,
     depth_km,
     sig AS significance,
-    event_type,
+    type AS event_type,
     status,
-    epoch_ms(event_time) AS event_time,
-    epoch_ms(updated) AS updated_at,
+    epoch_ms(time::BIGINT) AS event_time,
+    epoch_ms(updated::BIGINT) AS updated_at,
     coalesce(felt, 0) AS felt_reports,
     tsunami = 1 AS tsunami_alert
 FROM landing.earthquakes
-WHERE magnitude IS NOT NULL
+WHERE mag IS NOT NULL
 """
 
 SAMPLE_SILVER_EVENTS_SQL = """\

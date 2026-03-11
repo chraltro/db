@@ -7,6 +7,7 @@ import time
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
+from starlette.websockets import WebSocket, WebSocketDisconnect
 
 from dp.server.deps import (
     DbConnReadOnly,
@@ -147,8 +148,6 @@ def register_websocket(app) -> None:
     endpoints are registered directly on the app instance.
     """
     try:
-        from starlette.websockets import WebSocket, WebSocketDisconnect
-
         @app.websocket("/ws/session/{session_id}")
         async def websocket_session(
             websocket: WebSocket, session_id: str

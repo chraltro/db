@@ -175,10 +175,15 @@ def get_db() -> Generator[duckdb.DuckDBPyConnection, None, None]:
 
 
 def get_db_readonly() -> Generator[duckdb.DuckDBPyConnection, None, None]:
-    """FastAPI dependency: yields a read-only DuckDB connection."""
+    """FastAPI dependency: yields a DuckDB connection for read operations.
+
+    Note: we intentionally avoid ``read_only=True`` because DuckDB's file
+    locking on Windows prevents opening a read-only connection while a
+    read-write connection is active (even within the same process).
+    """
     db_path = _get_db_path()
     _require_db(db_path)
-    conn = connect(db_path, read_only=True)
+    conn = connect(db_path)
     try:
         yield conn
     finally:
@@ -186,12 +191,12 @@ def get_db_readonly() -> Generator[duckdb.DuckDBPyConnection, None, None]:
 
 
 def get_db_readonly_optional() -> Generator[duckdb.DuckDBPyConnection | None, None, None]:
-    """FastAPI dependency: yields a read-only DuckDB connection, or None if DB doesn't exist."""
+    """FastAPI dependency: yields a DuckDB connection, or None if DB doesn't exist."""
     db_path = _get_db_path()
     if not db_path.exists():
         yield None
         return
-    conn = connect(db_path, read_only=True)
+    conn = connect(db_path)
     try:
         yield conn
     finally:

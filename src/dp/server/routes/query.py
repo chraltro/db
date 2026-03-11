@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
@@ -13,6 +14,7 @@ from dp.server.deps import (
     _serialize,
     _validate_identifier,
 )
+from dp.engine.masking import apply_masking, list_policies, create_policy, delete_policy
 
 logger = logging.getLogger("dp.server")
 
@@ -39,7 +41,70 @@ _QUERY_TIMEOUT_SECONDS = 30
 @router.post("/api/query")
 def run_query(request: Request, req: QueryRequest, conn: DbConnReadOnly) -> dict:
     """Run an ad-hoc SQL query with a timeout."""
-    _require_permission(request, "read")
+    user = _require_permission(request, "read")
+    sql = req.sql
+
+    # --- Masking SQL command interception ---
+    sql_stripped = sql.strip()
+
+    # SHOW MASKING POLICIES
+    if re.match(r'^\s*SHOW\s+MASKING\s+POLIC', sql_stripped, re.IGNORECASE):
+        from dp.server.deps import _get_db_path
+        from dp.engine.database import connect
+        from dp.engine.masking import ensure_masking_table
+        conn_rw = connect(_get_db_path())
+        try:
+            ensure_masking_table(conn_rw)
+            policies = list_policies(conn_rw)
+            columns = ["id", "schema_name", "table_name", "column_name", "method", "method_config", "condition_column", "condition_value", "exempted_roles", "created_at"]
+            rows = []
+            for p in policies:
+                rows.append([p.get(c, "") for c in columns])
+            return {"columns": columns, "rows": rows, "row_count": len(rows), "truncated": False}
+        finally:
+            conn_rw.close()
+
+    # CREATE MASKING POLICY ON schema.table.column METHOD method [EXEMPT role1,role2]
+    create_match = re.match(
+        r'^\s*CREATE\s+MASKING\s+POLICY\s+ON\s+(\w+)\.(\w+)\.(\w+)\s+METHOD\s+(\w+)(?:\s+EXEMPT\s+([\w,\s]+))?\s*$',
+        sql_stripped, re.IGNORECASE
+    )
+    if create_match:
+        schema, table, column, method, exempt_str = create_match.groups()
+        method = method.lower()
+        if method not in ('hash', 'redact', 'null', 'partial'):
+            return {"columns": ["error"], "rows": [["Invalid method. Use: hash, redact, null, partial"]], "row_count": 1, "truncated": False}
+        exempted = [r.strip() for r in exempt_str.split(',')] if exempt_str else ['admin']
+        from dp.server.deps import _get_db_path
+        from dp.engine.database import connect
+        from dp.engine.masking import ensure_masking_table
+        conn_rw = connect(_get_db_path())
+        try:
+            ensure_masking_table(conn_rw)
+            policy_id = create_policy(conn_rw, schema_name=schema, table_name=table, column_name=column, method=method, exempted_roles=exempted)
+            return {"columns": ["result", "id"], "rows": [["Masking policy created", policy_id]], "row_count": 1, "truncated": False}
+        finally:
+            conn_rw.close()
+
+    # DROP MASKING POLICY <id>
+    drop_match = re.match(r'^\s*DROP\s+MASKING\s+POLICY\s+(\d+)\s*$', sql_stripped, re.IGNORECASE)
+    if drop_match:
+        policy_id = int(drop_match.group(1))
+        from dp.server.deps import _get_db_path
+        from dp.engine.database import connect
+        from dp.engine.masking import ensure_masking_table
+        conn_rw = connect(_get_db_path())
+        try:
+            ensure_masking_table(conn_rw)
+            deleted = delete_policy(conn_rw, policy_id)
+            if deleted:
+                return {"columns": ["result"], "rows": [["Masking policy deleted"]], "row_count": 1, "truncated": False}
+            else:
+                return {"columns": ["error"], "rows": [[f"Policy {policy_id} not found"]], "row_count": 1, "truncated": False}
+        finally:
+            conn_rw.close()
+    # --- End masking SQL command interception ---
+
     try:
         import threading
 
@@ -76,7 +141,11 @@ def run_query(request: Request, req: QueryRequest, conn: DbConnReadOnly) -> dict
             )
         if query_error:
             raise query_error[0]
-        return query_result["data"]
+        data = query_result["data"]
+        data["rows"] = apply_masking(
+            data["columns"], data["rows"], user["role"], conn,
+        )
+        return data
     except HTTPException:
         raise
     except Exception as e:
@@ -153,7 +222,7 @@ def sample_table(
     offset: int = 0,
 ) -> dict:
     """Get sample rows from a table with pagination."""
-    _require_permission(request, "read")
+    user = _require_permission(request, "read")
     _validate_identifier(schema, "schema")
     _validate_identifier(table, "table")
     limit = max(1, min(limit, 10_000))
@@ -162,12 +231,13 @@ def sample_table(
         quoted = f'"{schema}"."{table}"'
         result = conn.execute(f"SELECT * FROM {quoted} LIMIT {limit} OFFSET {offset}")
         columns = [desc[0] for desc in result.description]
-        rows = result.fetchall()
+        rows = [[_serialize(v) for v in row] for row in result.fetchall()]
+        rows = apply_masking(columns, rows, user["role"], conn, schema=schema, table=table)
         return {
             "schema": schema,
             "table": table,
             "columns": columns,
-            "rows": [[_serialize(v) for v in row] for row in rows],
+            "rows": rows,
             "limit": limit,
             "offset": offset,
         }
@@ -181,7 +251,7 @@ def profile_table(
     request: Request, schema: str, table: str, conn: DbConnReadOnly
 ) -> dict:
     """Get column-level statistics for a table."""
-    _require_permission(request, "read")
+    user = _require_permission(request, "read")
     _validate_identifier(schema, "schema")
     _validate_identifier(table, "table")
     try:
@@ -238,6 +308,23 @@ def profile_table(
             stats["sample_values"] = [s[0] for s in samples]
 
             profiles.append(stats)
+
+        # Mask sample_values in profile output
+        from dp.engine.masking import _load_policies, apply_mask
+
+        policies = _load_policies(conn)
+        for col_profile in profiles:
+            for p in policies:
+                if user["role"] in p["exempted_roles"]:
+                    continue
+                if (p["schema_name"].lower() == schema.lower()
+                        and p["table_name"].lower() == table.lower()
+                        and p["column_name"].lower() == col_profile["name"].lower()):
+                    col_profile["sample_values"] = [
+                        apply_mask(v, p["method"], p["method_config"])
+                        for v in col_profile["sample_values"]
+                    ]
+                    break
 
         return {
             "schema": schema,

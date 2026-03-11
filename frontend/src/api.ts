@@ -404,4 +404,40 @@ export const api = {
   // Lineage
   getLineage: (modelName: string) => request(`/lineage/${modelName}`),
   getAllLineage: () => request("/lineage"),
+
+  // Alerts
+  getAlertHistory: (limit: number = 50) => request(`/alerts?limit=${limit}`),
+  testAlert: (channel: string, config: { slack_webhook_url?: string; webhook_url?: string }) =>
+    request("/alerts/test", { method: "POST", body: JSON.stringify({ channel, ...config }) }),
+
+  // CDC
+  getCDCStatus: () => request("/cdc"),
+  resetCDCWatermark: (name: string) =>
+    request(`/cdc/${encodeURIComponent(name)}/reset`, { method: "POST" }),
+
+  // Masking
+  listMaskingPolicies: () => request("/masking/policies"),
+  createMaskingPolicy: (policy: unknown) =>
+    request("/masking/policies", { method: "POST", body: JSON.stringify(policy) }),
+  updateMaskingPolicy: (id: number, updates: unknown) =>
+    request(`/masking/policies/${id}`, { method: "PUT", body: JSON.stringify(updates) }),
+  deleteMaskingPolicy: (id: number) =>
+    request(`/masking/policies/${id}`, { method: "DELETE" }),
+
+  // Quality
+  getFreshness: (maxHours: number = 24) => request(`/freshness?max_hours=${maxHours}`),
+  getProfiles: () => request("/profiles"),
+  getAssertions: (limit: number = 100) => request(`/assertions?limit=${limit}`),
+  getContracts: () => request("/contracts"),
+  getContractHistory: () => request("/contracts/history"),
+
+  // Impact analysis
+  getImpactAnalysis: (model: string, column?: string) => {
+    const params = column ? `?column=${encodeURIComponent(column)}` : "";
+    return request(`/impact/${encodeURIComponent(model)}${params}`);
+  },
+
+  // Wiki
+  listWikiPages: () => request("/wiki"),
+  getWikiPage: (slug: string) => request(`/wiki/${encodeURIComponent(slug)}`),
 };

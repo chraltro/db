@@ -50,7 +50,7 @@ def _build_file_manifest(project_dir: Path) -> dict[str, str]:
             continue
         for f in sorted(dir_path.rglob("*")):
             if f.is_file() and f.suffix in (".sql", ".py", ".dpnb", ".yml", ".yaml"):
-                rel = str(f.relative_to(project_dir))
+                rel = f.relative_to(project_dir).as_posix()
                 manifest[rel] = _hash_file(f)
 
     for f in files_to_include:

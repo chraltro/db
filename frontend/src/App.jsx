@@ -15,6 +15,9 @@ import DataSourcesPanel from "./DataSourcesPanel";
 import OverviewPanel from "./OverviewPanel";
 import RunSummary from "./RunSummary";
 import SettingsPanel from "./SettingsPanel";
+import MaskingPanel from "./MaskingPanel";
+import QualityPanel from "./QualityPanel";
+import WikiPanel from "./WikiPanel";
 import LoginPage from "./LoginPage";
 import ResizeHandle from "./ResizeHandle";
 import useResizable from "./useResizable";
@@ -77,7 +80,7 @@ const GUIDE_STEPS = [
 
 // Primary tabs always visible; secondary tabs collapsed under "More"
 const PRIMARY_TABS = ["Overview", "Editor", "Query", "Tables", "Data Sources"];
-const SECONDARY_TABS = ["Notebooks", "DAG", "Diff", "Docs", "History", "Settings"];
+const SECONDARY_TABS = ["Notebooks", "DAG", "Diff", "Quality", "Masking", "Wiki", "History", "Settings"];
 
 function ActionDropdown({ label, onClick, options, disabled, primary }) {
   const [open, setOpen] = useState(false);
@@ -165,7 +168,7 @@ function groupBySchema(tables) {
 
 function SchemaTree({ tables, selectedTable, onSelectTable }) {
   const schemas = groupBySchema(tables);
-  const SCHEMA_ORDER = ["landing", "bronze", "silver", "gold"];
+  const SCHEMA_ORDER = ["seeds", "landing", "bronze", "silver", "gold"];
   const schemaNames = Object.keys(schemas).sort((a, b) => {
     const ai = SCHEMA_ORDER.indexOf(a);
     const bi = SCHEMA_ORDER.indexOf(b);
@@ -809,6 +812,9 @@ function AppContent() {
             {activeTab === "DAG" && <ErrorBoundary name="DAG"><DAGPanel onOpenFile={openFile} /></ErrorBoundary>}
             {activeTab === "Diff" && <ErrorBoundary name="Diff"><DiffPanel api={api} addOutput={addOutput} /></ErrorBoundary>}
             {activeTab === "Docs" && <ErrorBoundary name="Docs"><DocsPanel /></ErrorBoundary>}
+            {activeTab === "Quality" && <ErrorBoundary name="Quality"><QualityPanel /></ErrorBoundary>}
+            {activeTab === "Masking" && <ErrorBoundary name="Masking"><MaskingPanel /></ErrorBoundary>}
+            {activeTab === "Wiki" && <ErrorBoundary name="Wiki"><WikiPanel /></ErrorBoundary>}
             {activeTab === "History" && <ErrorBoundary name="History"><HistoryPanel onOpenFile={openFile} /></ErrorBoundary>}
             {activeTab === "Settings" && <ErrorBoundary name="Settings"><SettingsPanel onShowGuide={showGuide} /></ErrorBoundary>}
           </div>

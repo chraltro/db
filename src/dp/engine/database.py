@@ -74,6 +74,21 @@ def ensure_meta_table(conn: duckdb.DuckDBPyConnection) -> None:
             checked_at  TIMESTAMP DEFAULT current_timestamp
         )
     """)
+    # Masking policies
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS _dp_internal.masking_policies (
+            id               VARCHAR PRIMARY KEY DEFAULT gen_random_uuid()::VARCHAR,
+            schema_name      VARCHAR NOT NULL,
+            table_name       VARCHAR NOT NULL,
+            column_name      VARCHAR NOT NULL,
+            method           VARCHAR NOT NULL,
+            method_config    JSON,
+            condition_column VARCHAR,
+            condition_value  VARCHAR,
+            exempted_roles   JSON DEFAULT '["admin"]',
+            created_at       TIMESTAMP DEFAULT current_timestamp
+        )
+    """)
     # Alert/notification log
     conn.execute("""
         CREATE TABLE IF NOT EXISTS _dp_internal.alert_log (

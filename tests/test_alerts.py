@@ -81,6 +81,7 @@ class TestAlerts:
 
     def test_slack_webhook_format(self):
         """Test that Slack payload is correctly formatted (without actually sending)."""
+        from unittest.mock import patch
         from dp.engine.alerts import Alert, AlertConfig, _send_slack
 
         config = AlertConfig(slack_webhook_url="https://hooks.slack.com/test")
@@ -90,10 +91,14 @@ class TestAlerts:
             message="Pipeline completed",
             details={"duration": "5s"},
         )
-        # We just verify it doesn't crash before the network call
-        with pytest.raises(Exception):
-            # Will fail on the network call but not on payload construction
+        # Mock urlopen so we don't depend on network and can verify payload
+        with patch("dp.engine.alerts.urlopen") as mock_urlopen:
             _send_slack(alert, config)
+            mock_urlopen.assert_called_once()
+            call_args = mock_urlopen.call_args
+            req = call_args[0][0]
+            assert req.full_url == "https://hooks.slack.com/test"
+            assert req.get_header("Content-type") == "application/json"
 
     def test_unknown_channel(self, db):
         from dp.engine.alerts import Alert, AlertConfig, send_alert

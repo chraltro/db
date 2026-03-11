@@ -10,6 +10,8 @@ const SCHEMA_COLORS = {
   source: "#484f58",
   ingest: "#58a6ff",
   import: "#bc8cff",
+  seed: "#92400e",
+  exposure: "#7c3aed",
 };
 
 const NODE_W = 160;
@@ -126,7 +128,7 @@ function layoutDAG(nodes, edges) {
   // Waypoints are placed in the horizontal gap between layer columns so
   // the curve never crosses through a node box.
   const edgeRoutes = {};
-  const ROUTE_MARGIN = 10;
+  const ROUTE_MARGIN = 20;
   for (const e of edges) {
     const srcLayer = layer[e.source] || 0;
     const tgtLayer = layer[e.target] || 0;
@@ -142,10 +144,11 @@ function layoutDAG(nodes, edges) {
     const waypoints = [];
 
     for (let il = srcLayer + 1; il < tgtLayer; il++) {
-      // Place waypoint X in the gap *before* this layer's nodes
-      // (halfway between previous layer's right edge and this layer's left edge)
       const layerX = 60 + il * LAYER_GAP_X;
-      const wpX = layerX - (LAYER_GAP_X - NODE_W) / 2;
+      // Two waypoints per layer: one before and one after the node column.
+      // This keeps the spline in the gap zone and prevents it bulging into boxes.
+      const wpXBefore = layerX - (LAYER_GAP_X - NODE_W) / 2;
+      const wpXAfter = layerX + NODE_W + (LAYER_GAP_X - NODE_W) / 2;
 
       const t = (il - srcLayer) / span;
       const naturalY = y1 + (y2 - y1) * t;
@@ -162,7 +165,8 @@ function layoutDAG(nodes, edges) {
       }
 
       if (!blocked) {
-        waypoints.push({ x: wpX, y: naturalY });
+        waypoints.push({ x: wpXBefore, y: naturalY });
+        waypoints.push({ x: wpXAfter, y: naturalY });
         continue;
       }
 
@@ -192,7 +196,9 @@ function layoutDAG(nodes, edges) {
       const d = Math.abs(naturalY - belowY);
       if (d < bestDist) { bestDist = d; bestGapY = belowY; }
 
-      waypoints.push({ x: wpX, y: bestGapY ?? naturalY });
+      const safeY = bestGapY ?? naturalY;
+      waypoints.push({ x: wpXBefore, y: safeY });
+      waypoints.push({ x: wpXAfter, y: safeY });
     }
 
     if (waypoints.length > 0) {
@@ -212,11 +218,49 @@ export default function DAGPanel({ onOpenFile }) {
   const setHintTrigger = useHintTriggerFn();
 
   const [error, setError] = useState(null);
+  const [dagMode, setDagMode] = useState('basic'); // 'basic' | 'full'
+  const [selectedNode, setSelectedNode] = useState(null);
+  const [detailData, setDetailData] = useState(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [impactData, setImpactData] = useState(null);
 
   useEffect(() => {
-    api.getDAG().then(setDag).catch((e) => setError(e.message || "Failed to load DAG"));
+    setError(null);
+    if (dagMode === 'full') {
+      (api.getFullDAG ? api.getFullDAG() : Promise.reject(new Error('not available')))
+        .then(setDag)
+        .catch(() => {
+          // Fallback to basic DAG if full is not available
+          api.getDAG().then(setDag).catch((e) => setError(e.message || "Failed to load DAG"));
+        });
+    } else {
+      api.getDAG().then(setDag).catch((e) => setError(e.message || "Failed to load DAG"));
+    }
     setHintTrigger("dagOpened", true);
-  }, []);
+  }, [dagMode]);
+
+  const handleNodeClick = async (nodeName) => {
+    setSelectedNode(nodeName);
+    setDetailLoading(true);
+    setImpactData(null);
+    try {
+      const lineage = await api.getLineage(nodeName);
+      setDetailData(lineage);
+    } catch (e) {
+      setDetailData(null);
+    }
+    setDetailLoading(false);
+  };
+
+  const loadImpact = async () => {
+    if (!selectedNode) return;
+    try {
+      const impact = await api.getImpactAnalysis(selectedNode);
+      setImpactData(impact);
+    } catch (e) {
+      setImpactData({ error: e.message });
+    }
+  };
 
   // Memoize layout so it only recomputes when dag data changes
   const layout = useMemo(() => {
@@ -314,6 +358,7 @@ export default function DAGPanel({ onOpenFile }) {
 
       const color = SCHEMA_COLORS[n.schema] || getCV("--dp-accent");
       const isHovered = hovered === n.id;
+      const isSelected = selectedNode === n.id;
       const isTable = n.type === "table";
 
       // Dim non-connected nodes when hovering
@@ -328,8 +373,8 @@ export default function DAGPanel({ onOpenFile }) {
 
       // Node background
       ctx.fillStyle = isHovered ? getCV("--dp-bg") : getCV("--dp-bg-secondary");
-      ctx.strokeStyle = color;
-      ctx.lineWidth = isHovered ? 2.5 : (isTable ? 2 : 1.5);
+      ctx.strokeStyle = isSelected ? "#2563eb" : color;
+      ctx.lineWidth = isSelected ? 3 : (isHovered ? 2.5 : (isTable ? 2 : 1.5));
 
       // Rounded rect for all nodes, with subtle shadow on hover
       const r = 6;
@@ -354,7 +399,7 @@ export default function DAGPanel({ onOpenFile }) {
       ctx.fillText(n.label, pos.x + NODE_W / 2, pos.y + NODE_H / 2, NODE_W - 20);
 
       // Type badge
-      const badge = n.type === "ingest" ? "I" : n.type === "import" ? "↑" : n.type === "source" ? "S" : n.type === "table" ? "T" : "V";
+      const badge = n.type === "ingest" ? "I" : n.type === "import" ? "\u2191" : n.type === "source" ? "S" : n.type === "seed" ? "D" : n.type === "exposure" ? "E" : n.type === "table" ? "T" : "V";
       ctx.fillStyle = color;
       ctx.font = `bold 9px ${monoFamily}`;
       ctx.textAlign = "right";
@@ -362,7 +407,7 @@ export default function DAGPanel({ onOpenFile }) {
     }
 
     ctx.globalAlpha = 1;
-  }, [dag, layout, hovered]);
+  }, [dag, layout, hovered, selectedNode]);
 
   useEffect(() => {
     draw();
@@ -387,8 +432,8 @@ export default function DAGPanel({ onOpenFile }) {
     canvasRef.current.style.cursor = found ? "pointer" : "default";
   }
 
-  function handleClick(e) {
-    if (!layout || !canvasRef.current || !onOpenFile) return;
+  function handleCanvasClick(e) {
+    if (!layout || !canvasRef.current) return;
     const rect = canvasRef.current.getBoundingClientRect();
     const mx = (e.clientX - rect.left) * (canvasRef.current.width / rect.width / (window.devicePixelRatio || 1));
     const my = (e.clientY - rect.top) * (canvasRef.current.height / rect.height / (window.devicePixelRatio || 1));
@@ -397,8 +442,9 @@ export default function DAGPanel({ onOpenFile }) {
     for (const n of dag.nodes) {
       const p = positions[n.id];
       if (p && mx >= p.x && mx <= p.x + NODE_W && my >= p.y && my <= p.y + NODE_H) {
-        if (n.path) onOpenFile(n.path);
-        break;
+        if (n.path && onOpenFile) onOpenFile(n.path);
+        handleNodeClick(n.id);
+        return;
       }
     }
   }
@@ -448,22 +494,104 @@ export default function DAGPanel({ onOpenFile }) {
             <span style={{ ...styles.legendDot, background: SCHEMA_COLORS.gold }} />
             gold
           </span>
+          <span style={styles.legendItem}>
+            <span style={{ ...styles.legendDot, background: SCHEMA_COLORS.seed }} />
+            seed
+          </span>
+          <span style={styles.legendItem}>
+            <span style={{ ...styles.legendDot, background: SCHEMA_COLORS.exposure }} />
+            exposure
+          </span>
           <span style={styles.legendSep}>|</span>
-          <span style={styles.legendItem}>↑ = imported file</span>
+          <span style={styles.legendItem}>{"\u2191"} = imported file</span>
           <span style={styles.legendItem}>I = ingest</span>
           <span style={styles.legendItem}>S = source</span>
+          <span style={styles.legendItem}>D = seed</span>
+          <span style={styles.legendItem}>E = exposure</span>
           <span style={styles.legendItem}>V = view</span>
           <span style={styles.legendItem}>T = table</span>
         </div>
       </div>
-      <div style={styles.canvasWrap} data-dp-hint="dag-canvas">
-        <canvas
-          ref={canvasRef}
-          onMouseMove={handleMouseMove}
-          onMouseLeave={() => setHovered(null)}
-          onClick={handleClick}
-          style={styles.canvas}
-        />
+      <div style={{ display: 'flex', gap: 8, padding: '8px 16px', borderBottom: '1px solid #222', alignItems: 'center' }}>
+        <span style={{ fontSize: 12, color: '#888', marginRight: 4 }}>View:</span>
+        {['basic', 'full'].map(mode => (
+          <button key={mode} onClick={() => setDagMode(mode)} style={{
+            padding: '4px 12px', borderRadius: 4, fontSize: 12, cursor: 'pointer',
+            background: dagMode === mode ? '#2563eb' : '#2a2a2a',
+            color: dagMode === mode ? '#fff' : '#888',
+            border: dagMode === mode ? 'none' : '1px solid #444'
+          }}>{mode === 'basic' ? 'Basic' : 'Full'}</button>
+        ))}
+        {selectedNode && (
+          <span style={{ marginLeft: 'auto', fontSize: 13, color: '#e0e0e0' }}>
+            Selected: <strong>{selectedNode}</strong>
+            <button onClick={() => { setSelectedNode(null); setDetailData(null); setImpactData(null); }} style={{ marginLeft: 8, background: 'none', border: 'none', color: '#888', cursor: 'pointer' }}>{"\u00d7"}</button>
+          </span>
+        )}
+      </div>
+      <div style={styles.mainArea}>
+        <div style={styles.canvasWrap} data-dp-hint="dag-canvas">
+          <canvas
+            ref={canvasRef}
+            onMouseMove={handleMouseMove}
+            onMouseLeave={() => setHovered(null)}
+            onClick={handleCanvasClick}
+            style={styles.canvas}
+          />
+        </div>
+        {selectedNode && (
+          <div style={{
+            width: 300, borderLeft: '1px solid #222', background: '#111', overflow: 'auto',
+            padding: 16, fontSize: 13, color: '#e0e0e0', flexShrink: 0
+          }}>
+            <h3 style={{ fontSize: 15, fontWeight: 600, marginBottom: 12 }}>{selectedNode}</h3>
+
+            {detailLoading ? <p style={{ color: '#888' }}>Loading lineage...</p> : detailData ? (
+              <>
+                {detailData.schema && <p style={{ color: '#888', marginBottom: 4 }}>Schema: {detailData.schema}</p>}
+                {detailData.type && <p style={{ color: '#888', marginBottom: 8 }}>Type: {detailData.type}</p>}
+
+                {detailData.dependencies && detailData.dependencies.length > 0 && (
+                  <div style={{ marginBottom: 12 }}>
+                    <h4 style={{ fontSize: 12, color: '#888', textTransform: 'uppercase', marginBottom: 6 }}>Dependencies</h4>
+                    {detailData.dependencies.map((d, i) => (
+                      <div key={i} style={{ padding: '2px 0', cursor: 'pointer', color: '#60a5fa' }} onClick={() => handleNodeClick(d)}>{d}</div>
+                    ))}
+                  </div>
+                )}
+
+                {detailData.columns && detailData.columns.length > 0 && (
+                  <div style={{ marginBottom: 12 }}>
+                    <h4 style={{ fontSize: 12, color: '#888', textTransform: 'uppercase', marginBottom: 6 }}>Column Lineage</h4>
+                    {detailData.columns.map((col, i) => (
+                      <div key={i} style={{ padding: '4px 0', borderBottom: '1px solid #1a1a1a' }}>
+                        <span style={{ color: '#e0e0e0' }}>{col.name || col.column}</span>
+                        {col.source && <span style={{ color: '#888', fontSize: 11 }}> {"\u2190"} {col.source}</span>}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </>
+            ) : <p style={{ color: '#666' }}>No lineage data available</p>}
+
+            <button onClick={loadImpact} style={{
+              padding: '6px 14px', background: '#2a2a2a', color: '#e0e0e0', border: '1px solid #444',
+              borderRadius: 6, cursor: 'pointer', fontSize: 12, width: '100%', marginTop: 8
+            }}>Impact Analysis</button>
+
+            {impactData && (
+              <div style={{ marginTop: 12 }}>
+                <h4 style={{ fontSize: 12, color: '#888', textTransform: 'uppercase', marginBottom: 6 }}>Downstream Impact</h4>
+                {impactData.error ? <p style={{ color: '#f87171' }}>{impactData.error}</p> :
+                 impactData.downstream ? impactData.downstream.map((d, i) => (
+                  <div key={i} style={{ padding: '2px 0', color: '#facc15' }}>{d.model || d.name || d}</div>
+                 )) : Array.isArray(impactData) ? impactData.map((d, i) => (
+                  <div key={i} style={{ padding: '2px 0', color: '#facc15' }}>{typeof d === 'string' ? d : d.model || d.name}</div>
+                 )) : <p style={{ color: '#666' }}>No downstream models affected</p>}
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -473,10 +601,11 @@ const styles = {
   container: { display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" },
   header: { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 12px", borderBottom: "1px solid var(--dp-border)", fontSize: "13px" },
   headerTitle: { fontWeight: 600 },
-  legend: { display: "flex", gap: "12px", fontSize: "11px", color: "var(--dp-text-secondary)", alignItems: "center" },
+  legend: { display: "flex", gap: "12px", fontSize: "11px", color: "var(--dp-text-secondary)", alignItems: "center", flexWrap: "wrap" },
   legendItem: { display: "flex", alignItems: "center", gap: "4px" },
   legendDot: { width: "8px", height: "8px", borderRadius: "50%", display: "inline-block" },
   legendSep: { color: "var(--dp-border-light)" },
+  mainArea: { flex: 1, display: "flex", overflow: "hidden" },
   canvasWrap: { flex: 1, overflow: "auto", background: "var(--dp-bg-tertiary)" },
   canvas: { display: "block" },
   loading: { padding: "24px", color: "var(--dp-text-secondary)", textAlign: "center" },
