@@ -641,7 +641,6 @@ export default function NotebookPanel({ openPath }) {
     return (
       <div style={s.container}>
         <div style={s.listHeader}>
-          <span style={s.title}>Notebooks</span>
           <div style={s.newRow}>
             <input
               value={newName}
@@ -707,11 +706,11 @@ export default function NotebookPanel({ openPath }) {
 
 const s = {
   container: { display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" },
-  listHeader: { padding: "12px 16px", borderBottom: "1px solid var(--havn-border)" },
-  title: { fontSize: "16px", fontWeight: 600 },
-  newRow: { display: "flex", gap: "8px", marginTop: "8px" },
+  listHeader: { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 12px", borderBottom: "1px solid var(--havn-border)" },
+  title: { fontSize: "13px", fontWeight: 600 },
+  newRow: { display: "flex", gap: "8px", flex: 1 },
   input: { flex: 1, padding: "6px 10px", background: "var(--havn-bg-tertiary)", border: "1px solid var(--havn-border-light)", borderRadius: "var(--havn-radius-lg)", color: "var(--havn-text)", fontSize: "13px" },
-  btn: { padding: "5px 12px", background: "var(--havn-btn-bg)", border: "1px solid var(--havn-btn-border)", borderRadius: "var(--havn-radius-lg)", color: "var(--havn-text)", cursor: "pointer", fontSize: "12px", fontWeight: 500 },
+  btn: { padding: "4px 12px", background: "var(--havn-btn-bg)", border: "1px solid var(--havn-btn-border)", borderRadius: "var(--havn-radius-lg)", color: "var(--havn-text)", cursor: "pointer", fontSize: "11px", fontWeight: 500 },
   list: { flex: 1, overflow: "auto", padding: "8px" },
   empty: { color: "var(--havn-text-dim)", textAlign: "center", padding: "24px" },
   nbItem: { padding: "10px 12px", borderRadius: "var(--havn-radius-lg)", cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "4px", border: "1px solid var(--havn-border)" },
@@ -719,10 +718,10 @@ const s = {
   nbMeta: { color: "var(--havn-text-secondary)", fontSize: "12px" },
   nbPath: { fontFamily: "var(--havn-font-mono)", fontSize: "11px", color: "var(--havn-text-dim)" },
   nbHeader: { display: "flex", alignItems: "center", gap: "12px", padding: "8px 12px", borderBottom: "1px solid var(--havn-border)" },
-  backBtn: { padding: "4px 8px", background: "none", border: "1px solid var(--havn-border-light)", borderRadius: "var(--havn-radius-lg)", color: "var(--havn-text-secondary)", cursor: "pointer", fontSize: "12px" },
+  backBtn: { padding: "4px 12px", background: "var(--havn-btn-bg)", border: "1px solid var(--havn-btn-border)", borderRadius: "var(--havn-radius-lg)", color: "var(--havn-text)", cursor: "pointer", fontSize: "11px", fontWeight: 500 },
   nbTitle: { fontWeight: 600, fontSize: "14px", flex: 1 },
   nbActions: { display: "flex", gap: "6px" },
-  runAllBtn: { padding: "5px 12px", background: "var(--havn-green)", border: "1px solid var(--havn-green-border)", borderRadius: "var(--havn-radius-lg)", color: "#fff", cursor: "pointer", fontSize: "12px", fontWeight: 500 },
+  runAllBtn: { padding: "4px 12px", background: "var(--havn-green)", border: "1px solid var(--havn-green-border)", borderRadius: "var(--havn-radius-lg)", color: "#fff", cursor: "pointer", fontSize: "11px", fontWeight: 500 },
   cells: { flex: 1, overflow: "auto", padding: "12px 16px", maxWidth: "900px", margin: "0 auto", width: "100%", boxSizing: "border-box" },
 };
 

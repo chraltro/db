@@ -43,26 +43,27 @@ export default function DiffPanel({ api, addOutput }) {
   };
 
   return (
-    <div style={{ padding: "16px" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16 }}>
-        <h2 style={{ margin: 0, fontSize: 18 }}>Data Diff</h2>
+    <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 12px", borderBottom: "1px solid var(--havn-border)" }}>
         <button
           onClick={runDiff}
           disabled={loading}
           style={{
-            padding: "6px 16px",
-            borderRadius: 4,
-            border: "1px solid var(--border)",
-            background: "var(--accent)",
+            padding: "4px 12px",
+            borderRadius: "var(--havn-radius-lg)",
+            border: "1px solid var(--havn-green-border)",
+            background: "var(--havn-green)",
             color: "#fff",
             cursor: loading ? "wait" : "pointer",
+            fontSize: "11px",
+            fontWeight: 500,
           }}
         >
           {loading ? "Running..." : "Run Diff"}
         </button>
       </div>
 
-      <p style={{ color: "var(--text-secondary)", fontSize: 13, marginBottom: 16 }}>
+      <p style={{ color: "var(--havn-text-secondary)", fontSize: 13, marginBottom: 16, padding: "0 12px" }}>
         Compare model SQL output against currently materialized tables. Shows what would change if you run transforms now.
       </p>
 
@@ -70,7 +71,7 @@ export default function DiffPanel({ api, addOutput }) {
         <div data-havn-hint="diff-results">
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
             <thead>
-              <tr style={{ borderBottom: "2px solid var(--border)", textAlign: "left" }}>
+              <tr style={{ borderBottom: "2px solid var(--havn-border)", textAlign: "left" }}>
                 <th style={thStyle}>Model</th>
                 <th style={{ ...thStyle, textAlign: "right" }}>Before</th>
                 <th style={{ ...thStyle, textAlign: "right" }}>After</th>
@@ -88,7 +89,7 @@ export default function DiffPanel({ api, addOutput }) {
                       setExpandedModel(expandedModel === r.model ? null : r.model)
                     }
                     style={{
-                      borderBottom: "1px solid var(--border)",
+                      borderBottom: "1px solid var(--havn-border)",
                       cursor: "pointer",
                       background:
                         expandedModel === r.model
@@ -109,7 +110,7 @@ export default function DiffPanel({ api, addOutput }) {
                       style={{
                         ...tdStyle,
                         textAlign: "right",
-                        color: r.added ? "#22c55e" : undefined,
+                        color: r.added ? "var(--havn-green)" : undefined,
                       }}
                     >
                       {r.error ? "" : r.added ? `+${r.added}` : "0"}
@@ -118,7 +119,7 @@ export default function DiffPanel({ api, addOutput }) {
                       style={{
                         ...tdStyle,
                         textAlign: "right",
-                        color: r.removed ? "#ef4444" : undefined,
+                        color: r.removed ? "var(--havn-red)" : undefined,
                       }}
                     >
                       {r.error ? "" : r.removed || "0"}
@@ -127,20 +128,20 @@ export default function DiffPanel({ api, addOutput }) {
                       style={{
                         ...tdStyle,
                         textAlign: "right",
-                        color: r.modified ? "#eab308" : undefined,
+                        color: r.modified ? "var(--havn-yellow)" : undefined,
                       }}
                     >
                       {r.error ? "" : r.modified || "0"}
                     </td>
                     <td style={tdStyle}>
                       {r.error ? (
-                        <span style={{ color: "#ef4444" }}>ERROR</span>
+                        <span style={{ color: "var(--havn-red)" }}>ERROR</span>
                       ) : (
                         <span
                           style={{
                             color:
                               r.schema_changes && r.schema_changes.length
-                                ? "#3b82f6"
+                                ? "var(--havn-accent)"
                                 : undefined,
                           }}
                         >
@@ -169,7 +170,7 @@ export default function DiffPanel({ api, addOutput }) {
 function ExpandedDiff({ result }) {
   if (result.error) {
     return (
-      <div style={{ color: "#ef4444", padding: 8 }}>
+      <div style={{ color: "var(--havn-red)", padding: 8 }}>
         Error: {result.error}
       </div>
     );
@@ -183,17 +184,17 @@ function ExpandedDiff({ result }) {
           {result.schema_changes.map((sc, i) => (
             <div key={i} style={{ fontSize: 12, padding: "2px 0" }}>
               {sc.change_type === "added" && (
-                <span style={{ color: "#22c55e" }}>
+                <span style={{ color: "var(--havn-green)" }}>
                   + {sc.column} ({sc.new_type})
                 </span>
               )}
               {sc.change_type === "removed" && (
-                <span style={{ color: "#ef4444" }}>
+                <span style={{ color: "var(--havn-red)" }}>
                   - {sc.column} ({sc.old_type})
                 </span>
               )}
               {sc.change_type === "type_changed" && (
-                <span style={{ color: "#eab308" }}>
+                <span style={{ color: "var(--havn-yellow)" }}>
                   ~ {sc.column}: {sc.old_type} → {sc.new_type}
                 </span>
               )}
@@ -204,7 +205,7 @@ function ExpandedDiff({ result }) {
 
       {result.sample_added && result.sample_added.length > 0 && (
         <div>
-          <h4 style={{ margin: "0 0 8px 0", fontSize: 13, color: "#22c55e" }}>
+          <h4 style={{ margin: "0 0 8px 0", fontSize: 13, color: "var(--havn-green)" }}>
             Added Rows ({result.added})
           </h4>
           <SortableTable
@@ -216,7 +217,7 @@ function ExpandedDiff({ result }) {
 
       {result.sample_removed && result.sample_removed.length > 0 && (
         <div>
-          <h4 style={{ margin: "0 0 8px 0", fontSize: 13, color: "#ef4444" }}>
+          <h4 style={{ margin: "0 0 8px 0", fontSize: 13, color: "var(--havn-red)" }}>
             Removed Rows ({result.removed})
           </h4>
           <SortableTable
@@ -228,7 +229,7 @@ function ExpandedDiff({ result }) {
 
       {result.sample_modified && result.sample_modified.length > 0 && (
         <div>
-          <h4 style={{ margin: "0 0 8px 0", fontSize: 13, color: "#eab308" }}>
+          <h4 style={{ margin: "0 0 8px 0", fontSize: 13, color: "var(--havn-yellow)" }}>
             Modified Rows ({result.modified})
           </h4>
           <SortableTable
@@ -242,7 +243,7 @@ function ExpandedDiff({ result }) {
         !result.sample_removed?.length &&
         !result.sample_modified?.length &&
         !result.schema_changes?.length && (
-          <div style={{ color: "var(--text-secondary)", fontSize: 13 }}>
+          <div style={{ color: "var(--havn-text-secondary)", fontSize: 13 }}>
             No changes detected for this model.
           </div>
         )}

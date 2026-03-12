@@ -238,6 +238,7 @@ def get_overview(request: Request, conn: DbConnReadOnly) -> dict:
     }
 
     config = _get_config()
+    result["project_name"] = config.name
     result["streams"] = {
         name: {"description": s.description, "schedule": s.schedule}
         for name, s in config.streams.items()

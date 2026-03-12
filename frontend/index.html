@@ -8,13 +8,13 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Crimson+Pro:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Sora:wght@400;500;600;700&family=Fira+Code:wght@400;500;600&family=Manrope:wght@400;500;600;700&family=Outfit:wght@400;500;600;700&family=DM+Sans:wght@400;500;600;700&family=Space+Mono:wght@400;700&family=Source+Serif+4:wght@400;500;600;700&display=swap" rel="stylesheet" />
-    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%230B0E14'/><path d='M6 22 L10 16 L14 20 L18 14 L22 18 L26 12' stroke='%233ECFB4' stroke-width='2.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/><path d='M6 22 Q16 26 26 22' stroke='%237C8CF5' stroke-width='2' fill='none' stroke-linecap='round'/></svg>" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <style>
       * { margin: 0; padding: 0; box-sizing: border-box; }
       body {
-        font-family: var(--havn-font, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif);
-        background: var(--havn-bg, #0c0e14);
-        color: var(--havn-text, #c8cdd8);
+        font-family: var(--havn-font, 'Outfit', -apple-system, BlinkMacSystemFont, sans-serif);
+        background: var(--havn-bg, #0B0E14);
+        color: var(--havn-text, #D0D6E0);
         -webkit-font-smoothing: antialiased;
         -moz-osx-font-smoothing: grayscale;
       }
@@ -30,10 +30,10 @@
 
       /* Scrollbar theming */
       ::-webkit-scrollbar { width: 7px; height: 7px; }
-      ::-webkit-scrollbar-track { background: var(--havn-bg, #0c0e14); }
-      ::-webkit-scrollbar-thumb { background: var(--havn-border-light, #252a3a); border-radius: 4px; }
-      ::-webkit-scrollbar-thumb:hover { background: var(--havn-text-dim, #3a4058); }
-      ::selection { background: var(--havn-accent, #6ee7b7); color: var(--havn-bg, #0c0e14); }
+      ::-webkit-scrollbar-track { background: var(--havn-bg, #0B0E14); }
+      ::-webkit-scrollbar-thumb { background: var(--havn-border-light, #263044); border-radius: 4px; }
+      ::-webkit-scrollbar-thumb:hover { background: var(--havn-text-dim, #3A4560); }
+      ::selection { background: var(--havn-accent, #3ECFB4); color: var(--havn-bg, #0B0E14); }
 
       /* ── Button interactive states ── */
       button {
@@ -60,8 +60,8 @@
       }
       input:focus, textarea:focus, select:focus {
         outline: none;
-        border-color: var(--havn-accent, #6ee7b7) !important;
-        box-shadow: 0 0 0 2px color-mix(in srgb, var(--havn-accent, #6ee7b7) 18%, transparent);
+        border-color: var(--havn-accent, #3ECFB4) !important;
+        box-shadow: 0 0 0 2px color-mix(in srgb, var(--havn-accent, #3ECFB4) 18%, transparent);
       }
 
       /* ── Table row hover ── */
@@ -69,7 +69,7 @@
         transition: background-color 0.08s ease;
       }
       table tbody tr:hover {
-        background-color: color-mix(in srgb, var(--havn-accent, #6ee7b7) 5%, transparent);
+        background-color: color-mix(in srgb, var(--havn-accent, #3ECFB4) 5%, transparent);
       }
 
       /* ── Tab hover (data-havn-tab) ── */
@@ -77,8 +77,8 @@
         transition: color 0.1s ease, border-color 0.1s ease, background-color 0.1s ease !important;
       }
       [data-havn-tab]:hover:not([data-havn-active="true"]) {
-        color: var(--havn-text, #c8cdd8) !important;
-        background-color: color-mix(in srgb, var(--havn-text, #c8cdd8) 6%, transparent);
+        color: var(--havn-text, #D0D6E0) !important;
+        background-color: color-mix(in srgb, var(--havn-text, #D0D6E0) 6%, transparent);
       }
 
       /* ── File tree item hover ── */
@@ -87,7 +87,7 @@
         border-radius: 3px;
       }
       [data-havn-file]:hover {
-        background-color: color-mix(in srgb, var(--havn-accent, #6ee7b7) 8%, transparent) !important;
+        background-color: color-mix(in srgb, var(--havn-accent, #3ECFB4) 8%, transparent) !important;
       }
 
       /* ── Notebook item hover ── */
@@ -95,8 +95,8 @@
         transition: background-color 0.1s ease, border-color 0.1s ease;
       }
       [data-havn-notebook]:hover {
-        background-color: var(--havn-bg-secondary, #11131a) !important;
-        border-color: var(--havn-accent, #6ee7b7) !important;
+        background-color: var(--havn-bg-secondary, #121620) !important;
+        border-color: var(--havn-accent, #3ECFB4) !important;
       }
 
       /* ── Theme card hover ── */
@@ -110,7 +110,7 @@
 
       /* ── Delete / danger button hover ── */
       [data-havn-danger]:hover:not(:disabled) {
-        background-color: color-mix(in srgb, var(--havn-red, #fb7185) 15%, transparent) !important;
+        background-color: color-mix(in srgb, var(--havn-red, #F87171) 15%, transparent) !important;
         filter: none;
       }
 
@@ -119,7 +119,7 @@
         transition: background-color 0.08s ease;
       }
       [data-havn-table-item]:hover {
-        background-color: color-mix(in srgb, var(--havn-accent, #6ee7b7) 8%, transparent) !important;
+        background-color: color-mix(in srgb, var(--havn-accent, #3ECFB4) 8%, transparent) !important;
       }
 
       /* ── Resize handle ── */
@@ -127,7 +127,7 @@
         transition: background-color 0.12s ease;
       }
       [data-havn-resize-handle]:hover {
-        background-color: color-mix(in srgb, var(--havn-accent, #6ee7b7) 10%, transparent);
+        background-color: color-mix(in srgb, var(--havn-accent, #3ECFB4) 10%, transparent);
       }
     </style>
   </head>

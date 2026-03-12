@@ -85,7 +85,7 @@ export default function MaskingPanel() {
   return (
     <div style={s.container}>
       <div style={s.header}>
-        <span style={s.title}>Data Masking Policies</span>
+        <span />
         {editing === null && (
           <button style={s.btnPrimary} onClick={() => { setEditing('new'); setForm({ ...emptyPolicy }); }}>
             + Add Policy
@@ -228,13 +228,13 @@ export default function MaskingPanel() {
 const s = {
   container: { display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' },
   header: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', borderBottom: '1px solid var(--havn-border)' },
-  title: { fontWeight: 600, fontSize: 14 },
+  title: { fontWeight: 600, fontSize: 13 },
   content: { flex: 1, overflow: 'auto', padding: '16px 24px', maxWidth: 900 },
   table: { width: '100%', borderCollapse: 'collapse', marginBottom: 12, fontSize: 12 },
   th: { textAlign: 'left', padding: '6px 10px', borderBottom: '2px solid var(--havn-border-light)', color: 'var(--havn-text-secondary)', fontWeight: 600, fontSize: 11, textTransform: 'uppercase' },
   td: { padding: '6px 10px', borderBottom: '1px solid var(--havn-border)' },
-  btn: { padding: '4px 10px', background: 'var(--havn-btn-bg)', border: '1px solid var(--havn-btn-border)', borderRadius: 'var(--havn-radius)', color: 'var(--havn-text)', cursor: 'pointer', fontSize: 12 },
-  btnPrimary: { padding: '6px 14px', background: 'var(--havn-green)', border: '1px solid var(--havn-green-border)', borderRadius: 'var(--havn-radius-lg)', color: '#fff', cursor: 'pointer', fontSize: 12, fontWeight: 500, whiteSpace: 'nowrap' },
+  btn: { padding: '4px 12px', background: 'var(--havn-btn-bg)', border: '1px solid var(--havn-btn-border)', borderRadius: 'var(--havn-radius-lg)', color: 'var(--havn-text)', cursor: 'pointer', fontSize: 11, fontWeight: 500 },
+  btnPrimary: { padding: '4px 12px', background: 'var(--havn-green)', border: '1px solid var(--havn-green-border)', borderRadius: 'var(--havn-radius-lg)', color: '#fff', cursor: 'pointer', fontSize: 11, fontWeight: 500, whiteSpace: 'nowrap' },
   btnDanger: { padding: '4px 10px', background: 'var(--havn-red-bg)', color: 'var(--havn-red)', border: '1px solid var(--havn-red-border)', borderRadius: 'var(--havn-radius)', cursor: 'pointer', fontSize: 12 },
   input: { padding: '6px 10px', background: 'var(--havn-bg-tertiary)', color: 'var(--havn-text)', border: '1px solid var(--havn-border-light)', borderRadius: 'var(--havn-radius-lg)', fontSize: 13, width: '100%', boxSizing: 'border-box' },
   select: { padding: '6px 10px', background: 'var(--havn-bg-tertiary)', color: 'var(--havn-text)', border: '1px solid var(--havn-border-light)', borderRadius: 'var(--havn-radius)', fontSize: 12 },

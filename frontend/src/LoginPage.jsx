@@ -30,7 +30,10 @@ export default function LoginPage({ onLogin, needsSetup }) {
   return (
     <div style={st.backdrop}>
       <form onSubmit={handleSubmit} style={st.card}>
-        <div style={st.logo}>havn</div>
+        <div style={st.logo}>
+          <img src="/logo.svg" alt="havn" width="48" height="48" style={{ marginBottom: "8px" }} />
+          <div>havn</div>
+        </div>
         <div style={st.subtitle}>
           {needsSetup ? "Create your admin account" : "Sign in to your data platform"}
         </div>
@@ -79,7 +82,7 @@ export default function LoginPage({ onLogin, needsSetup }) {
 const st = {
   backdrop: { display: "flex", alignItems: "center", justifyContent: "center", height: "100vh", background: "var(--havn-bg)", fontFamily: "var(--havn-font)" },
   card: { width: "360px", padding: "36px", background: "var(--havn-bg-secondary)", border: "1px solid var(--havn-border)", borderRadius: "var(--havn-radius-lg)", display: "flex", flexDirection: "column", gap: "16px", boxShadow: "0 4px 24px rgba(0,0,0,0.15)" },
-  logo: { fontSize: "36px", fontWeight: "bold", fontFamily: "var(--havn-font-mono)", color: "var(--havn-accent)", textAlign: "center", letterSpacing: "-1px" },
+  logo: { display: "flex", flexDirection: "column", alignItems: "center", fontSize: "36px", fontWeight: 800, fontFamily: "var(--havn-font)", color: "var(--havn-accent)", textAlign: "center", letterSpacing: "-2px" },
   subtitle: { fontSize: "13px", color: "var(--havn-text-secondary)", textAlign: "center", marginBottom: "4px" },
   error: { padding: "8px 12px", background: "color-mix(in srgb, var(--havn-red) 12%, transparent)", border: "1px solid color-mix(in srgb, var(--havn-red) 30%, transparent)", borderRadius: "var(--havn-radius-lg)", color: "var(--havn-red)", fontSize: "12px" },
   fieldGroup: { display: "flex", flexDirection: "column", gap: "4px" },

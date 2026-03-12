@@ -1,10 +1,11 @@
 import React, { useState } from "react";
 
-function FileNode({ node, depth, onSelect, activeFile, onNewFile, onDeleteFile }) {
+function FileNode({ node, depth, onSelect, activeFile, onNewFile, onDeleteFile, onMoveFile }) {
   const [expanded, setExpanded] = useState(depth < 2);
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState("");
   const [hovered, setHovered] = useState(false);
+  const [dragOver, setDragOver] = useState(false);
   const isActive = activeFile === node.path;
 
   if (node.type === "dir") {
@@ -12,10 +13,27 @@ function FileNode({ node, depth, onSelect, activeFile, onNewFile, onDeleteFile }
       <div>
         <div
           data-havn-file=""
-          style={{ ...styles.item, paddingLeft: 8 + depth * 16 }}
+          style={{
+            ...styles.item,
+            paddingLeft: 8 + depth * 16,
+            background: dragOver ? "color-mix(in srgb, var(--havn-accent) 12%, transparent)" : "transparent",
+          }}
           onClick={() => setExpanded(!expanded)}
           onMouseEnter={() => setHovered(true)}
           onMouseLeave={() => setHovered(false)}
+          onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); setDragOver(true); }}
+          onDragLeave={(e) => { e.stopPropagation(); setDragOver(false); }}
+          onDrop={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            setDragOver(false);
+            const srcPath = e.dataTransfer.getData("text/plain");
+            if (srcPath && onMoveFile) {
+              const fileName = srcPath.split("/").pop();
+              const dest = `${node.path}/${fileName}`;
+              if (dest !== srcPath) onMoveFile(srcPath, dest);
+            }
+          }}
         >
           <span style={{ ...styles.icon, transform: expanded ? "rotate(0deg)" : "rotate(-90deg)" }}>
             {"\u25BE"}
@@ -64,6 +82,7 @@ function FileNode({ node, depth, onSelect, activeFile, onNewFile, onDeleteFile }
               activeFile={activeFile}
               onNewFile={onNewFile}
               onDeleteFile={onDeleteFile}
+              onMoveFile={onMoveFile}
             />
           ))}
       </div>
@@ -76,6 +95,11 @@ function FileNode({ node, depth, onSelect, activeFile, onNewFile, onDeleteFile }
   return (
     <div
       data-havn-file=""
+      draggable
+      onDragStart={(e) => {
+        e.dataTransfer.setData("text/plain", node.path);
+        e.dataTransfer.effectAllowed = "move";
+      }}
       style={{
         ...styles.item,
         paddingLeft: 8 + depth * 16,
@@ -99,14 +123,14 @@ function FileNode({ node, depth, onSelect, activeFile, onNewFile, onDeleteFile }
   );
 }
 
-export default function FileTree({ files, onSelect, activeFile, onNewFile, onDeleteFile }) {
+export default function FileTree({ files, onSelect, activeFile, onNewFile, onDeleteFile, onMoveFile }) {
   return (
     <div>
       {files.length === 0 && (
         <div style={styles.empty}>No files found</div>
       )}
       {files.map((f) => (
-        <FileNode key={f.path} node={f} depth={0} onSelect={onSelect} activeFile={activeFile} onNewFile={onNewFile} onDeleteFile={onDeleteFile} />
+        <FileNode key={f.path} node={f} depth={0} onSelect={onSelect} activeFile={activeFile} onNewFile={onNewFile} onDeleteFile={onDeleteFile} onMoveFile={onMoveFile} />
       ))}
     </div>
   );
@@ -115,12 +139,12 @@ export default function FileTree({ files, onSelect, activeFile, onNewFile, onDel
 const styles = {
   item: { display: "flex", alignItems: "center", gap: "6px", padding: "4px 8px", cursor: "pointer", fontSize: "13px", whiteSpace: "nowrap", margin: "0 4px", borderRadius: "3px" },
   icon: { fontSize: "10px", color: "var(--havn-text-secondary)", width: "10px", display: "inline-block", transition: "transform 0.12s ease" },
-  dirName: { color: "var(--havn-text)", fontWeight: 500 },
+  dirName: { color: "var(--havn-text)", fontWeight: 500, fontFamily: "var(--havn-font-mono)" },
   addBtn: { marginLeft: "auto", width: "18px", height: "18px", background: "none", border: "none", color: "var(--havn-text-secondary)", cursor: "pointer", fontSize: "14px", lineHeight: "18px", textAlign: "center", padding: 0, flexShrink: 0 },
   newFileRow: { display: "flex", padding: "2px 8px 4px", margin: "0 4px" },
   newFileInput: { flex: 1, padding: "3px 6px", background: "var(--havn-bg)", border: "1px solid var(--havn-border-light)", borderRadius: "var(--havn-radius)", color: "var(--havn-text)", fontSize: "11px", fontFamily: "var(--havn-font-mono)", outline: "none" },
-  fileName: { color: "var(--havn-text)" },
-  activeFileName: { color: "var(--havn-accent)", fontWeight: 500 },
+  fileName: { color: "var(--havn-text)", fontFamily: "var(--havn-font-mono)", fontSize: "12px" },
+  activeFileName: { color: "var(--havn-accent)", fontWeight: 500, fontFamily: "var(--havn-font-mono)", fontSize: "12px" },
   dot: { width: "6px", height: "6px", borderRadius: "50%", flexShrink: 0 },
   deleteBtn: { marginLeft: "auto", width: "18px", height: "18px", background: "none", border: "none", color: "var(--havn-text-dim)", cursor: "pointer", fontSize: "14px", lineHeight: "18px", textAlign: "center", padding: 0, flexShrink: 0 },
   empty: { padding: "12px", color: "var(--havn-text-dim)", fontSize: "12px", textAlign: "center" },

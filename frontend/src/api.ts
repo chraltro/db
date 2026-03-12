@@ -204,6 +204,8 @@ export const api = {
     request(`/files/${path}`, { method: "PUT", body: JSON.stringify({ content }) }),
   deleteFile: (path: string, dropObject: boolean = false) =>
     request(`/files/${path}${dropObject ? "?drop_object=true" : ""}`, { method: "DELETE" }),
+  moveFile: (source: string, destination: string) =>
+    request(`/files/${source}/move`, { method: "POST", body: JSON.stringify({ destination }) }),
 
   // Models
   listModels: () => request("/models"),

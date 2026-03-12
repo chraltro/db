@@ -107,7 +107,13 @@ rows = [
 
 df = pd.DataFrame(rows)
 db.execute("CREATE SCHEMA IF NOT EXISTS landing")
-db.execute("CREATE OR REPLACE TABLE landing.earthquakes AS SELECT * FROM df")
+db.execute(
+    "CREATE OR REPLACE TABLE landing.earthquakes AS "
+    "SELECT * REPLACE ("
+    "  epoch_ms(time::BIGINT) AS time,"
+    "  epoch_ms(updated::BIGINT) AS updated"
+    ") FROM df"
+)
 print(f"Loaded {len(rows)} earthquakes into landing.earthquakes")\
 """
 
@@ -178,8 +184,8 @@ SELECT
     sig AS significance,
     type AS event_type,
     status,
-    epoch_ms(time::BIGINT) AS event_time,
-    epoch_ms(updated::BIGINT) AS updated_at,
+    time AS event_time,
+    updated AS updated_at,
     coalesce(felt, 0) AS felt_reports,
     tsunami = 1 AS tsunami_alert
 FROM landing.earthquakes

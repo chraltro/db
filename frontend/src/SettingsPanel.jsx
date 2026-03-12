@@ -1,25 +1,25 @@
 import React, { useState, useEffect } from "react";
 import { api } from "./api";
 import { useTheme } from "./ThemeProvider";
-import { THEMES, getThemeIds, getTheme } from "./themes";
+import { COLOR_THEMES, FONT_THEMES, getColorThemeIds, getFontThemeIds } from "./themes";
 import { useHintSettings } from "./HintSystem";
 
 function ThemeSection() {
-  const { themeId, setThemeId } = useTheme();
+  const { colorThemeId, fontThemeId, setColorThemeId, setFontThemeId } = useTheme();
 
   return (
     <div style={sec.section}>
-      <h3 style={sec.heading}>Theme</h3>
-      <p style={sec.desc}>Choose a visual theme. Your preference is saved locally.</p>
+      <h3 style={sec.heading}>Colors</h3>
+      <p style={sec.desc}>Choose a color palette. Combine with any font below.</p>
       <div style={sec.themeGrid}>
-        {getThemeIds().map((id) => {
-          const theme = getTheme(id);
-          const active = themeId === id;
+        {getColorThemeIds().map((id) => {
+          const theme = COLOR_THEMES[id];
+          const active = colorThemeId === id;
           return (
             <button
               key={id}
               data-havn-theme-card=""
-              onClick={() => setThemeId(id)}
+              onClick={() => setColorThemeId(id)}
               style={{
                 ...sec.themeCard,
                 border: active ? "2px solid var(--havn-accent)" : "1px solid var(--havn-border)",
@@ -34,6 +34,36 @@ function ThemeSection() {
               <div style={{ color: theme.vars["--havn-text"], fontSize: "12px", fontWeight: 600, marginBottom: "2px" }}>{theme.name}</div>
               <div style={{ color: theme.vars["--havn-text-secondary"], fontSize: "10px", lineHeight: "1.3" }}>{theme.description}</div>
               {active && <div style={{ marginTop: "6px", fontSize: "9px", color: theme.vars["--havn-accent"], fontWeight: 700, letterSpacing: "0.5px", textTransform: "uppercase" }}>Active</div>}
+            </button>
+          );
+        })}
+      </div>
+
+      <h3 style={{ ...sec.heading, marginTop: "20px" }}>Fonts</h3>
+      <p style={sec.desc}>Choose a font pairing. Works with any color theme above.</p>
+      <div style={sec.fontGrid}>
+        {getFontThemeIds().map((id) => {
+          const font = FONT_THEMES[id];
+          const active = fontThemeId === id;
+          return (
+            <button
+              key={id}
+              onClick={() => setFontThemeId(id)}
+              style={{
+                ...sec.fontCard,
+                border: active ? "2px solid var(--havn-accent)" : "1px solid var(--havn-border)",
+                background: active ? "var(--havn-bg-secondary)" : "var(--havn-bg-tertiary)",
+              }}
+            >
+              <div style={{ fontSize: "14px", fontWeight: 600, fontFamily: font.vars["--havn-font"], marginBottom: "2px", color: "var(--havn-text)" }}>
+                Aa
+              </div>
+              <div style={{ fontSize: "11px", fontFamily: font.vars["--havn-font-mono"], color: "var(--havn-accent)", marginBottom: "4px" }}>
+                0x1F {}
+              </div>
+              <div style={{ fontSize: "11px", fontWeight: 500, color: "var(--havn-text)" }}>{font.name}</div>
+              <div style={{ fontSize: "10px", color: "var(--havn-text-secondary)", lineHeight: "1.3" }}>{font.description}</div>
+              {active && <div style={{ marginTop: "4px", fontSize: "9px", color: "var(--havn-accent)", fontWeight: 700, letterSpacing: "0.5px", textTransform: "uppercase" }}>Active</div>}
             </button>
           );
         })}
@@ -525,7 +555,6 @@ function GuideSection({ onShowGuide }) {
 export default function SettingsPanel({ onShowGuide }) {
   return (
     <div style={sec.container}>
-      <div style={sec.header}>Settings</div>
       <div style={sec.content}>
         {onShowGuide && <GuideSection onShowGuide={onShowGuide} />}
         <HintsSection />
@@ -542,7 +571,7 @@ export default function SettingsPanel({ onShowGuide }) {
 
 const sec = {
   container: { display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" },
-  header: { padding: "8px 12px", borderBottom: "1px solid var(--havn-border)", fontWeight: 600, fontSize: "14px" },
+  header: { padding: "8px 12px", borderBottom: "1px solid var(--havn-border)", fontWeight: 600, fontSize: "13px" },
   content: { flex: 1, overflow: "auto", padding: "16px 24px", maxWidth: "800px" },
   section: { marginBottom: "32px" },
   heading: { fontSize: "16px", fontWeight: 600, margin: "0 0 4px" },
@@ -561,4 +590,6 @@ const sec = {
   configTextarea: { width: "100%", padding: "10px 12px", background: "var(--havn-bg-tertiary)", border: "1px solid var(--havn-border-light)", borderRadius: "var(--havn-radius-lg)", color: "var(--havn-text)", fontFamily: "var(--havn-font-mono)", fontSize: "12px", lineHeight: 1.6, resize: "vertical", boxSizing: "border-box", outline: "none" },
   themeGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: "10px" },
   themeCard: { padding: "12px", borderRadius: "var(--havn-radius-lg)", cursor: "pointer", textAlign: "left", display: "block" },
+  fontGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: "10px" },
+  fontCard: { padding: "12px", borderRadius: "var(--havn-radius-lg)", cursor: "pointer", textAlign: "left", display: "block" },
 };

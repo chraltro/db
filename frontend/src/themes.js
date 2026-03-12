@@ -1,10 +1,65 @@
 /**
  * Theme definitions for havn.
- * Each theme is a map of CSS custom property names to values.
- * Applied to document.documentElement.style by ThemeProvider.
+ *
+ * Color themes and font themes are independent — mix and match freely.
+ * ThemeProvider composes the active color + font into CSS custom properties.
  */
 
-export const THEMES = {
+// ---------------------------------------------------------------------------
+// Color themes (backgrounds, borders, accents, status colors, radius)
+// ---------------------------------------------------------------------------
+
+export const COLOR_THEMES = {
+  "havn-dark": {
+    name: "havn Dark",
+    description: "Harbour Teal on deep ocean",
+    dark: true,
+    vars: {
+      "--havn-bg": "#0B0E14",
+      "--havn-bg-secondary": "#121620",
+      "--havn-bg-tertiary": "#080A0F",
+      "--havn-border": "#1C2233",
+      "--havn-border-light": "#263044",
+      "--havn-text": "#D0D6E0",
+      "--havn-text-secondary": "#6B7A90",
+      "--havn-text-dim": "#3A4560",
+      "--havn-accent": "#3ECFB4",
+      "--havn-green": "#34D399",
+      "--havn-green-border": "#3ECFB4",
+      "--havn-red": "#F87171",
+      "--havn-yellow": "#FBBF24",
+      "--havn-purple": "#7C8CF5",
+      "--havn-radius": "6px",
+      "--havn-radius-lg": "10px",
+      "--havn-btn-bg": "#1C2233",
+      "--havn-btn-border": "#263044",
+    },
+  },
+  "havn-light": {
+    name: "havn Light",
+    description: "Harbour Teal on Nordic grey",
+    dark: false,
+    vars: {
+      "--havn-bg": "#F4F6F8",
+      "--havn-bg-secondary": "#E8ECF0",
+      "--havn-bg-tertiary": "#FFFFFF",
+      "--havn-border": "#D0D7DF",
+      "--havn-border-light": "#BCC5D0",
+      "--havn-text": "#0B0E14",
+      "--havn-text-secondary": "#5A6878",
+      "--havn-text-dim": "#94A0B0",
+      "--havn-accent": "#2BA88E",
+      "--havn-green": "#22A06B",
+      "--havn-green-border": "#2BA88E",
+      "--havn-red": "#DC2626",
+      "--havn-yellow": "#B45309",
+      "--havn-purple": "#5B6AD0",
+      "--havn-radius": "6px",
+      "--havn-radius-lg": "10px",
+      "--havn-btn-bg": "#E8ECF0",
+      "--havn-btn-border": "#D0D7DF",
+    },
+  },
   "midnight-terminal": {
     name: "Midnight Terminal",
     description: "Green-on-black terminal aesthetic",
@@ -24,8 +79,6 @@ export const THEMES = {
       "--havn-red": "#fb7185",
       "--havn-yellow": "#fbbf24",
       "--havn-purple": "#a78bfa",
-      "--havn-font": "'IBM Plex Sans', -apple-system, BlinkMacSystemFont, sans-serif",
-      "--havn-font-mono": "'IBM Plex Mono', 'Fira Code', monospace",
       "--havn-radius": "4px",
       "--havn-radius-lg": "6px",
       "--havn-btn-bg": "#1a1e2e",
@@ -51,8 +104,6 @@ export const THEMES = {
       "--havn-red": "#c44040",
       "--havn-yellow": "#b08825",
       "--havn-purple": "#7c5ab8",
-      "--havn-font": "'Crimson Pro', 'Source Serif 4', Georgia, serif",
-      "--havn-font-mono": "'JetBrains Mono', 'Fira Code', monospace",
       "--havn-radius": "2px",
       "--havn-radius-lg": "4px",
       "--havn-btn-bg": "#ebe5dc",
@@ -78,8 +129,6 @@ export const THEMES = {
       "--havn-red": "#f87171",
       "--havn-yellow": "#facc15",
       "--havn-purple": "#c084fc",
-      "--havn-font": "'Sora', -apple-system, BlinkMacSystemFont, sans-serif",
-      "--havn-font-mono": "'Fira Code', monospace",
       "--havn-radius": "8px",
       "--havn-radius-lg": "12px",
       "--havn-btn-bg": "#1f1f2e",
@@ -105,8 +154,6 @@ export const THEMES = {
       "--havn-red": "#dc2626",
       "--havn-yellow": "#ca8a04",
       "--havn-purple": "#7c3aed",
-      "--havn-font": "'Manrope', 'Outfit', -apple-system, BlinkMacSystemFont, sans-serif",
-      "--havn-font-mono": "'JetBrains Mono', monospace",
       "--havn-radius": "6px",
       "--havn-radius-lg": "10px",
       "--havn-btn-bg": "#dce2e9",
@@ -132,8 +179,6 @@ export const THEMES = {
       "--havn-red": "#ef4444",
       "--havn-yellow": "#eab308",
       "--havn-purple": "#d97706",
-      "--havn-font": "'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif",
-      "--havn-font-mono": "'Space Mono', monospace",
       "--havn-radius": "3px",
       "--havn-radius-lg": "5px",
       "--havn-btn-bg": "#2e2218",
@@ -159,8 +204,6 @@ export const THEMES = {
       "--havn-red": "#c05050",
       "--havn-yellow": "#b09030",
       "--havn-purple": "#7868a8",
-      "--havn-font": "'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif",
-      "--havn-font-mono": "Consolas, 'Courier New', monospace",
       "--havn-radius": "4px",
       "--havn-radius-lg": "6px",
       "--havn-btn-bg": "#e0e0e0",
@@ -169,12 +212,114 @@ export const THEMES = {
   },
 };
 
-export const DEFAULT_THEME = "midnight-terminal";
+// ---------------------------------------------------------------------------
+// Font themes (display + monospace pairings)
+// ---------------------------------------------------------------------------
+
+export const FONT_THEMES = {
+  "outfit-jetbrains": {
+    name: "Outfit + JetBrains Mono",
+    description: "Clean geometric sans with technical mono",
+    vars: {
+      "--havn-font": "'Outfit', -apple-system, BlinkMacSystemFont, sans-serif",
+      "--havn-font-mono": "'JetBrains Mono', monospace",
+    },
+  },
+  "ibm-plex": {
+    name: "IBM Plex Sans + Plex Mono",
+    description: "Neutral humanist with matched mono",
+    vars: {
+      "--havn-font": "'IBM Plex Sans', -apple-system, BlinkMacSystemFont, sans-serif",
+      "--havn-font-mono": "'IBM Plex Mono', 'Fira Code', monospace",
+    },
+  },
+  "sora-fira": {
+    name: "Sora + Fira Code",
+    description: "Geometric display with ligature-rich mono",
+    vars: {
+      "--havn-font": "'Sora', -apple-system, BlinkMacSystemFont, sans-serif",
+      "--havn-font-mono": "'Fira Code', monospace",
+    },
+  },
+  "manrope-jetbrains": {
+    name: "Manrope + JetBrains Mono",
+    description: "Friendly rounded sans with technical mono",
+    vars: {
+      "--havn-font": "'Manrope', -apple-system, BlinkMacSystemFont, sans-serif",
+      "--havn-font-mono": "'JetBrains Mono', monospace",
+    },
+  },
+  "dm-sans-space": {
+    name: "DM Sans + Space Mono",
+    description: "Compact geometric with retro-flavored mono",
+    vars: {
+      "--havn-font": "'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif",
+      "--havn-font-mono": "'Space Mono', monospace",
+    },
+  },
+  "crimson-jetbrains": {
+    name: "Crimson Pro + JetBrains Mono",
+    description: "Editorial serif with technical mono",
+    vars: {
+      "--havn-font": "'Crimson Pro', 'Source Serif 4', Georgia, serif",
+      "--havn-font-mono": "'JetBrains Mono', 'Fira Code', monospace",
+    },
+  },
+  "system": {
+    name: "System Default",
+    description: "Native OS fonts for maximum performance",
+    vars: {
+      "--havn-font": "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+      "--havn-font-mono": "Consolas, 'Courier New', monospace",
+    },
+  },
+};
+
+// ---------------------------------------------------------------------------
+// Defaults
+// ---------------------------------------------------------------------------
+
+export const DEFAULT_COLOR_THEME = "havn-dark";
+export const DEFAULT_FONT_THEME = "outfit-jetbrains";
+
+// ---------------------------------------------------------------------------
+// Backward-compatible API (composed themes)
+// ---------------------------------------------------------------------------
+
+/** Get a composed theme (color + font merged) for a given color/font pair. */
+export function getComposedTheme(colorId, fontId) {
+  const color = COLOR_THEMES[colorId] || COLOR_THEMES[DEFAULT_COLOR_THEME];
+  const font = FONT_THEMES[fontId] || FONT_THEMES[DEFAULT_FONT_THEME];
+  return {
+    name: color.name,
+    description: color.description,
+    dark: color.dark,
+    vars: { ...color.vars, ...font.vars },
+  };
+}
+
+// Legacy compat — THEMES as composed objects using default font
+export const THEMES = Object.fromEntries(
+  Object.entries(COLOR_THEMES).map(([id, color]) => [
+    id,
+    { ...color, vars: { ...color.vars, ...FONT_THEMES[DEFAULT_FONT_THEME].vars } },
+  ])
+);
+
+export const DEFAULT_THEME = DEFAULT_COLOR_THEME;
 
 export function getThemeIds() {
-  return Object.keys(THEMES);
+  return Object.keys(COLOR_THEMES);
 }
 
 export function getTheme(id) {
   return THEMES[id] || THEMES[DEFAULT_THEME];
+}
+
+export function getColorThemeIds() {
+  return Object.keys(COLOR_THEMES);
+}
+
+export function getFontThemeIds() {
+  return Object.keys(FONT_THEMES);
 }

@@ -25,7 +25,6 @@ export default function HistoryPanel({ onOpenFile }) {
   return (
     <div style={styles.container}>
       <div style={styles.header}>
-        <span style={styles.headerTitle}>Run History</span>
         <button onClick={loadHistory} style={styles.refreshBtn}>
           Refresh
         </button>
@@ -105,7 +104,7 @@ const styles = {
   container: { display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" },
   header: { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 12px", borderBottom: "1px solid var(--havn-border)" },
   headerTitle: { fontWeight: 600, fontSize: "13px" },
-  refreshBtn: { background: "var(--havn-btn-bg)", border: "1px solid var(--havn-btn-border)", borderRadius: "var(--havn-radius-lg)", color: "var(--havn-text)", padding: "4px 12px", cursor: "pointer", fontSize: "12px", fontWeight: 500 },
+  refreshBtn: { background: "var(--havn-btn-bg)", border: "1px solid var(--havn-btn-border)", borderRadius: "var(--havn-radius-lg)", color: "var(--havn-text)", padding: "4px 12px", cursor: "pointer", fontSize: "11px", fontWeight: 500 },
   loading: { padding: "24px", color: "var(--havn-text-secondary)", textAlign: "center" },
   empty: { padding: "24px", color: "var(--havn-text-dim)", textAlign: "center" },
   error: { padding: "24px", color: "var(--havn-red)", textAlign: "center" },

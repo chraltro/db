@@ -41,6 +41,9 @@ export default function OverviewPanel({ onNavigate, onSelectTable, onOpenFile, o
     try {
       const overview = await api.getOverview();
       setData(overview);
+      if (overview.project_name) {
+        document.title = `${overview.project_name} — havn`;
+      }
       // Set hint trigger if warehouse has data but no runs
       const runs = overview.recent_runs || [];
       if (runs.length === 0 && overview.has_data) {
@@ -87,6 +90,7 @@ export default function OverviewPanel({ onNavigate, onSelectTable, onOpenFile, o
         {/* Hero / CTA section */}
         {!data.has_data && (
           <div style={st.hero}>
+            <img src="/logo.svg" alt="havn" width="48" height="48" style={{ marginBottom: "12px" }} />
             <div style={st.heroTitle}>Get started with havn</div>
             <div style={st.heroDesc}>
               Connect a data source to start building your warehouse. Import a CSV, connect a database, or set up a recurring connector.

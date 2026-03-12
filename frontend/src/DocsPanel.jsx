@@ -141,7 +141,6 @@ export default function DocsPanel() {
   return (
     <div style={s.container}>
       <div style={s.header}>
-        <span>Documentation</span>
         <span style={s.headerCount}>{totalTables > 0 ? `${totalTables} tables` : ""}</span>
         <button onClick={loadDocs} style={s.refreshBtn}>Refresh</button>
       </div>
@@ -188,9 +187,9 @@ export default function DocsPanel() {
 
 const s = {
   container: { display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" },
-  header: { display: "flex", alignItems: "center", gap: "8px", padding: "8px 12px", borderBottom: "1px solid var(--havn-border)", fontWeight: 600, fontSize: "13px" },
+  header: { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 12px", borderBottom: "1px solid var(--havn-border)", fontWeight: 600, fontSize: "13px" },
   headerCount: { color: "var(--havn-text-dim)", fontWeight: 400, fontSize: "12px", flex: 1 },
-  refreshBtn: { background: "var(--havn-btn-bg)", border: "1px solid var(--havn-btn-border)", borderRadius: "var(--havn-radius-lg)", color: "var(--havn-text)", padding: "4px 12px", cursor: "pointer", fontSize: "12px", fontWeight: 500 },
+  refreshBtn: { background: "var(--havn-btn-bg)", border: "1px solid var(--havn-btn-border)", borderRadius: "var(--havn-radius-lg)", color: "var(--havn-text)", padding: "4px 12px", cursor: "pointer", fontSize: "11px", fontWeight: 500 },
   body: { display: "flex", flex: 1, overflow: "hidden" },
   loading: { color: "var(--havn-text-secondary)", textAlign: "center", padding: "24px", width: "100%" },
   // Left nav

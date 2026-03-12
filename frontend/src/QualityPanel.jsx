@@ -174,7 +174,6 @@ export default function QualityPanel() {
   return (
     <div style={s.container}>
       <div style={s.header}>
-        <div style={s.title}>Data Quality</div>
         <div style={s.cards}>
           <div style={s.card}>
             <div style={s.cardLabel}>Total Models</div>
@@ -182,15 +181,15 @@ export default function QualityPanel() {
           </div>
           <div style={s.card}>
             <div style={s.cardLabel}>Stale Models</div>
-            <div style={{ ...s.cardValue, color: staleModels > 0 ? '#f87171' : '#4ade80' }}>{staleModels}</div>
+            <div style={{ ...s.cardValue, color: staleModels > 0 ? 'var(--havn-red)' : 'var(--havn-green)' }}>{staleModels}</div>
           </div>
           <div style={s.card}>
             <div style={s.cardLabel}>Assertion Pass Rate</div>
-            <div style={{ ...s.cardValue, color: assertionRate === 100 ? '#4ade80' : assertionRate >= 80 ? '#facc15' : '#f87171' }}>{assertionRate}%</div>
+            <div style={{ ...s.cardValue, color: assertionRate === 100 ? 'var(--havn-green)' : assertionRate >= 80 ? 'var(--havn-yellow)' : 'var(--havn-red)' }}>{assertionRate}%</div>
           </div>
           <div style={s.card}>
             <div style={s.cardLabel}>Contract Pass Rate</div>
-            <div style={{ ...s.cardValue, color: contractRate === 100 ? '#4ade80' : contractRate >= 80 ? '#facc15' : '#f87171' }}>{contractRate}%</div>
+            <div style={{ ...s.cardValue, color: contractRate === 100 ? 'var(--havn-green)' : contractRate >= 80 ? 'var(--havn-yellow)' : 'var(--havn-red)' }}>{contractRate}%</div>
           </div>
         </div>
         <div style={s.tabs}>
@@ -200,7 +199,7 @@ export default function QualityPanel() {
         </div>
       </div>
       <div style={s.content}>
-        {loading ? <p style={{ color: '#888' }}>Loading quality data...</p> : (
+        {loading ? <p style={{ color: 'var(--havn-text-secondary)' }}>Loading quality data...</p> : (
           <>
             {/* ─── FRESHNESS ─── */}
             {tab === 'Freshness' && (
@@ -223,7 +222,7 @@ export default function QualityPanel() {
                     <SortTh label="Status" sortKey="is_stale" current={freshSort.sortKey} dir={freshSort.sortDir} onToggle={freshSort.toggle} style={s.th} />
                   </tr></thead>
                   <tbody>
-                    {filteredFreshness.length === 0 ? <tr><td colSpan={5} style={{ ...s.td, color: '#666', textAlign: 'center' }}>No freshness data available</td></tr> :
+                    {filteredFreshness.length === 0 ? <tr><td colSpan={5} style={{ ...s.td, color: 'var(--havn-text-dim)', textAlign: 'center' }}>No freshness data available</td></tr> :
                     filteredFreshness.map((m, i) => (
                       <tr key={i}>
                         <td style={s.td}>{m.model}</td>
@@ -253,7 +252,7 @@ export default function QualityPanel() {
                     <th style={s.th}>Profiled At</th>
                   </tr></thead>
                   <tbody>
-                    {filteredProfiles.length === 0 ? <tr><td colSpan={4} style={{ ...s.td, color: '#666', textAlign: 'center' }}>No profiles available. Run profiling first.</td></tr> :
+                    {filteredProfiles.length === 0 ? <tr><td colSpan={4} style={{ ...s.td, color: 'var(--havn-text-dim)', textAlign: 'center' }}>No profiles available. Run profiling first.</td></tr> :
                     filteredProfiles.map((p, i) => {
                       const cols = profileColumns(p);
                       return (
@@ -261,7 +260,7 @@ export default function QualityPanel() {
                           <tr>
                             <td style={s.td}>
                               {cols.length > 0 ? (
-                                <span style={{ cursor: 'pointer', color: 'var(--havn-accent, #60a5fa)' }} onClick={() => setExpandedProfile(expandedProfile === i ? null : i)}>
+                                <span style={{ cursor: 'pointer', color: 'var(--havn-accent)' }} onClick={() => setExpandedProfile(expandedProfile === i ? null : i)}>
                                   {expandedProfile === i ? '\u25BE' : '\u25B8'} {p.model}
                                 </span>
                               ) : p.model}
@@ -271,7 +270,7 @@ export default function QualityPanel() {
                             <td style={s.td}>{p.profiled_at || '\u2014'}</td>
                           </tr>
                           {expandedProfile === i && cols.map((col, ci) => (
-                            <tr key={`${i}-${ci}`} style={{ background: '#111' }}>
+                            <tr key={`${i}-${ci}`} style={{ background: 'var(--havn-bg-tertiary)' }}>
                               <td style={{ ...s.td, paddingLeft: 32, fontFamily: 'monospace', fontSize: 12 }}>{col.name}</td>
                               <td style={s.td}>{col.null_pct != null ? `${col.null_pct.toFixed(1)}% null` : '\u2014'}</td>
                               <td style={s.td}>{col.distinct != null ? `${col.distinct.toLocaleString()} distinct` : '\u2014'}</td>
@@ -307,7 +306,7 @@ export default function QualityPanel() {
                     <SortTh label="Checked At" sortKey="checked_at" current={assertionSort.sortKey} dir={assertionSort.sortDir} onToggle={assertionSort.toggle} style={s.th} />
                   </tr></thead>
                   <tbody>
-                    {filteredAssertions.length === 0 ? <tr><td colSpan={5} style={{ ...s.td, color: '#666', textAlign: 'center' }}>No assertion results</td></tr> :
+                    {filteredAssertions.length === 0 ? <tr><td colSpan={5} style={{ ...s.td, color: 'var(--havn-text-dim)', textAlign: 'center' }}>No assertion results</td></tr> :
                     filteredAssertions.map((a, i) => (
                       <tr key={i}>
                         <td style={s.td}>{a.model}</td>
@@ -353,14 +352,14 @@ export default function QualityPanel() {
                     </tr></thead>
                     <tbody>
                       {filteredContracts.length === 0 ? (
-                        <tr><td colSpan={5} style={{ ...s.td, color: '#666', textAlign: 'center' }}>No contract history. Run contracts first.</td></tr>
+                        <tr><td colSpan={5} style={{ ...s.td, color: 'var(--havn-text-dim)', textAlign: 'center' }}>No contract history. Run contracts first.</td></tr>
                       ) : filteredContracts.map((c, i) => (
                         <tr key={i}>
                           <td style={s.td}>{c.contract_name}</td>
                           <td style={s.td}>{c.model}</td>
                           <td style={s.td}><span style={s.badge(c.passed)}>{c.passed ? 'PASS' : 'FAIL'}</span></td>
                           <td style={s.td}>
-                            <span style={{ padding: '2px 8px', borderRadius: 4, fontSize: 11, background: c.severity === 'warn' ? '#3a3a1a' : '#3a1a1a', color: c.severity === 'warn' ? '#facc15' : '#f87171' }}>{c.severity}</span>
+                            <span style={{ padding: '2px 8px', borderRadius: 4, fontSize: 11, background: c.severity === 'warn' ? 'color-mix(in srgb, var(--havn-yellow) 15%, transparent)' : 'color-mix(in srgb, var(--havn-red) 15%, transparent)', color: c.severity === 'warn' ? 'var(--havn-yellow)' : 'var(--havn-red)' }}>{c.severity}</span>
                           </td>
                           <td style={s.td}>{c.checked_at || '\u2014'}</td>
                         </tr>
@@ -378,14 +377,14 @@ export default function QualityPanel() {
                     </tr></thead>
                     <tbody>
                       {filteredContracts.length === 0 ? (
-                        <tr><td colSpan={5} style={{ ...s.td, color: '#666', textAlign: 'center' }}>No contracts defined. Add YAML files in contracts/</td></tr>
+                        <tr><td colSpan={5} style={{ ...s.td, color: 'var(--havn-text-dim)', textAlign: 'center' }}>No contracts defined. Add YAML files in contracts/</td></tr>
                       ) : filteredContracts.map((c, i) => (
                         <tr key={i}>
                           <td style={s.td}>{c.name}</td>
                           <td style={s.td}>{c.model}</td>
                           <td style={s.td}>{c.description || '\u2014'}</td>
                           <td style={s.td}>
-                            <span style={{ padding: '2px 8px', borderRadius: 4, fontSize: 11, background: c.severity === 'warn' ? '#3a3a1a' : '#3a1a1a', color: c.severity === 'warn' ? '#facc15' : '#f87171' }}>{c.severity}</span>
+                            <span style={{ padding: '2px 8px', borderRadius: 4, fontSize: 11, background: c.severity === 'warn' ? 'color-mix(in srgb, var(--havn-yellow) 15%, transparent)' : 'color-mix(in srgb, var(--havn-red) 15%, transparent)', color: c.severity === 'warn' ? 'var(--havn-yellow)' : 'var(--havn-red)' }}>{c.severity}</span>
                           </td>
                           <td style={s.td}>{(c.assertions || []).length} rule{(c.assertions || []).length !== 1 ? 's' : ''}</td>
                         </tr>
@@ -403,25 +402,25 @@ export default function QualityPanel() {
 }
 
 const s = {
-  container: { height: '100%', display: 'flex', flexDirection: 'column', background: '#0e0e0e' },
-  header: { padding: '16px 20px', borderBottom: '1px solid #222' },
-  title: { fontSize: 16, fontWeight: 600, color: '#e0e0e0', marginBottom: 12 },
+  container: { height: '100%', display: 'flex', flexDirection: 'column', background: 'var(--havn-bg)' },
+  header: { display: 'flex', flexDirection: 'column', padding: '8px 12px', borderBottom: '1px solid var(--havn-border)' },
+  title: { fontSize: 13, fontWeight: 600, color: 'var(--havn-text)' },
   cards: { display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 16 },
-  card: { background: '#161616', border: '1px solid #222', borderRadius: 8, padding: '12px 16px' },
-  cardLabel: { fontSize: 11, color: '#888', textTransform: 'uppercase', marginBottom: 4 },
-  cardValue: { fontSize: 24, fontWeight: 700, color: '#e0e0e0' },
-  tabs: { display: 'flex', gap: 0, borderBottom: '1px solid #222' },
-  tab: { padding: '8px 20px', cursor: 'pointer', fontSize: 13, color: '#888', borderBottom: '2px solid transparent', background: 'none' },
-  tabActive: { color: '#e0e0e0', borderBottom: '2px solid #2563eb' },
+  card: { background: 'var(--havn-bg-secondary)', border: '1px solid var(--havn-border)', borderRadius: 8, padding: '12px 16px' },
+  cardLabel: { fontSize: 11, color: 'var(--havn-text-secondary)', textTransform: 'uppercase', marginBottom: 4 },
+  cardValue: { fontSize: 24, fontWeight: 700, color: 'var(--havn-text)' },
+  tabs: { display: 'flex', gap: 0 },
+  tab: { padding: '8px 20px', cursor: 'pointer', fontSize: 13, color: 'var(--havn-text-secondary)', borderBottom: '2px solid transparent', background: 'none' },
+  tabActive: { color: 'var(--havn-text)', borderBottom: '2px solid var(--havn-accent)' },
   content: { flex: 1, overflow: 'auto', padding: 20 },
   toolbar: { display: 'flex', gap: 8, marginBottom: 12, alignItems: 'center', flexWrap: 'wrap' },
-  filterInput: { padding: '5px 10px', background: '#1a1a1a', color: '#e0e0e0', border: '1px solid #333', borderRadius: 6, fontSize: 12, width: 220 },
-  filterSelect: { padding: '5px 8px', background: '#1a1a1a', color: '#e0e0e0', border: '1px solid #333', borderRadius: 6, fontSize: 12 },
-  count: { fontSize: 12, color: '#666', marginLeft: 'auto' },
+  filterInput: { padding: '5px 10px', background: 'var(--havn-bg-tertiary)', color: 'var(--havn-text)', border: '1px solid var(--havn-border-light)', borderRadius: 6, fontSize: 12, width: 220 },
+  filterSelect: { padding: '5px 8px', background: 'var(--havn-bg-tertiary)', color: 'var(--havn-text)', border: '1px solid var(--havn-border-light)', borderRadius: 6, fontSize: 12 },
+  count: { fontSize: 12, color: 'var(--havn-text-dim)', marginLeft: 'auto' },
   table: { width: '100%', borderCollapse: 'collapse', fontSize: 13 },
-  th: { textAlign: 'left', padding: '8px 12px', borderBottom: '1px solid #333', color: '#888', fontSize: 11, textTransform: 'uppercase' },
-  td: { padding: '8px 12px', borderBottom: '1px solid #222', color: '#e0e0e0' },
-  badge: (ok) => ({ padding: '2px 8px', borderRadius: 4, fontSize: 11, background: ok ? '#1a3a1a' : '#3a1a1a', color: ok ? '#4ade80' : '#f87171' }),
-  btn: { padding: '6px 14px', background: '#2a2a2a', color: '#e0e0e0', border: '1px solid #444', borderRadius: 6, cursor: 'pointer', fontSize: 13 },
-  btnPrimary: { padding: '6px 14px', background: '#2563eb', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 13 },
+  th: { textAlign: 'left', padding: '8px 12px', borderBottom: '1px solid var(--havn-border-light)', color: 'var(--havn-text-secondary)', fontSize: 11, textTransform: 'uppercase' },
+  td: { padding: '8px 12px', borderBottom: '1px solid var(--havn-border)', color: 'var(--havn-text)' },
+  badge: (ok) => ({ padding: '2px 8px', borderRadius: 4, fontSize: 11, background: ok ? 'color-mix(in srgb, var(--havn-green) 15%, transparent)' : 'color-mix(in srgb, var(--havn-red) 15%, transparent)', color: ok ? 'var(--havn-green)' : 'var(--havn-red)' }),
+  btn: { padding: '4px 12px', background: 'var(--havn-btn-bg)', color: 'var(--havn-text)', border: '1px solid var(--havn-btn-border)', borderRadius: 'var(--havn-radius-lg)', cursor: 'pointer', fontSize: 11, fontWeight: 500 },
+  btnPrimary: { padding: '4px 12px', background: 'var(--havn-green)', color: '#fff', border: '1px solid var(--havn-green-border)', borderRadius: 'var(--havn-radius-lg)', cursor: 'pointer', fontSize: 11, fontWeight: 500 },
 };

@@ -306,7 +306,7 @@ const stStyles = {
   empty: { padding: "12px", color: "var(--havn-text-dim)", fontSize: "12px", textAlign: "center" },
   schemaRow: { display: "flex", alignItems: "center", gap: "6px", padding: "4px 8px", cursor: "pointer", margin: "0 4px", borderRadius: "3px" },
   arrow: { fontSize: "10px", color: "var(--havn-text-secondary)", width: "10px", display: "inline-block", transition: "transform 0.12s ease" },
-  schemaName: { fontSize: "13px", fontWeight: 500, color: "var(--havn-text)" },
+  schemaName: { fontSize: "13px", fontWeight: 500, color: "var(--havn-text)", fontFamily: "var(--havn-font-mono)" },
   schemaCount: { fontSize: "10px", color: "var(--havn-text-dim)", marginLeft: "auto" },
   tableRow: { display: "flex", alignItems: "center", gap: "6px", padding: "3px 8px 3px 30px", cursor: "pointer", fontSize: "12px", fontFamily: "var(--havn-font-mono)", margin: "0 4px", borderRadius: "3px" },
   typeIcon: { fontSize: "9px", fontWeight: 700, flexShrink: 0 },
@@ -525,7 +525,11 @@ function AppContent() {
       if (choice === "cancel") return;
       dropObject = choice === "drop";
     } else {
-      if (!confirm(`Delete ${path}?`)) return;
+      const choice = await new Promise((resolve) => {
+        deleteResolveRef.current = resolve;
+        setDeleteConfirm({ path, hasObject: false });
+      });
+      if (choice === "cancel") return;
     }
 
     try {
@@ -542,6 +546,19 @@ function AppContent() {
       await loadFiles();
     } catch (e) {
       addOutput("error", `Failed to delete: ${e.message}`);
+    }
+  }
+
+  async function moveFile(source, destination) {
+    try {
+      await api.moveFile(source, destination);
+      addOutput("info", `Moved ${source} → ${destination}`);
+      if (activeFile === source) {
+        setActiveFile(destination);
+      }
+      await loadFiles();
+    } catch (e) {
+      addOutput("error", `Failed to move: ${e.message}`);
     }
   }
 
@@ -641,6 +658,7 @@ function AppContent() {
           style={styles.logo}
           title="Home"
         >
+          <img src="/logo.svg" alt="havn" width="22" height="22" style={{ marginRight: "6px", verticalAlign: "middle" }} />
           havn
         </button>
 
@@ -697,7 +715,7 @@ function AppContent() {
               <button onClick={refreshAll} style={styles.sidebarRefreshBtn} title="Refresh files &amp; tables">&#x21BB;</button>
             </div>
             <div style={styles.sidebarPaneContent}>
-              <FileTree files={files} onSelect={openFile} activeFile={activeFile} onNewFile={createFile} onDeleteFile={deleteFile} />
+              <FileTree files={files} onSelect={openFile} activeFile={activeFile} onNewFile={createFile} onDeleteFile={deleteFile} onMoveFile={moveFile} />
             </div>
           </div>
           <div style={styles.sidebarDivider} />
@@ -864,14 +882,26 @@ function AppContent() {
         <div style={dcStyles.overlay} onClick={() => resolveDeleteConfirm("cancel")}>
           <div style={dcStyles.dialog} onClick={(e) => e.stopPropagation()}>
             <div style={dcStyles.title}>Delete {deleteConfirm.path}?</div>
-            <div style={dcStyles.body}>
-              Also drop <strong>{deleteConfirm.schema}.{deleteConfirm.name}</strong> table/view from the warehouse?
-            </div>
-            <div style={dcStyles.footer}>
-              <button onClick={() => resolveDeleteConfirm("cancel")} style={dcStyles.btnCancel}>Cancel</button>
-              <button onClick={() => resolveDeleteConfirm("keep")} style={dcStyles.btnSecondary}>Delete File Only</button>
-              <button onClick={() => resolveDeleteConfirm("drop")} style={dcStyles.btnDanger}>Delete & Drop</button>
-            </div>
+            {deleteConfirm.hasObject ? (
+              <>
+                <div style={dcStyles.body}>
+                  Also drop <strong>{deleteConfirm.schema}.{deleteConfirm.name}</strong> table/view from the warehouse?
+                </div>
+                <div style={dcStyles.footer}>
+                  <button onClick={() => resolveDeleteConfirm("cancel")} style={dcStyles.btnCancel}>Cancel</button>
+                  <button onClick={() => resolveDeleteConfirm("keep")} style={dcStyles.btnSecondary}>Delete File Only</button>
+                  <button onClick={() => resolveDeleteConfirm("drop")} style={dcStyles.btnDanger}>Delete & Drop</button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div style={dcStyles.body}>This file will be permanently deleted.</div>
+                <div style={dcStyles.footer}>
+                  <button onClick={() => resolveDeleteConfirm("cancel")} style={dcStyles.btnCancel}>Cancel</button>
+                  <button onClick={() => resolveDeleteConfirm("keep")} style={dcStyles.btnDanger}>Delete</button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}
@@ -950,7 +980,7 @@ const styles = {
 
   // Header
   header: { display: "flex", alignItems: "center", padding: "0 16px", borderBottom: "1px solid var(--havn-border)", background: "var(--havn-bg-secondary)", minHeight: "44px", gap: "16px" },
-  logo: { fontSize: "18px", fontWeight: "bold", fontFamily: "var(--havn-font-mono)", color: "var(--havn-accent)", letterSpacing: "-0.5px", background: "none", border: "none", cursor: "pointer", padding: "8px 4px", flexShrink: 0 },
+  logo: { display: "inline-flex", alignItems: "center", fontSize: "18px", fontWeight: 700, fontFamily: "var(--havn-font)", color: "var(--havn-accent)", letterSpacing: "-0.5px", background: "none", border: "none", cursor: "pointer", padding: "8px 4px", flexShrink: 0 },
 
   // Section navigation (in header)
   sectionNav: { display: "flex", alignItems: "center", gap: "2px", flex: 1 },
@@ -962,7 +992,7 @@ const styles = {
   sectionActive: {
     padding: "10px 16px", background: "none", border: "none", borderBottom: "2px solid var(--havn-accent)",
     color: "var(--havn-text)", cursor: "pointer", fontSize: "13px", whiteSpace: "nowrap",
-    fontWeight: 600, transition: "color 0.15s",
+    fontWeight: 500, transition: "color 0.15s",
   },
 
   // Header right side

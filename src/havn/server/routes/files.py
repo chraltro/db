@@ -27,6 +27,10 @@ class SaveFileRequest(BaseModel):
     content: str = Field(..., max_length=5_000_000)
 
 
+class MoveFileRequest(BaseModel):
+    destination: str
+
+
 # --- Helpers ---
 
 
@@ -103,6 +107,33 @@ def save_file(request: Request, file_path: str, req: SaveFileRequest) -> dict:
     full_path.parent.mkdir(parents=True, exist_ok=True)
     full_path.write_text(req.content, encoding="utf-8")
     return {"path": file_path, "status": "saved"}
+
+
+@router.post("/api/files/{file_path:path}/move")
+def move_file(request: Request, file_path: str, req: MoveFileRequest) -> dict:
+    """Move/rename a file within the project."""
+    _require_permission(request, "write")
+    project_dir = _get_project_dir()
+    src = (project_dir / file_path).resolve()
+    dst = (project_dir / req.destination).resolve()
+    # Path traversal protection
+    proj_root = str(project_dir.resolve())
+    if not str(src).startswith(proj_root) or not str(dst).startswith(proj_root):
+        raise HTTPException(400, "Invalid file path")
+    if not src.exists():
+        raise HTTPException(404, f"File not found: {file_path}")
+    if not src.is_file():
+        raise HTTPException(400, "Not a file")
+    if dst.exists():
+        raise HTTPException(409, f"Destination already exists: {req.destination}")
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    src.rename(dst)
+    # Remove empty parent directories up to project root
+    parent = src.parent
+    while parent != project_dir.resolve() and parent.is_dir() and not any(parent.iterdir()):
+        parent.rmdir()
+        parent = parent.parent
+    return {"source": file_path, "destination": req.destination, "status": "moved"}
 
 
 @router.delete("/api/files/{file_path:path}")

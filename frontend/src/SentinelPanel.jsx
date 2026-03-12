@@ -2,15 +2,15 @@ import React, { useState, useEffect, useCallback } from "react";
 import { api } from "./api";
 
 const SEVERITY_COLORS = {
-  breaking: "#f85149",
-  warning: "#d29922",
-  info: "#8b949e",
+  breaking: "var(--havn-red)",
+  warning: "var(--havn-yellow)",
+  info: "var(--havn-text-dim)",
 };
 
 const IMPACT_COLORS = {
-  direct: "#f85149",
-  transitive: "#d29922",
-  safe: "#3fb950",
+  direct: "var(--havn-red)",
+  transitive: "var(--havn-yellow)",
+  safe: "var(--havn-green)",
 };
 
 export default function SentinelPanel() {
@@ -107,7 +107,6 @@ export default function SentinelPanel() {
     <div style={st.container}>
       {/* Header */}
       <div style={st.header}>
-        <span style={st.title}>Schema Sentinel</span>
         <div style={st.tabs}>
           {["check", "diffs", "history"].map(t => (
             <button
@@ -168,7 +167,7 @@ export default function SentinelPanel() {
                     <tr key={j}>
                       <td style={st.td}>{ch.change_type}</td>
                       <td style={st.td}>
-                        <span style={{ ...st.sevBadge, background: SEVERITY_COLORS[ch.severity] || "#8b949e" }}>
+                        <span style={{ ...st.sevBadge, background: SEVERITY_COLORS[ch.severity] || "var(--havn-text-dim)" }}>
                           {ch.severity}
                         </span>
                       </td>
@@ -180,7 +179,7 @@ export default function SentinelPanel() {
                             ? `was: ${ch.old_value}`
                             : ch.new_value || ""}
                         {ch.rename_candidate && (
-                          <span style={{ color: "#d29922", marginLeft: 6, fontSize: 11 }}>
+                          <span style={{ color: "var(--havn-yellow)", marginLeft: 6, fontSize: 11 }}>
                             (rename? {ch.rename_candidate})
                           </span>
                         )}
@@ -198,7 +197,7 @@ export default function SentinelPanel() {
                   </div>
                   {diff.impacts.map((imp, k) => (
                     <div key={k} style={st.impactRow}>
-                      <span style={{ ...st.impactBadge, background: IMPACT_COLORS[imp.impact_type] || "#8b949e" }}>
+                      <span style={{ ...st.impactBadge, background: IMPACT_COLORS[imp.impact_type] || "var(--havn-text-dim)" }}>
                         {imp.impact_type}
                       </span>
                       <span style={st.impactModel}>{imp.model_name}</span>
@@ -252,7 +251,7 @@ export default function SentinelPanel() {
                   <div style={{ fontSize: 11, color: "var(--havn-text-dim)" }}>
                     {d.created_at?.slice(0, 19)} &middot; {d.changes?.length || 0} change(s)
                     {d.changes?.some(c => c.severity === "breaking") && (
-                      <span style={{ color: "#f85149", marginLeft: 6 }}>BREAKING</span>
+                      <span style={{ color: "var(--havn-red)", marginLeft: 6 }}>BREAKING</span>
                     )}
                   </div>
                 </div>
@@ -268,7 +267,7 @@ export default function SentinelPanel() {
                   </div>
                   {impacts.map((imp, k) => (
                     <div key={k} style={st.impactRow}>
-                      <span style={{ ...st.impactBadge, background: IMPACT_COLORS[imp.impact_type] || "#8b949e" }}>
+                      <span style={{ ...st.impactBadge, background: IMPACT_COLORS[imp.impact_type] || "var(--havn-text-dim)" }}>
                         {imp.impact_type}
                       </span>
                       <span style={st.impactModel}>{imp.model_name}</span>
@@ -310,7 +309,7 @@ export default function SentinelPanel() {
                   <span style={{ fontWeight: 500, fontSize: 12 }}>{s.name}</span>
                   <span style={{
                     fontSize: 10, marginLeft: 6,
-                    color: s.exists ? "#3fb950" : "#8b949e",
+                    color: s.exists ? "var(--havn-green)" : "var(--havn-text-dim)",
                   }}>
                     {s.exists ? "exists" : "missing"}
                   </span>
@@ -371,15 +370,15 @@ const st = {
   tabs: { display: "flex", gap: 4 },
   tab: { background: "none", border: "none", cursor: "pointer", padding: "4px 10px", fontSize: 12, fontWeight: 500 },
   body: { flex: 1, overflow: "auto", padding: 12 },
-  error: { padding: "8px 12px", background: "#f8514920", color: "#f85149", fontSize: 12, borderBottom: "1px solid var(--havn-border)" },
+  error: { padding: "8px 12px", background: "color-mix(in srgb, var(--havn-red) 12%, transparent)", color: "var(--havn-red)", fontSize: 12, borderBottom: "1px solid var(--havn-border)" },
   actionBar: { display: "flex", alignItems: "center", gap: 12, marginBottom: 12 },
-  btn: { padding: "6px 14px", background: "var(--havn-accent, #58a6ff)", color: "#fff", border: "none", borderRadius: 4, cursor: "pointer", fontSize: 12, fontWeight: 600 },
+  btn: { padding: "4px 12px", background: "var(--havn-green)", color: "#fff", border: "1px solid var(--havn-green-border)", borderRadius: "var(--havn-radius-lg)", cursor: "pointer", fontSize: 11, fontWeight: 500 },
   dim: { color: "var(--havn-text-dim)", fontSize: 12 },
-  success: { padding: 12, background: "#3fb95015", color: "#3fb950", borderRadius: 4, fontSize: 12, fontWeight: 500 },
+  success: { padding: 12, background: "color-mix(in srgb, var(--havn-green) 8%, transparent)", color: "var(--havn-green)", borderRadius: "var(--havn-radius-lg)", fontSize: 12, fontWeight: 500 },
   diffCard: { border: "1px solid var(--havn-border)", borderRadius: 6, marginBottom: 12, overflow: "hidden" },
   diffHeader: { display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", background: "var(--havn-bg-secondary)", borderBottom: "1px solid var(--havn-border)" },
   diffSource: { fontWeight: 600, fontSize: 13 },
-  breakingBadge: { background: "#f85149", color: "#fff", padding: "1px 6px", borderRadius: 3, fontSize: 10, fontWeight: 700 },
+  breakingBadge: { background: "var(--havn-red)", color: "#fff", padding: "1px 6px", borderRadius: 3, fontSize: 10, fontWeight: 700 },
   table: { width: "100%", borderCollapse: "collapse", fontSize: 12 },
   th: { textAlign: "left", padding: "6px 12px", background: "var(--havn-bg-tertiary)", borderBottom: "1px solid var(--havn-border)", fontWeight: 600, fontSize: 11 },
   td: { padding: "5px 12px", borderBottom: "1px solid var(--havn-border-light)", fontSize: 12 },

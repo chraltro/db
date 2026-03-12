@@ -100,26 +100,32 @@ def run_stream_endpoint(
 
     step_results = []
     has_error = False
+    ingest_ran = False
     start = time.perf_counter()
 
     def _run_step(step):
+        nonlocal ingest_ran
         from havn.engine.runner import run_scripts_in_dir
 
         if step.action == "ingest":
             results = run_scripts_in_dir(
                 conn, _get_project_dir() / "ingest", "ingest", step.targets
             )
+            if any(r["status"] == "success" for r in results):
+                ingest_ran = True
             return {
                 "action": "ingest",
                 "results": results,
                 "error": any(r["status"] == "error" for r in results),
             }
         elif step.action == "transform":
+            # Force rebuild if ingest ran (upstream data changed)
+            force_transform = force or ingest_ran
             results = run_transform(
                 conn,
                 _get_project_dir() / "transform",
                 targets=step.targets if step.targets != ["all"] else None,
-                force=force,
+                force=force_transform,
             )
             return {
                 "action": "transform",

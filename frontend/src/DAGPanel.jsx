@@ -267,7 +267,7 @@ function DetailPanel({ modelName, runId, runs, snapshotsByRun, onClose, onRestor
           </div>
           <div style={ds.statRow}>
             <span style={ds.statLabel}>Status</span>
-            <span style={{ ...ds.statValue, color: snapshot.file_path ? "#3fb950" : "#8b949e" }}>
+            <span style={{ ...ds.statValue, color: snapshot.file_path ? "var(--havn-green)" : "var(--havn-text-dim)" }}>
               {snapshot.file_path ? "Restorable" : "Expired"}
             </span>
           </div>
@@ -357,7 +357,7 @@ const ds = {
   table: { width: "100%", borderCollapse: "collapse", fontSize: 10 },
   th: { textAlign: "left", padding: "3px 6px", background: "var(--havn-bg-tertiary)", borderBottom: "1px solid var(--havn-border-light)", position: "sticky", top: 0, fontWeight: 600 },
   td: { padding: "2px 6px", borderBottom: "1px solid var(--havn-border-light)", maxWidth: 120, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
-  restoreBtn: { marginTop: 12, padding: "6px 14px", background: "var(--havn-accent, #58a6ff)", color: "#fff", border: "none", borderRadius: 4, cursor: "pointer", fontSize: 12, fontWeight: 600, width: "100%" },
+  restoreBtn: { marginTop: 12, padding: "4px 12px", background: "var(--havn-green)", color: "#fff", border: "1px solid var(--havn-green-border)", borderRadius: "var(--havn-radius-lg)", cursor: "pointer", fontSize: 11, fontWeight: 500, width: "100%" },
   loadingText: { color: "var(--havn-text-dim)", fontStyle: "italic", padding: "8px 0" },
 };
 
@@ -678,9 +678,6 @@ export default function DAGPanel({ onOpenFile }) {
   return (
     <div style={styles.container}>
       <div style={styles.header}>
-        <span style={styles.headerTitle}>
-          {rewindMode ? "Pipeline Rewind" : "Model Lineage"}
-        </span>
         <div style={styles.headerRight}>
           {!rewindMode && (
             <div style={styles.legend}>
@@ -711,10 +708,10 @@ export default function DAGPanel({ onOpenFile }) {
             <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
               {['basic', 'full'].map(mode => (
                 <button key={mode} onClick={() => setDagMode(mode)} style={{
-                  padding: '3px 10px', borderRadius: 4, fontSize: 11, cursor: 'pointer',
-                  background: dagMode === mode ? 'var(--havn-accent, #58a6ff)' : 'transparent',
-                  color: dagMode === mode ? '#fff' : 'var(--havn-text-secondary)',
-                  border: dagMode === mode ? 'none' : '1px solid var(--havn-border)'
+                  padding: '4px 12px', borderRadius: 'var(--havn-radius-lg)', fontSize: 11, cursor: 'pointer', fontWeight: 500,
+                  background: dagMode === mode ? 'var(--havn-accent)' : 'var(--havn-btn-bg)',
+                  color: dagMode === mode ? '#fff' : 'var(--havn-text)',
+                  border: dagMode === mode ? '1px solid var(--havn-accent)' : '1px solid var(--havn-btn-border)'
                 }}>{mode === 'basic' ? 'Basic' : 'Full'}</button>
               ))}
             </div>
@@ -772,7 +769,7 @@ export default function DAGPanel({ onOpenFile }) {
                 const t = new Date(r.started_at).getTime();
                 const pct = sorted.length === 1 ? 50 : ((t - earliest) / span) * 100;
                 const isSelected = i === selectedSortedIdx;
-                const statusColor = r.status === "success" ? "#3fb950" : r.status === "failed" ? "#f85149" : "#d29922";
+                const statusColor = r.status === "success" ? "var(--havn-green)" : r.status === "failed" ? "var(--havn-red)" : "var(--havn-yellow)";
                 return (
                   <div
                     key={r.run_id}
@@ -804,7 +801,7 @@ export default function DAGPanel({ onOpenFile }) {
                 <span style={{ fontWeight: 600 }}>{currentRun.started_at?.slice(11, 19)}</span>
                 <span style={{
                   marginLeft: 6, fontSize: 10, fontWeight: 600,
-                  color: currentRun.status === "success" ? "#3fb950" : currentRun.status === "failed" ? "#f85149" : "#d29922",
+                  color: currentRun.status === "success" ? "var(--havn-green)" : currentRun.status === "failed" ? "var(--havn-red)" : "var(--havn-yellow)",
                 }}>
                   {currentRun.status}
                 </span>
@@ -864,6 +861,6 @@ const styles = {
   canvas: { display: "block" },
   loading: { padding: "24px", color: "var(--havn-text-secondary)", textAlign: "center" },
   empty: { padding: "24px", color: "var(--havn-text-dim)", textAlign: "center" },
-  rewindBtn: { border: "1px solid var(--havn-border)", borderRadius: 4, padding: "3px 10px", fontSize: 11, fontWeight: 600, cursor: "pointer" },
+  rewindBtn: { border: "1px solid var(--havn-btn-border)", borderRadius: "var(--havn-radius-lg)", padding: "4px 12px", fontSize: 11, fontWeight: 500, cursor: "pointer" },
   sliderContainer: { display: "flex", alignItems: "center", gap: 10, padding: "8px 16px", borderBottom: "1px solid var(--havn-border)", background: "var(--havn-bg-secondary)", fontSize: 12, flexShrink: 0 },
 };

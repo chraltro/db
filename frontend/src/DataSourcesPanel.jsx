@@ -13,8 +13,8 @@ function _timeAgo(dateStr) {
   return `${Math.floor(hours / 24)}d ago`;
 }
 
-const thStyle = { textAlign: 'left', padding: '8px 12px', borderBottom: '1px solid #333', color: '#888', fontSize: 11, textTransform: 'uppercase' };
-const tdStyle = { padding: '8px 12px', borderBottom: '1px solid #222' };
+const thStyle = { textAlign: 'left', padding: '8px 12px', borderBottom: '1px solid var(--havn-border)', color: 'var(--havn-text-secondary)', fontSize: 11, textTransform: 'uppercase' };
+const tdStyle = { padding: '8px 12px', borderBottom: '1px solid var(--havn-border)' };
 
 function CDCSection() {
   const [cdcStatus, setCdcStatus] = useState([]);
@@ -47,13 +47,13 @@ function CDCSection() {
     setResetting(null);
   };
 
-  if (loading) return <p style={{ color: '#888', padding: 16 }}>Loading CDC status...</p>;
+  if (loading) return <p style={{ color: 'var(--havn-text-secondary)', padding: 16 }}>Loading CDC status...</p>;
   if (cdcStatus.length === 0) return null;
 
   return (
     <div style={{ marginTop: 24 }}>
-      <h3 style={{ fontSize: 15, fontWeight: 600, color: '#e0e0e0', marginBottom: 12 }}>Change Data Capture</h3>
-      <p style={{ fontSize: 13, color: '#888', marginBottom: 12 }}>Track incremental data changes from connected sources.</p>
+      <h3 style={{ fontSize: 15, fontWeight: 600, color: 'var(--havn-text)', marginBottom: 12 }}>Change Data Capture</h3>
+      <p style={{ fontSize: 13, color: 'var(--havn-text-secondary)', marginBottom: 12 }}>Track incremental data changes from connected sources.</p>
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
         <thead>
           <tr>
@@ -74,7 +74,7 @@ function CDCSection() {
               <td style={tdStyle}>
                 <span style={{
                   padding: '2px 8px', borderRadius: 4, fontSize: 11,
-                  background: '#1a2a3a', color: '#60a5fa'
+                  background: 'var(--havn-bg-tertiary)', color: 'var(--havn-accent)'
                 }}>{c.cdc_mode || c.mode || '—'}</span>
               </td>
               <td style={tdStyle}><code style={{ fontSize: 12 }}>{c.watermark || c.high_watermark || '—'}</code></td>
@@ -84,17 +84,17 @@ function CDCSection() {
                 {confirmReset === (c.connector || c.name) ? (
                   <span style={{ display: 'flex', gap: 4 }}>
                     <button onClick={() => handleReset(c.connector || c.name)} disabled={resetting === (c.connector || c.name)}
-                      style={{ padding: '4px 10px', background: '#5a2d2d', color: '#f87171', border: '1px solid #7a3d3d', borderRadius: 4, cursor: 'pointer', fontSize: 12 }}>
+                      style={{ padding: '4px 12px', background: 'var(--havn-red-bg)', color: 'var(--havn-red)', border: '1px solid var(--havn-red-border)', borderRadius: 'var(--havn-radius-lg)', cursor: 'pointer', fontSize: 11, fontWeight: 500 }}>
                       {resetting === (c.connector || c.name) ? 'Resetting...' : 'Confirm'}
                     </button>
                     <button onClick={() => setConfirmReset(null)}
-                      style={{ padding: '4px 10px', background: '#2a2a2a', color: '#888', border: '1px solid #444', borderRadius: 4, cursor: 'pointer', fontSize: 12 }}>
+                      style={{ padding: '4px 12px', background: 'var(--havn-btn-bg)', color: 'var(--havn-text)', border: '1px solid var(--havn-btn-border)', borderRadius: 'var(--havn-radius-lg)', cursor: 'pointer', fontSize: 11, fontWeight: 500 }}>
                       Cancel
                     </button>
                   </span>
                 ) : (
                   <button onClick={() => setConfirmReset(c.connector || c.name)}
-                    style={{ padding: '4px 10px', background: '#2a2a2a', color: '#e0e0e0', border: '1px solid #444', borderRadius: 4, cursor: 'pointer', fontSize: 12 }}>
+                    style={{ padding: '4px 12px', background: 'var(--havn-btn-bg)', color: 'var(--havn-text)', border: '1px solid var(--havn-btn-border)', borderRadius: 'var(--havn-radius-lg)', cursor: 'pointer', fontSize: 11, fontWeight: 500 }}>
                     Reset Watermark
                   </button>
                 )}
@@ -780,7 +780,7 @@ export default function DataSourcesPanel({ addOutput }) {
   return (
     <div style={st.container}>
       <div style={st.header}>
-        <span style={st.title}>Data Sources</span>
+        <span />
         {configured.length > 0 && (
           <button onClick={() => setView("manage")} style={st.btn}>
             Manage ({configured.length})
@@ -854,7 +854,7 @@ const st = {
   container: { display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" },
   center: { display: "flex", alignItems: "center", justifyContent: "center", height: "100%", color: "var(--havn-text-secondary)", fontSize: "13px" },
   header: { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 12px", borderBottom: "1px solid var(--havn-border)" },
-  title: { fontWeight: 600, fontSize: "14px" },
+  title: { fontWeight: 600, fontSize: "13px" },
   content: { flex: 1, overflow: "auto", padding: "16px" },
 
   // Home view
@@ -905,10 +905,10 @@ const st = {
   },
 
   // Shared styles
-  btn: { padding: "5px 14px", background: "var(--havn-btn-bg)", border: "1px solid var(--havn-btn-border)", borderRadius: "var(--havn-radius-lg)", color: "var(--havn-text)", cursor: "pointer", fontSize: "12px", fontWeight: 500 },
-  btnPrimary: { padding: "5px 14px", background: "var(--havn-green)", border: "1px solid var(--havn-green-border)", borderRadius: "var(--havn-radius-lg)", color: "#fff", cursor: "pointer", fontSize: "12px", fontWeight: 500 },
-  btnDanger: { padding: "5px 14px", background: "var(--havn-btn-bg)", border: "1px solid var(--havn-btn-border)", borderRadius: "var(--havn-radius-lg)", color: "var(--havn-red)", cursor: "pointer", fontSize: "12px", fontWeight: 500 },
-  btnText: { background: "none", border: "none", color: "var(--havn-text-secondary)", cursor: "pointer", fontSize: "12px", fontWeight: 500 },
+  btn: { padding: "4px 12px", background: "var(--havn-btn-bg)", border: "1px solid var(--havn-btn-border)", borderRadius: "var(--havn-radius-lg)", color: "var(--havn-text)", cursor: "pointer", fontSize: "11px", fontWeight: 500 },
+  btnPrimary: { padding: "4px 12px", background: "var(--havn-green)", border: "1px solid var(--havn-green-border)", borderRadius: "var(--havn-radius-lg)", color: "#fff", cursor: "pointer", fontSize: "11px", fontWeight: 500 },
+  btnDanger: { padding: "4px 12px", background: "var(--havn-btn-bg)", border: "1px solid var(--havn-btn-border)", borderRadius: "var(--havn-radius-lg)", color: "var(--havn-red)", cursor: "pointer", fontSize: "11px", fontWeight: 500 },
+  btnText: { background: "none", border: "none", color: "var(--havn-text-secondary)", cursor: "pointer", fontSize: "11px", fontWeight: 500 },
   btnSmall: { padding: "2px 8px", background: "var(--havn-btn-bg)", border: "1px solid var(--havn-btn-border)", borderRadius: "var(--havn-radius)", color: "var(--havn-text-secondary)", cursor: "pointer", fontSize: "11px" },
 
   // Forms
