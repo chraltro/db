@@ -13,7 +13,7 @@ class TestCollaboration:
     """Test the collaboration session manager."""
 
     def test_create_and_list_sessions(self):
-        from dp.engine.collaboration import SessionManager
+        from havn.engine.collaboration import SessionManager
 
         mgr = SessionManager()
         session = mgr.create_session("Test Session")
@@ -25,7 +25,7 @@ class TestCollaboration:
         assert sessions[0]["name"] == "Test Session"
 
     def test_join_and_leave(self):
-        from dp.engine.collaboration import SessionManager
+        from havn.engine.collaboration import SessionManager
 
         mgr = SessionManager()
         session = mgr.create_session("Test")
@@ -42,7 +42,7 @@ class TestCollaboration:
         assert len(mgr.get_participants(session.session_id)) == 0
 
     def test_query_history(self):
-        from dp.engine.collaboration import SessionManager
+        from havn.engine.collaboration import SessionManager
 
         mgr = SessionManager()
         session = mgr.create_session()
@@ -60,7 +60,7 @@ class TestCollaboration:
         assert session.query_history[-1]["duration_ms"] == 42
 
     def test_shared_sql(self):
-        from dp.engine.collaboration import SessionManager
+        from havn.engine.collaboration import SessionManager
 
         mgr = SessionManager()
         session = mgr.create_session()
@@ -69,7 +69,7 @@ class TestCollaboration:
         assert session.shared_sql == "SELECT * FROM orders"
 
     def test_cursor_tracking(self):
-        from dp.engine.collaboration import SessionManager
+        from havn.engine.collaboration import SessionManager
 
         mgr = SessionManager()
         session = mgr.create_session()
@@ -84,7 +84,7 @@ class TestCollaboration:
         assert participants[0]["cursor_position"] == {"line": 5, "column": 10}
 
     def test_delete_session(self):
-        from dp.engine.collaboration import SessionManager
+        from havn.engine.collaboration import SessionManager
 
         mgr = SessionManager()
         session = mgr.create_session("Temp")
@@ -93,7 +93,7 @@ class TestCollaboration:
         assert mgr.delete_session("nonexistent") is False
 
     def test_max_history_limit(self):
-        from dp.engine.collaboration import SessionManager
+        from havn.engine.collaboration import SessionManager
 
         mgr = SessionManager()
         mgr._max_history = 5
@@ -137,7 +137,7 @@ def project_with_contracts(tmp_path):
 
     # Create warehouse
     conn = duckdb.connect(str(tmp_path / "warehouse.duckdb"))
-    from dp.engine.database import ensure_meta_table
+    from havn.engine.database import ensure_meta_table
     ensure_meta_table(conn)
     conn.execute("CREATE SCHEMA IF NOT EXISTS bronze")
     conn.execute("CREATE TABLE bronze.test AS SELECT 1 AS id, 'Alice' AS name")
@@ -150,7 +150,7 @@ def project_with_contracts(tmp_path):
 def api_client(project_with_contracts):
     """Create a FastAPI TestClient."""
     from starlette.testclient import TestClient
-    import dp.server.app as server_app
+    import havn.server.app as server_app
     server_app.PROJECT_DIR = project_with_contracts
     server_app.AUTH_ENABLED = False
     return TestClient(server_app.app)
@@ -202,7 +202,7 @@ class TestCollaborationSecurity:
     """Test size limits and stale session handling."""
 
     def test_shared_sql_size_limit(self):
-        from dp.engine.collaboration import SessionManager
+        from havn.engine.collaboration import SessionManager
 
         mgr = SessionManager()
         session = mgr.create_session()
@@ -211,7 +211,7 @@ class TestCollaborationSecurity:
         assert len(session.shared_sql) <= mgr._max_sql_length
 
     def test_session_name_truncated(self):
-        from dp.engine.collaboration import SessionManager
+        from havn.engine.collaboration import SessionManager
 
         mgr = SessionManager()
         long_name = "A" * 500
@@ -219,7 +219,7 @@ class TestCollaborationSecurity:
         assert len(session.name) <= 200
 
     def test_stale_session_eviction(self):
-        from dp.engine.collaboration import SessionManager
+        from havn.engine.collaboration import SessionManager
 
         mgr = SessionManager()
         mgr._session_ttl = 0  # Immediately stale

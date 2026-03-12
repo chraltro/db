@@ -20,7 +20,7 @@ export default function GuideTour({ steps, onComplete, isOpen }) {
       return;
     }
 
-    const el = document.querySelector(`[data-dp-guide="${step.id}"]`);
+    const el = document.querySelector(`[data-havn-guide="${step.id}"]`);
     if (!el) {
       setHighlightRect(null);
       setTooltipPos({ top: "50%", left: "50%", transform: "translate(-50%, -50%)" });
@@ -178,7 +178,7 @@ const styles = {
   },
   spotlight: {
     position: "fixed",
-    borderRadius: "var(--dp-radius-lg, 8px)",
+    borderRadius: "var(--havn-radius-lg, 8px)",
     boxShadow: "0 0 0 9999px rgba(0, 0, 0, 0.55)",
     pointerEvents: "none",
     transition: "all 0.3s ease",
@@ -193,9 +193,9 @@ const styles = {
   },
   card: {
     position: "fixed",
-    background: "var(--dp-bg-secondary)",
-    border: "1px solid var(--dp-border-light)",
-    borderRadius: "var(--dp-radius-lg, 8px)",
+    background: "var(--havn-bg-secondary)",
+    border: "1px solid var(--havn-border-light)",
+    borderRadius: "var(--havn-radius-lg, 8px)",
     padding: "18px 22px",
     width: "300px",
     boxShadow: "0 8px 32px rgba(0, 0, 0, 0.35)",
@@ -205,7 +205,7 @@ const styles = {
   },
   stepCounter: {
     fontSize: "10px",
-    color: "var(--dp-text-dim)",
+    color: "var(--havn-text-dim)",
     fontWeight: 600,
     letterSpacing: "0.5px",
     textTransform: "uppercase",
@@ -214,12 +214,12 @@ const styles = {
   title: {
     fontSize: "15px",
     fontWeight: 600,
-    color: "var(--dp-text)",
+    color: "var(--havn-text)",
     margin: "0 0 6px",
   },
   description: {
     fontSize: "13px",
-    color: "var(--dp-text-secondary)",
+    color: "var(--havn-text-secondary)",
     lineHeight: 1.6,
     margin: "0 0 16px",
   },
@@ -230,20 +230,20 @@ const styles = {
   },
   btnPrimary: {
     padding: "6px 16px",
-    background: "var(--dp-accent)",
+    background: "var(--havn-accent)",
     border: "none",
-    borderRadius: "var(--dp-radius, 4px)",
-    color: "var(--dp-bg)",
+    borderRadius: "var(--havn-radius, 4px)",
+    color: "var(--havn-bg)",
     cursor: "pointer",
     fontSize: "12px",
     fontWeight: 600,
   },
   btnSecondary: {
     padding: "6px 14px",
-    background: "var(--dp-btn-bg)",
-    border: "1px solid var(--dp-btn-border)",
-    borderRadius: "var(--dp-radius, 4px)",
-    color: "var(--dp-text)",
+    background: "var(--havn-btn-bg)",
+    border: "1px solid var(--havn-btn-border)",
+    borderRadius: "var(--havn-radius, 4px)",
+    color: "var(--havn-text)",
     cursor: "pointer",
     fontSize: "12px",
   },
@@ -251,7 +251,7 @@ const styles = {
     padding: "6px 14px",
     background: "none",
     border: "none",
-    color: "var(--dp-text-dim)",
+    color: "var(--havn-text-dim)",
     cursor: "pointer",
     fontSize: "12px",
     marginRight: "auto",

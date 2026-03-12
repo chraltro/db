@@ -6,7 +6,7 @@ from pathlib import Path
 import duckdb
 import pytest
 
-from dp.engine.sentinel import (
+from havn.engine.sentinel import (
     ColumnInfo,
     SchemaChange,
     SentinelConfig,

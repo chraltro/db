@@ -34,7 +34,7 @@ def project(tmp_path):
 
 @pytest.fixture
 def client(project):
-    import dp.server.app as server_app
+    import havn.server.app as server_app
 
     server_app.PROJECT_DIR = project
     server_app.AUTH_ENABLED = False

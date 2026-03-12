@@ -38,9 +38,9 @@ function CodeArea({ value, onChange, onKeyDown, minLines = 3, spellCheck = false
         style={{
           width: 40, flexShrink: 0, padding: "8px 0",
           overflow: "hidden",
-          textAlign: "right", fontFamily: "var(--dp-font-mono)", fontSize: "13px",
-          lineHeight: 1.5, color: "var(--dp-text-dim)", userSelect: "none",
-          borderRight: "1px solid var(--dp-border)", background: "var(--dp-bg-secondary)",
+          textAlign: "right", fontFamily: "var(--havn-font-mono)", fontSize: "13px",
+          lineHeight: 1.5, color: "var(--havn-text-dim)", userSelect: "none",
+          borderRight: "1px solid var(--havn-border)", background: "var(--havn-bg-secondary)",
           boxSizing: "border-box",
         }}
       >
@@ -57,7 +57,7 @@ function CodeArea({ value, onChange, onKeyDown, minLines = 3, spellCheck = false
         spellCheck={spellCheck}
         style={{
           flex: 1, padding: "8px 12px", background: "transparent", border: "none",
-          color: "var(--dp-text)", fontFamily: "var(--dp-font-mono)", fontSize: "13px",
+          color: "var(--havn-text)", fontFamily: "var(--havn-font-mono)", fontSize: "13px",
           resize: "none", outline: "none", boxSizing: "border-box", lineHeight: 1.5,
           height: "100%", overflow: capped ? "auto" : "hidden",
         }}
@@ -227,7 +227,7 @@ function IngestCellEditor({ cell, notebookName, onUpdate, onDelete, externalRunn
         <button onClick={runCell} disabled={isRunning} style={cs.runBtn}>
           {isRunning ? "..." : "\u25B6"}
         </button>
-        <span style={{ ...cs.cellType, color: "var(--dp-blue, var(--dp-text-dim))" }}>INGEST</span>
+        <span style={{ ...cs.cellType, color: "var(--havn-blue, var(--havn-text-dim))" }}>INGEST</span>
         <span style={{ flex: 1 }} />
         <button
           onClick={() => setShowSource(!showSource)}
@@ -237,7 +237,7 @@ function IngestCellEditor({ cell, notebookName, onUpdate, onDelete, externalRunn
           {showSource ? "Form" : "{ }"}
         </button>
         {duration != null && <span style={cs.duration}>{duration}ms</span>}
-        <button data-dp-danger="" onClick={onDelete} style={cs.deleteBtn} title="Delete cell">&times;</button>
+        <button data-havn-danger="" onClick={onDelete} style={cs.deleteBtn} title="Delete cell">&times;</button>
       </div>
 
       {showSource ? (
@@ -407,7 +407,7 @@ function SqlCell({ cell, notebookName, onUpdate, onDelete, externalRunning }) {
         <span style={cs.cellType}>SQL</span>
         <span style={{ flex: 1 }} />
         {duration != null && <span style={cs.duration}>{duration}ms</span>}
-        <button data-dp-danger="" onClick={onDelete} style={cs.deleteBtn} title="Delete cell">&times;</button>
+        <button data-havn-danger="" onClick={onDelete} style={cs.deleteBtn} title="Delete cell">&times;</button>
       </div>
       <CodeArea
         value={source}
@@ -462,7 +462,7 @@ function CodeCell({ cell, notebookName, onUpdate, onDelete, externalRunning }) {
         <span style={cs.cellType}>PY</span>
         <span style={{ flex: 1 }} />
         {duration != null && <span style={cs.duration}>{duration}ms</span>}
-        <button data-dp-danger="" onClick={onDelete} style={cs.deleteBtn} title="Delete cell">&times;</button>
+        <button data-havn-danger="" onClick={onDelete} style={cs.deleteBtn} title="Delete cell">&times;</button>
       </div>
       <CodeArea
         value={source}
@@ -511,7 +511,7 @@ function MarkdownCell({ cell, onUpdate, onDelete }) {
       <div style={cs.cellHeader}>
         <span style={cs.cellType}>MD</span>
         <span style={{ flex: 1 }} />
-        <button data-dp-danger="" onClick={onDelete} style={cs.deleteBtn} title="Delete cell">&times;</button>
+        <button data-havn-danger="" onClick={onDelete} style={cs.deleteBtn} title="Delete cell">&times;</button>
       </div>
       <CodeArea
         value={source}
@@ -653,13 +653,13 @@ export default function NotebookPanel({ openPath }) {
             <button onClick={createNotebook} style={s.btn}>New</button>
           </div>
         </div>
-        {nbError && <div style={{ color: "var(--dp-red)", fontSize: "12px", padding: "6px 12px" }}>{nbError}</div>}
+        {nbError && <div style={{ color: "var(--havn-red)", fontSize: "12px", padding: "6px 12px" }}>{nbError}</div>}
         <div style={s.list}>
           {notebooks.length === 0 && (
             <div style={s.empty}>No notebooks yet. Create one above.</div>
           )}
           {notebooks.map((nb) => (
-            <div key={nb.path} data-dp-notebook="" onClick={() => openNotebook(nb.path)} style={s.nbItem}>
+            <div key={nb.path} data-havn-notebook="" onClick={() => openNotebook(nb.path)} style={s.nbItem}>
               <span style={s.nbName}>{nb.title || nb.name}</span>
               <span style={s.nbMeta}><span style={s.nbPath}>{nb.path}</span> · {nb.cells} cells</span>
             </div>
@@ -707,57 +707,57 @@ export default function NotebookPanel({ openPath }) {
 
 const s = {
   container: { display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" },
-  listHeader: { padding: "12px 16px", borderBottom: "1px solid var(--dp-border)" },
+  listHeader: { padding: "12px 16px", borderBottom: "1px solid var(--havn-border)" },
   title: { fontSize: "16px", fontWeight: 600 },
   newRow: { display: "flex", gap: "8px", marginTop: "8px" },
-  input: { flex: 1, padding: "6px 10px", background: "var(--dp-bg-tertiary)", border: "1px solid var(--dp-border-light)", borderRadius: "var(--dp-radius-lg)", color: "var(--dp-text)", fontSize: "13px" },
-  btn: { padding: "5px 12px", background: "var(--dp-btn-bg)", border: "1px solid var(--dp-btn-border)", borderRadius: "var(--dp-radius-lg)", color: "var(--dp-text)", cursor: "pointer", fontSize: "12px", fontWeight: 500 },
+  input: { flex: 1, padding: "6px 10px", background: "var(--havn-bg-tertiary)", border: "1px solid var(--havn-border-light)", borderRadius: "var(--havn-radius-lg)", color: "var(--havn-text)", fontSize: "13px" },
+  btn: { padding: "5px 12px", background: "var(--havn-btn-bg)", border: "1px solid var(--havn-btn-border)", borderRadius: "var(--havn-radius-lg)", color: "var(--havn-text)", cursor: "pointer", fontSize: "12px", fontWeight: 500 },
   list: { flex: 1, overflow: "auto", padding: "8px" },
-  empty: { color: "var(--dp-text-dim)", textAlign: "center", padding: "24px" },
-  nbItem: { padding: "10px 12px", borderRadius: "var(--dp-radius-lg)", cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "4px", border: "1px solid var(--dp-border)" },
+  empty: { color: "var(--havn-text-dim)", textAlign: "center", padding: "24px" },
+  nbItem: { padding: "10px 12px", borderRadius: "var(--havn-radius-lg)", cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "4px", border: "1px solid var(--havn-border)" },
   nbName: { fontWeight: 500, fontSize: "13px" },
-  nbMeta: { color: "var(--dp-text-secondary)", fontSize: "12px" },
-  nbPath: { fontFamily: "var(--dp-font-mono)", fontSize: "11px", color: "var(--dp-text-dim)" },
-  nbHeader: { display: "flex", alignItems: "center", gap: "12px", padding: "8px 12px", borderBottom: "1px solid var(--dp-border)" },
-  backBtn: { padding: "4px 8px", background: "none", border: "1px solid var(--dp-border-light)", borderRadius: "var(--dp-radius-lg)", color: "var(--dp-text-secondary)", cursor: "pointer", fontSize: "12px" },
+  nbMeta: { color: "var(--havn-text-secondary)", fontSize: "12px" },
+  nbPath: { fontFamily: "var(--havn-font-mono)", fontSize: "11px", color: "var(--havn-text-dim)" },
+  nbHeader: { display: "flex", alignItems: "center", gap: "12px", padding: "8px 12px", borderBottom: "1px solid var(--havn-border)" },
+  backBtn: { padding: "4px 8px", background: "none", border: "1px solid var(--havn-border-light)", borderRadius: "var(--havn-radius-lg)", color: "var(--havn-text-secondary)", cursor: "pointer", fontSize: "12px" },
   nbTitle: { fontWeight: 600, fontSize: "14px", flex: 1 },
   nbActions: { display: "flex", gap: "6px" },
-  runAllBtn: { padding: "5px 12px", background: "var(--dp-green)", border: "1px solid var(--dp-green-border)", borderRadius: "var(--dp-radius-lg)", color: "#fff", cursor: "pointer", fontSize: "12px", fontWeight: 500 },
+  runAllBtn: { padding: "5px 12px", background: "var(--havn-green)", border: "1px solid var(--havn-green-border)", borderRadius: "var(--havn-radius-lg)", color: "#fff", cursor: "pointer", fontSize: "12px", fontWeight: 500 },
   cells: { flex: 1, overflow: "auto", padding: "12px 16px", maxWidth: "900px", margin: "0 auto", width: "100%", boxSizing: "border-box" },
 };
 
 const cs = {
   cellWrap: { position: "relative", marginBottom: "10px" },
-  codeCell: { border: "1px solid var(--dp-border)", borderRadius: "var(--dp-radius-lg)", background: "var(--dp-bg-tertiary)", overflow: "hidden" },
-  mdCell: { border: "1px solid var(--dp-border)", borderRadius: "var(--dp-radius-lg)", background: "var(--dp-bg-tertiary)", overflow: "hidden" },
-  cellHeader: { display: "flex", alignItems: "center", gap: "8px", padding: "4px 8px", minHeight: "32px", borderBottom: "1px solid var(--dp-border)", background: "var(--dp-bg-secondary)" },
-  cellType: { fontSize: "9px", fontWeight: 700, color: "var(--dp-text-dim)", letterSpacing: "0.5px", textTransform: "uppercase" },
-  runBtn: { width: "28px", height: "24px", background: "var(--dp-green)", border: "none", borderRadius: "var(--dp-radius)", color: "#fff", cursor: "pointer", fontSize: "11px", fontWeight: 600 },
-  toggleBtn: { padding: "2px 8px", background: "none", border: "1px solid var(--dp-border-light)", borderRadius: "var(--dp-radius)", color: "var(--dp-text-secondary)", cursor: "pointer", fontSize: "10px", fontWeight: 600 },
-  duration: { color: "var(--dp-text-secondary)", fontSize: "11px" },
-  codeInput: { width: "100%", padding: "8px 12px", background: "transparent", border: "none", color: "var(--dp-text)", fontFamily: "var(--dp-font-mono)", fontSize: "13px", resize: "vertical", outline: "none", boxSizing: "border-box", lineHeight: 1.5 },
-  mdInput: { width: "100%", padding: "8px 12px", background: "transparent", border: "none", color: "var(--dp-text)", fontSize: "13px", resize: "vertical", outline: "none", boxSizing: "border-box", lineHeight: 1.5 },
-  outputArea: { borderTop: "1px solid var(--dp-border)", padding: "8px 12px", maxHeight: "300px", overflow: "auto", background: "color-mix(in srgb, var(--dp-bg) 50%, var(--dp-bg-tertiary))" },
+  codeCell: { border: "1px solid var(--havn-border)", borderRadius: "var(--havn-radius-lg)", background: "var(--havn-bg-tertiary)", overflow: "hidden" },
+  mdCell: { border: "1px solid var(--havn-border)", borderRadius: "var(--havn-radius-lg)", background: "var(--havn-bg-tertiary)", overflow: "hidden" },
+  cellHeader: { display: "flex", alignItems: "center", gap: "8px", padding: "4px 8px", minHeight: "32px", borderBottom: "1px solid var(--havn-border)", background: "var(--havn-bg-secondary)" },
+  cellType: { fontSize: "9px", fontWeight: 700, color: "var(--havn-text-dim)", letterSpacing: "0.5px", textTransform: "uppercase" },
+  runBtn: { width: "28px", height: "24px", background: "var(--havn-green)", border: "none", borderRadius: "var(--havn-radius)", color: "#fff", cursor: "pointer", fontSize: "11px", fontWeight: 600 },
+  toggleBtn: { padding: "2px 8px", background: "none", border: "1px solid var(--havn-border-light)", borderRadius: "var(--havn-radius)", color: "var(--havn-text-secondary)", cursor: "pointer", fontSize: "10px", fontWeight: 600 },
+  duration: { color: "var(--havn-text-secondary)", fontSize: "11px" },
+  codeInput: { width: "100%", padding: "8px 12px", background: "transparent", border: "none", color: "var(--havn-text)", fontFamily: "var(--havn-font-mono)", fontSize: "13px", resize: "vertical", outline: "none", boxSizing: "border-box", lineHeight: 1.5 },
+  mdInput: { width: "100%", padding: "8px 12px", background: "transparent", border: "none", color: "var(--havn-text)", fontSize: "13px", resize: "vertical", outline: "none", boxSizing: "border-box", lineHeight: 1.5 },
+  outputArea: { borderTop: "1px solid var(--havn-border)", padding: "8px 12px", maxHeight: "300px", overflow: "auto", background: "color-mix(in srgb, var(--havn-bg) 50%, var(--havn-bg-tertiary))" },
   tableWrap: { overflow: "auto" },
-  table: { width: "100%", borderCollapse: "collapse", fontSize: "12px", fontFamily: "var(--dp-font-mono)" },
-  th: { textAlign: "left", padding: "4px 8px", borderBottom: "1px solid var(--dp-border-light)", color: "var(--dp-text-secondary)", fontWeight: 600 },
-  td: { padding: "3px 8px", borderBottom: "1px solid var(--dp-border)", color: "var(--dp-text)" },
-  null: { color: "var(--dp-text-dim)", fontStyle: "italic" },
-  truncated: { padding: "4px", color: "var(--dp-yellow)", fontSize: "11px" },
-  error: { color: "var(--dp-red)", fontSize: "12px", fontFamily: "var(--dp-font-mono)", margin: 0, whiteSpace: "pre-wrap" },
-  text: { color: "var(--dp-text)", fontSize: "12px", fontFamily: "var(--dp-font-mono)", margin: 0, whiteSpace: "pre-wrap" },
-  deleteBtn: { width: "22px", height: "22px", background: "none", border: "none", color: "var(--dp-text-dim)", cursor: "pointer", fontSize: "14px", lineHeight: "22px", textAlign: "center", borderRadius: "var(--dp-radius)", flexShrink: 0 },
+  table: { width: "100%", borderCollapse: "collapse", fontSize: "12px", fontFamily: "var(--havn-font-mono)" },
+  th: { textAlign: "left", padding: "4px 8px", borderBottom: "1px solid var(--havn-border-light)", color: "var(--havn-text-secondary)", fontWeight: 600 },
+  td: { padding: "3px 8px", borderBottom: "1px solid var(--havn-border)", color: "var(--havn-text)" },
+  null: { color: "var(--havn-text-dim)", fontStyle: "italic" },
+  truncated: { padding: "4px", color: "var(--havn-yellow)", fontSize: "11px" },
+  error: { color: "var(--havn-red)", fontSize: "12px", fontFamily: "var(--havn-font-mono)", margin: 0, whiteSpace: "pre-wrap" },
+  text: { color: "var(--havn-text)", fontSize: "12px", fontFamily: "var(--havn-font-mono)", margin: 0, whiteSpace: "pre-wrap" },
+  deleteBtn: { width: "22px", height: "22px", background: "none", border: "none", color: "var(--havn-text-dim)", cursor: "pointer", fontSize: "14px", lineHeight: "22px", textAlign: "center", borderRadius: "var(--havn-radius)", flexShrink: 0 },
 };
 
 // Ingest form styles
 const ig = {
   form: { padding: "8px 12px" },
   row: { display: "flex", alignItems: "center", gap: "8px", marginBottom: "6px" },
-  label: { width: "70px", flexShrink: 0, fontSize: "11px", fontWeight: 600, color: "var(--dp-text-secondary)", textTransform: "uppercase", letterSpacing: "0.3px" },
-  input: { flex: 1, padding: "5px 8px", background: "var(--dp-bg)", border: "1px solid var(--dp-border-light)", borderRadius: "var(--dp-radius)", color: "var(--dp-text)", fontFamily: "var(--dp-font-mono)", fontSize: "12px", outline: "none", boxSizing: "border-box" },
-  select: { flex: 1, padding: "5px 8px", background: "var(--dp-bg)", border: "1px solid var(--dp-border-light)", borderRadius: "var(--dp-radius)", color: "var(--dp-text)", fontSize: "12px", outline: "none" },
+  label: { width: "70px", flexShrink: 0, fontSize: "11px", fontWeight: 600, color: "var(--havn-text-secondary)", textTransform: "uppercase", letterSpacing: "0.3px" },
+  input: { flex: 1, padding: "5px 8px", background: "var(--havn-bg)", border: "1px solid var(--havn-border-light)", borderRadius: "var(--havn-radius)", color: "var(--havn-text)", fontFamily: "var(--havn-font-mono)", fontSize: "12px", outline: "none", boxSizing: "border-box" },
+  select: { flex: 1, padding: "5px 8px", background: "var(--havn-bg)", border: "1px solid var(--havn-border-light)", borderRadius: "var(--havn-radius)", color: "var(--havn-text)", fontSize: "12px", outline: "none" },
   targetRow: { display: "flex", alignItems: "center", gap: "4px", flex: 1 },
-  dot: { color: "var(--dp-text-dim)", fontSize: "14px", fontWeight: 700 },
-  optionsToggle: { background: "none", border: "none", color: "var(--dp-text-secondary)", cursor: "pointer", fontSize: "11px", padding: "2px 0", fontWeight: 500 },
+  dot: { color: "var(--havn-text-dim)", fontSize: "14px", fontWeight: 700 },
+  optionsToggle: { background: "none", border: "none", color: "var(--havn-text-secondary)", cursor: "pointer", fontSize: "11px", padding: "2px 0", fontWeight: 500 },
   optionsArea: { marginLeft: "78px", marginBottom: "4px" },
 };

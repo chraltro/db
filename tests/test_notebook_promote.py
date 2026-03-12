@@ -3,7 +3,7 @@ from __future__ import annotations
 import duckdb
 import pytest
 
-from dp.engine.notebook import (
+from havn.engine.notebook import (
     generate_debug_notebook,
     model_to_notebook,
     promote_sql_to_model,

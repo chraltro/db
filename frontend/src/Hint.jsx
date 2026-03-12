@@ -3,7 +3,7 @@ import { useActiveHint } from "./HintSystem";
 
 /**
  * Contextual hint card — renders the currently active hint near its target element.
- * Positioned via a `target` CSS selector (data-dp-hint attribute).
+ * Positioned via a `target` CSS selector (data-havn-hint attribute).
  * Falls back to bottom-right corner if target not found.
  */
 export default function Hint({ onNavigate }) {
@@ -123,9 +123,9 @@ export default function Hint({ onNavigate }) {
 const styles = {
   card: {
     maxWidth: 300,
-    background: "var(--dp-bg-secondary)",
-    border: "1px solid var(--dp-border)",
-    borderRadius: "var(--dp-radius-lg, 8px)",
+    background: "var(--havn-bg-secondary)",
+    border: "1px solid var(--havn-border)",
+    borderRadius: "var(--havn-radius-lg, 8px)",
     padding: "12px 14px",
     boxShadow: "0 4px 16px rgba(0,0,0,0.15)",
     zIndex: 9000,
@@ -146,8 +146,8 @@ const styles = {
     alignItems: "center",
     justifyContent: "center",
     borderRadius: "50%",
-    background: "var(--dp-bg-tertiary)",
-    color: "var(--dp-accent)",
+    background: "var(--havn-bg-tertiary)",
+    color: "var(--havn-accent)",
     fontSize: "12px",
     fontWeight: 700,
     marginTop: "1px",
@@ -156,7 +156,7 @@ const styles = {
     margin: 0,
     fontSize: "12px",
     lineHeight: 1.5,
-    color: "var(--dp-text-secondary)",
+    color: "var(--havn-text-secondary)",
   },
   buttons: {
     display: "flex",
@@ -165,10 +165,10 @@ const styles = {
   },
   primaryBtn: {
     padding: "4px 12px",
-    background: "var(--dp-accent)",
+    background: "var(--havn-accent)",
     border: "none",
-    borderRadius: "var(--dp-radius, 4px)",
-    color: "var(--dp-bg)",
+    borderRadius: "var(--havn-radius, 4px)",
+    color: "var(--havn-bg)",
     cursor: "pointer",
     fontSize: "11px",
     fontWeight: 600,
@@ -176,9 +176,9 @@ const styles = {
   dismissBtn: {
     padding: "4px 12px",
     background: "none",
-    border: "1px solid var(--dp-border-light)",
-    borderRadius: "var(--dp-radius, 4px)",
-    color: "var(--dp-text-dim)",
+    border: "1px solid var(--havn-border-light)",
+    borderRadius: "var(--havn-radius, 4px)",
+    color: "var(--havn-text-dim)",
     cursor: "pointer",
     fontSize: "11px",
   },

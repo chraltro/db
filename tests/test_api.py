@@ -42,7 +42,7 @@ streams:
 
 @pytest.fixture
 def client(project):
-    import dp.server.app as server_app
+    import havn.server.app as server_app
 
     server_app.PROJECT_DIR = project
     return TestClient(server_app.app)
@@ -178,7 +178,7 @@ streams:
 
 @pytest.fixture
 def no_db_client(no_warehouse_project):
-    import dp.server.app as server_app
+    import havn.server.app as server_app
     server_app.PROJECT_DIR = no_warehouse_project
     return TestClient(server_app.app)
 
@@ -431,7 +431,7 @@ def test_list_notebooks(client, project):
 def test_resolve_notebook_rejects_path_traversal(project):
     """_resolve_notebook rejects paths that escape the project directory."""
     from fastapi import HTTPException
-    import dp.server.app as server_app
+    import havn.server.app as server_app
 
     with pytest.raises(HTTPException) as exc_info:
         server_app._resolve_notebook(project, "../../../etc/passwd")

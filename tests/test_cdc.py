@@ -13,7 +13,7 @@ class TestCDC:
     """Test the CDC (Change Data Capture) engine."""
 
     def test_ensure_cdc_table(self, tmp_path: Path):
-        from dp.engine.cdc import ensure_cdc_table
+        from havn.engine.cdc import ensure_cdc_table
 
         conn = duckdb.connect(str(tmp_path / "test.duckdb"))
         ensure_cdc_table(conn)
@@ -27,7 +27,7 @@ class TestCDC:
         conn.close()
 
     def test_watermark_lifecycle(self, tmp_path: Path):
-        from dp.engine.cdc import ensure_cdc_table, get_watermark, update_watermark
+        from havn.engine.cdc import ensure_cdc_table, get_watermark, update_watermark
 
         conn = duckdb.connect(str(tmp_path / "test.duckdb"))
         ensure_cdc_table(conn)
@@ -50,7 +50,7 @@ class TestCDC:
 
     def test_file_tracking(self, tmp_path: Path):
         import time
-        from dp.engine.cdc import ensure_cdc_table, should_sync_file, update_watermark
+        from havn.engine.cdc import ensure_cdc_table, should_sync_file, update_watermark
 
         conn = duckdb.connect(str(tmp_path / "test.duckdb"))
         ensure_cdc_table(conn)
@@ -78,8 +78,8 @@ class TestCDC:
         conn.close()
 
     def test_sync_file_csv(self, tmp_path: Path):
-        from dp.engine.cdc import CDCTableConfig, ensure_cdc_table, sync_table_file
-        from dp.engine.database import ensure_meta_table
+        from havn.engine.cdc import CDCTableConfig, ensure_cdc_table, sync_table_file
+        from havn.engine.database import ensure_meta_table
 
         conn = duckdb.connect(str(tmp_path / "test.duckdb"))
         ensure_meta_table(conn)
@@ -106,7 +106,7 @@ class TestCDC:
         conn.close()
 
     def test_cdc_status(self, tmp_path: Path):
-        from dp.engine.cdc import ensure_cdc_table, get_cdc_status, update_watermark
+        from havn.engine.cdc import ensure_cdc_table, get_cdc_status, update_watermark
 
         conn = duckdb.connect(str(tmp_path / "test.duckdb"))
         ensure_cdc_table(conn)
@@ -126,7 +126,7 @@ class TestCDC:
         conn.close()
 
     def test_reset_watermark(self, tmp_path: Path):
-        from dp.engine.cdc import ensure_cdc_table, get_cdc_status, reset_watermark, update_watermark
+        from havn.engine.cdc import ensure_cdc_table, get_cdc_status, reset_watermark, update_watermark
 
         conn = duckdb.connect(str(tmp_path / "test.duckdb"))
         ensure_cdc_table(conn)
@@ -147,7 +147,7 @@ class TestCDC:
         conn.close()
 
     def test_parse_cdc_config(self):
-        from dp.engine.cdc import parse_cdc_config
+        from havn.engine.cdc import parse_cdc_config
 
         raw = {
             "connectors": {
@@ -206,7 +206,7 @@ def project_with_contracts(tmp_path):
 
     # Create warehouse
     conn = duckdb.connect(str(tmp_path / "warehouse.duckdb"))
-    from dp.engine.database import ensure_meta_table
+    from havn.engine.database import ensure_meta_table
     ensure_meta_table(conn)
     conn.execute("CREATE SCHEMA IF NOT EXISTS bronze")
     conn.execute("CREATE TABLE bronze.test AS SELECT 1 AS id, 'Alice' AS name")
@@ -219,7 +219,7 @@ def project_with_contracts(tmp_path):
 def api_client(project_with_contracts):
     """Create a FastAPI TestClient."""
     from starlette.testclient import TestClient
-    import dp.server.app as server_app
+    import havn.server.app as server_app
     server_app.PROJECT_DIR = project_with_contracts
     server_app.AUTH_ENABLED = False
     return TestClient(server_app.app)
@@ -241,7 +241,7 @@ class TestCDCSecurity:
     """Test SQL injection prevention in CDC engine."""
 
     def test_sync_rejects_invalid_table_name(self, tmp_path: Path):
-        from dp.engine.cdc import CDCTableConfig, sync_table_high_watermark
+        from havn.engine.cdc import CDCTableConfig, sync_table_high_watermark
 
         conn = duckdb.connect(str(tmp_path / "test.duckdb"))
         config = CDCTableConfig(
@@ -257,7 +257,7 @@ class TestCDCSecurity:
         conn.close()
 
     def test_sync_rejects_invalid_cdc_column(self, tmp_path: Path):
-        from dp.engine.cdc import CDCTableConfig, sync_table_high_watermark
+        from havn.engine.cdc import CDCTableConfig, sync_table_high_watermark
 
         conn = duckdb.connect(str(tmp_path / "test.duckdb"))
         config = CDCTableConfig(
@@ -273,7 +273,7 @@ class TestCDCSecurity:
         conn.close()
 
     def test_sync_rejects_invalid_connector_name(self, tmp_path: Path):
-        from dp.engine.cdc import CDCTableConfig, sync_table_high_watermark
+        from havn.engine.cdc import CDCTableConfig, sync_table_high_watermark
 
         conn = duckdb.connect(str(tmp_path / "test.duckdb"))
         config = CDCTableConfig(
@@ -288,7 +288,7 @@ class TestCDCSecurity:
         conn.close()
 
     def test_file_sync_rejects_invalid_schema(self, tmp_path: Path):
-        from dp.engine.cdc import CDCTableConfig, sync_table_file
+        from havn.engine.cdc import CDCTableConfig, sync_table_file
 
         conn = duckdb.connect(str(tmp_path / "test.duckdb"))
         csv_file = tmp_path / "data.csv"

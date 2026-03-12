@@ -96,13 +96,13 @@ export default function MaskingPanel() {
         {error && (
           <div style={s.error}>
             {error}
-            <button onClick={() => setError(null)} style={{ background: 'none', border: 'none', color: 'var(--dp-red)', cursor: 'pointer', marginLeft: 8 }}>×</button>
+            <button onClick={() => setError(null)} style={{ background: 'none', border: 'none', color: 'var(--havn-red)', cursor: 'pointer', marginLeft: 8 }}>×</button>
           </div>
         )}
 
         {editing !== null && (
           <div style={s.formSection}>
-            <h4 style={{ color: 'var(--dp-text)', fontSize: 14, marginBottom: 12 }}>
+            <h4 style={{ color: 'var(--havn-text)', fontSize: 14, marginBottom: 12 }}>
               {editing === 'new' ? 'New Masking Policy' : 'Edit Policy'}
             </h4>
             <div style={s.formRow}>
@@ -152,7 +152,7 @@ export default function MaskingPanel() {
                 <label style={s.label}>Exempted Roles</label>
                 <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
                   {ROLES.map(role => (
-                    <label key={role} style={{ display: 'flex', alignItems: 'center', gap: 4, color: 'var(--dp-text)', fontSize: 13, cursor: 'pointer' }}>
+                    <label key={role} style={{ display: 'flex', alignItems: 'center', gap: 4, color: 'var(--havn-text)', fontSize: 13, cursor: 'pointer' }}>
                       <input type="checkbox" checked={form.exempted_roles.includes(role)} onChange={() => toggleRole(role)} />
                       {role}
                     </label>
@@ -170,9 +170,9 @@ export default function MaskingPanel() {
         )}
 
         {loading ? (
-          <p style={{ color: 'var(--dp-text-secondary)' }}>Loading policies...</p>
+          <p style={{ color: 'var(--havn-text-secondary)' }}>Loading policies...</p>
         ) : policies.length === 0 && editing === null ? (
-          <div style={{ textAlign: 'center', padding: 40, color: 'var(--dp-text-secondary)' }}>
+          <div style={{ textAlign: 'center', padding: 40, color: 'var(--havn-text-secondary)' }}>
             <p style={{ fontSize: 15, marginBottom: 8 }}>No masking policies configured</p>
             <p style={{ fontSize: 13 }}>Add policies to automatically mask sensitive data in query results.</p>
           </div>
@@ -211,7 +211,7 @@ export default function MaskingPanel() {
                           <button style={{ ...s.btn, fontSize: 12 }} onClick={() => setDeleteConfirm(null)}>Cancel</button>
                         </>
                       ) : (
-                        <button style={{ ...s.btn, color: 'var(--dp-red)' }} onClick={() => setDeleteConfirm(p.id)}>Delete</button>
+                        <button style={{ ...s.btn, color: 'var(--havn-red)' }} onClick={() => setDeleteConfirm(p.id)}>Delete</button>
                       )}
                     </div>
                   </td>
@@ -227,21 +227,21 @@ export default function MaskingPanel() {
 
 const s = {
   container: { display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' },
-  header: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', borderBottom: '1px solid var(--dp-border)' },
+  header: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', borderBottom: '1px solid var(--havn-border)' },
   title: { fontWeight: 600, fontSize: 14 },
   content: { flex: 1, overflow: 'auto', padding: '16px 24px', maxWidth: 900 },
   table: { width: '100%', borderCollapse: 'collapse', marginBottom: 12, fontSize: 12 },
-  th: { textAlign: 'left', padding: '6px 10px', borderBottom: '2px solid var(--dp-border-light)', color: 'var(--dp-text-secondary)', fontWeight: 600, fontSize: 11, textTransform: 'uppercase' },
-  td: { padding: '6px 10px', borderBottom: '1px solid var(--dp-border)' },
-  btn: { padding: '4px 10px', background: 'var(--dp-btn-bg)', border: '1px solid var(--dp-btn-border)', borderRadius: 'var(--dp-radius)', color: 'var(--dp-text)', cursor: 'pointer', fontSize: 12 },
-  btnPrimary: { padding: '6px 14px', background: 'var(--dp-green)', border: '1px solid var(--dp-green-border)', borderRadius: 'var(--dp-radius-lg)', color: '#fff', cursor: 'pointer', fontSize: 12, fontWeight: 500, whiteSpace: 'nowrap' },
-  btnDanger: { padding: '4px 10px', background: 'var(--dp-red-bg)', color: 'var(--dp-red)', border: '1px solid var(--dp-red-border)', borderRadius: 'var(--dp-radius)', cursor: 'pointer', fontSize: 12 },
-  input: { padding: '6px 10px', background: 'var(--dp-bg-tertiary)', color: 'var(--dp-text)', border: '1px solid var(--dp-border-light)', borderRadius: 'var(--dp-radius-lg)', fontSize: 13, width: '100%', boxSizing: 'border-box' },
-  select: { padding: '6px 10px', background: 'var(--dp-bg-tertiary)', color: 'var(--dp-text)', border: '1px solid var(--dp-border-light)', borderRadius: 'var(--dp-radius)', fontSize: 12 },
-  label: { display: 'block', fontSize: 12, color: 'var(--dp-text-secondary)', marginBottom: 4 },
+  th: { textAlign: 'left', padding: '6px 10px', borderBottom: '2px solid var(--havn-border-light)', color: 'var(--havn-text-secondary)', fontWeight: 600, fontSize: 11, textTransform: 'uppercase' },
+  td: { padding: '6px 10px', borderBottom: '1px solid var(--havn-border)' },
+  btn: { padding: '4px 10px', background: 'var(--havn-btn-bg)', border: '1px solid var(--havn-btn-border)', borderRadius: 'var(--havn-radius)', color: 'var(--havn-text)', cursor: 'pointer', fontSize: 12 },
+  btnPrimary: { padding: '6px 14px', background: 'var(--havn-green)', border: '1px solid var(--havn-green-border)', borderRadius: 'var(--havn-radius-lg)', color: '#fff', cursor: 'pointer', fontSize: 12, fontWeight: 500, whiteSpace: 'nowrap' },
+  btnDanger: { padding: '4px 10px', background: 'var(--havn-red-bg)', color: 'var(--havn-red)', border: '1px solid var(--havn-red-border)', borderRadius: 'var(--havn-radius)', cursor: 'pointer', fontSize: 12 },
+  input: { padding: '6px 10px', background: 'var(--havn-bg-tertiary)', color: 'var(--havn-text)', border: '1px solid var(--havn-border-light)', borderRadius: 'var(--havn-radius-lg)', fontSize: 13, width: '100%', boxSizing: 'border-box' },
+  select: { padding: '6px 10px', background: 'var(--havn-bg-tertiary)', color: 'var(--havn-text)', border: '1px solid var(--havn-border-light)', borderRadius: 'var(--havn-radius)', fontSize: 12 },
+  label: { display: 'block', fontSize: 12, color: 'var(--havn-text-secondary)', marginBottom: 4 },
   formRow: { display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginBottom: 12 },
-  formSection: { background: 'var(--dp-bg-secondary)', border: '1px solid var(--dp-border)', borderRadius: 'var(--dp-radius-lg)', padding: 16, marginBottom: 16 },
-  badge: { padding: '2px 8px', borderRadius: 'var(--dp-radius)', fontSize: 11, background: 'var(--dp-btn-bg)', color: 'var(--dp-accent)' },
-  code: { background: 'var(--dp-btn-bg)', padding: '1px 5px', borderRadius: 3, fontSize: 12, fontFamily: 'var(--dp-font-mono)' },
-  error: { padding: '8px 12px', background: 'var(--dp-red-bg)', color: 'var(--dp-red)', border: '1px solid var(--dp-red-border)', borderRadius: 'var(--dp-radius-lg)', marginBottom: 12, fontSize: 13 },
+  formSection: { background: 'var(--havn-bg-secondary)', border: '1px solid var(--havn-border)', borderRadius: 'var(--havn-radius-lg)', padding: 16, marginBottom: 16 },
+  badge: { padding: '2px 8px', borderRadius: 'var(--havn-radius)', fontSize: 11, background: 'var(--havn-btn-bg)', color: 'var(--havn-accent)' },
+  code: { background: 'var(--havn-btn-bg)', padding: '1px 5px', borderRadius: 3, fontSize: 12, fontFamily: 'var(--havn-font-mono)' },
+  error: { padding: '8px 12px', background: 'var(--havn-red-bg)', color: 'var(--havn-red)', border: '1px solid var(--havn-red-border)', borderRadius: 'var(--havn-radius-lg)', marginBottom: 12, fontSize: 13 },
 };

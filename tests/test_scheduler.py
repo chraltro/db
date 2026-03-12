@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from dp.engine.scheduler import SchedulerThread, get_scheduled_streams
+from havn.engine.scheduler import SchedulerThread, get_scheduled_streams
 
 
 def test_get_scheduled_streams_empty(tmp_path):

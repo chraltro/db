@@ -18,22 +18,22 @@ function ThemeSection() {
           return (
             <button
               key={id}
-              data-dp-theme-card=""
+              data-havn-theme-card=""
               onClick={() => setThemeId(id)}
               style={{
                 ...sec.themeCard,
-                border: active ? "2px solid var(--dp-accent)" : "1px solid var(--dp-border)",
-                background: theme.vars["--dp-bg"],
+                border: active ? "2px solid var(--havn-accent)" : "1px solid var(--havn-border)",
+                background: theme.vars["--havn-bg"],
               }}
             >
               <div style={{ display: "flex", gap: "4px", marginBottom: "8px" }}>
-                <span style={{ width: "14px", height: "14px", borderRadius: "50%", background: theme.vars["--dp-accent"], border: `1px solid ${theme.vars["--dp-border"]}` }} />
-                <span style={{ width: "14px", height: "14px", borderRadius: "50%", background: theme.vars["--dp-green"], border: `1px solid ${theme.vars["--dp-border"]}` }} />
-                <span style={{ width: "14px", height: "14px", borderRadius: "50%", background: theme.vars["--dp-red"], border: `1px solid ${theme.vars["--dp-border"]}` }} />
+                <span style={{ width: "14px", height: "14px", borderRadius: "50%", background: theme.vars["--havn-accent"], border: `1px solid ${theme.vars["--havn-border"]}` }} />
+                <span style={{ width: "14px", height: "14px", borderRadius: "50%", background: theme.vars["--havn-green"], border: `1px solid ${theme.vars["--havn-border"]}` }} />
+                <span style={{ width: "14px", height: "14px", borderRadius: "50%", background: theme.vars["--havn-red"], border: `1px solid ${theme.vars["--havn-border"]}` }} />
               </div>
-              <div style={{ color: theme.vars["--dp-text"], fontSize: "12px", fontWeight: 600, marginBottom: "2px" }}>{theme.name}</div>
-              <div style={{ color: theme.vars["--dp-text-secondary"], fontSize: "10px", lineHeight: "1.3" }}>{theme.description}</div>
-              {active && <div style={{ marginTop: "6px", fontSize: "9px", color: theme.vars["--dp-accent"], fontWeight: 700, letterSpacing: "0.5px", textTransform: "uppercase" }}>Active</div>}
+              <div style={{ color: theme.vars["--havn-text"], fontSize: "12px", fontWeight: 600, marginBottom: "2px" }}>{theme.name}</div>
+              <div style={{ color: theme.vars["--havn-text-secondary"], fontSize: "10px", lineHeight: "1.3" }}>{theme.description}</div>
+              {active && <div style={{ marginTop: "6px", fontSize: "9px", color: theme.vars["--havn-accent"], fontWeight: 700, letterSpacing: "0.5px", textTransform: "uppercase" }}>Active</div>}
             </button>
           );
         })}
@@ -99,8 +99,8 @@ function SchedulerSection() {
     <div style={sec.section}>
       <h3 style={sec.heading}>Scheduler</h3>
       <p style={sec.desc}>Configured pipeline schedules and their status.</p>
-      {loading ? <p style={{ color: 'var(--dp-text-secondary)' }}>Loading...</p> : streams.length === 0 ? (
-        <p style={{ color: 'var(--dp-text-secondary)' }}>No streams configured in project.yml</p>
+      {loading ? <p style={{ color: 'var(--havn-text-secondary)' }}>Loading...</p> : streams.length === 0 ? (
+        <p style={{ color: 'var(--havn-text-secondary)' }}>No streams configured in project.yml</p>
       ) : (
         <table style={sec.table}>
           <thead>
@@ -124,9 +124,9 @@ function SchedulerSection() {
                   <td style={sec.td}>{last.time}</td>
                   <td style={sec.td}>
                     <span style={{
-                      padding: '2px 8px', borderRadius: 'var(--dp-radius)', fontSize: 11,
-                      background: last.status === 'success' ? 'var(--dp-green-bg)' : last.status === 'error' ? 'var(--dp-red-bg)' : 'var(--dp-btn-bg)',
-                      color: last.status === 'success' ? 'var(--dp-green)' : last.status === 'error' ? 'var(--dp-red)' : 'var(--dp-text-secondary)'
+                      padding: '2px 8px', borderRadius: 'var(--havn-radius)', fontSize: 11,
+                      background: last.status === 'success' ? 'var(--havn-green-bg)' : last.status === 'error' ? 'var(--havn-red-bg)' : 'var(--havn-btn-bg)',
+                      color: last.status === 'success' ? 'var(--havn-green)' : last.status === 'error' ? 'var(--havn-red)' : 'var(--havn-text-secondary)'
                     }}>{last.status}</span>
                   </td>
                   <td style={sec.td}>
@@ -179,7 +179,7 @@ function SecretsSection() {
     <div style={sec.section}>
       <h3 style={sec.heading}>Secrets (.env)</h3>
       <p style={sec.desc}>Secrets are stored in .env and referenced as {"${VAR}"} in project.yml. Values are never exposed.</p>
-      {error && <p style={{ color: "var(--dp-red)", fontSize: "12px", margin: "4px 0" }}>{error}</p>}
+      {error && <p style={{ color: "var(--havn-red)", fontSize: "12px", margin: "4px 0" }}>{error}</p>}
       {secrets.length > 0 && (
         <table style={sec.table}>
           <thead>
@@ -195,7 +195,7 @@ function SecretsSection() {
                 <td style={sec.td}><code style={sec.code}>{s.key}</code></td>
                 <td style={sec.td}><span style={sec.masked}>{s.masked_value}</span></td>
                 <td style={{ ...sec.td, textAlign: "right" }}>
-                  <button data-dp-danger="" onClick={() => removeSecret(s.key)} style={sec.delBtn}>Delete</button>
+                  <button data-havn-danger="" onClick={() => removeSecret(s.key)} style={sec.delBtn}>Delete</button>
                 </td>
               </tr>
             ))}
@@ -251,9 +251,9 @@ function UsersSection() {
       <h3 style={sec.heading}>Users</h3>
       <p style={sec.desc}>
         Roles: <strong>admin</strong> (full access), <strong>editor</strong> (run + query), <strong>viewer</strong> (read-only).
-        Enable auth with <code style={sec.code}>dp serve --auth</code>.
+        Enable auth with <code style={sec.code}>havn serve --auth</code>.
       </p>
-      {error && <p style={{ color: "var(--dp-red)", fontSize: "12px", margin: "4px 0" }}>{error}</p>}
+      {error && <p style={{ color: "var(--havn-red)", fontSize: "12px", margin: "4px 0" }}>{error}</p>}
       {users.length > 0 && (
         <table style={sec.table}>
           <thead>
@@ -277,9 +277,9 @@ function UsersSection() {
                   </select>
                 </td>
                 <td style={sec.td}>{u.display_name}</td>
-                <td style={{ ...sec.td, color: "var(--dp-text-secondary)" }}>{u.last_login || "never"}</td>
+                <td style={{ ...sec.td, color: "var(--havn-text-secondary)" }}>{u.last_login || "never"}</td>
                 <td style={{ ...sec.td, textAlign: "right" }}>
-                  <button data-dp-danger="" onClick={() => removeUser(u.username)} style={sec.delBtn}>Delete</button>
+                  <button data-havn-danger="" onClick={() => removeUser(u.username)} style={sec.delBtn}>Delete</button>
                 </td>
               </tr>
             ))}
@@ -362,16 +362,16 @@ function AlertsSection() {
 
       {testResult && (
         <div style={{
-          padding: '8px 12px', borderRadius: 'var(--dp-radius-lg)', marginBottom: 12, fontSize: 13,
-          background: testResult.success ? 'var(--dp-green-bg)' : 'var(--dp-red-bg)',
-          color: testResult.success ? 'var(--dp-green)' : 'var(--dp-red)',
-          border: `1px solid ${testResult.success ? 'var(--dp-green-border)' : 'var(--dp-red-border)'}`
+          padding: '8px 12px', borderRadius: 'var(--havn-radius-lg)', marginBottom: 12, fontSize: 13,
+          background: testResult.success ? 'var(--havn-green-bg)' : 'var(--havn-red-bg)',
+          color: testResult.success ? 'var(--havn-green)' : 'var(--havn-red)',
+          border: `1px solid ${testResult.success ? 'var(--havn-green-border)' : 'var(--havn-red-border)'}`
         }}>{testResult.message}</div>
       )}
 
       <h4 style={{ ...sec.heading, fontSize: 14, marginTop: 16 }}>Alert History</h4>
-      {loading ? <p style={{ color: 'var(--dp-text-secondary)' }}>Loading...</p> : history.length === 0 ? (
-        <p style={{ color: 'var(--dp-text-secondary)' }}>No alerts sent yet.</p>
+      {loading ? <p style={{ color: 'var(--havn-text-secondary)' }}>Loading...</p> : history.length === 0 ? (
+        <p style={{ color: 'var(--havn-text-secondary)' }}>No alerts sent yet.</p>
       ) : (
         <table style={sec.table}>
           <thead>
@@ -393,9 +393,9 @@ function AlertsSection() {
                 <td style={sec.td} title={a.message || ''}>{(a.message || '—').slice(0, 50)}</td>
                 <td style={sec.td}>
                   <span style={{
-                    padding: '2px 8px', borderRadius: 'var(--dp-radius)', fontSize: 11,
-                    background: a.status === 'sent' || a.status === 'success' ? 'var(--dp-green-bg)' : 'var(--dp-red-bg)',
-                    color: a.status === 'sent' || a.status === 'success' ? 'var(--dp-green)' : 'var(--dp-red)'
+                    padding: '2px 8px', borderRadius: 'var(--havn-radius)', fontSize: 11,
+                    background: a.status === 'sent' || a.status === 'success' ? 'var(--havn-green-bg)' : 'var(--havn-red-bg)',
+                    color: a.status === 'sent' || a.status === 'success' ? 'var(--havn-green)' : 'var(--havn-red)'
                   }}>{a.status || '—'}</span>
                 </td>
                 <td style={sec.td}>{a.sent_at || a.created_at || '—'}</td>
@@ -465,7 +465,7 @@ function LintConfigSection() {
   return (
     <div style={sec.section}>
       <h3 style={sec.heading}>SQLFluff Config</h3>
-      {error && <p style={{ color: "var(--dp-red)", fontSize: "12px", margin: "4px 0" }}>{error}</p>}
+      {error && <p style={{ color: "var(--havn-red)", fontSize: "12px", margin: "4px 0" }}>{error}</p>}
       <p style={sec.desc}>
         {exists
           ? <>Editing <code style={sec.code}>.sqlfluff</code> in your project root. The linter uses this file.</>
@@ -542,23 +542,23 @@ export default function SettingsPanel({ onShowGuide }) {
 
 const sec = {
   container: { display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" },
-  header: { padding: "8px 12px", borderBottom: "1px solid var(--dp-border)", fontWeight: 600, fontSize: "14px" },
+  header: { padding: "8px 12px", borderBottom: "1px solid var(--havn-border)", fontWeight: 600, fontSize: "14px" },
   content: { flex: 1, overflow: "auto", padding: "16px 24px", maxWidth: "800px" },
   section: { marginBottom: "32px" },
   heading: { fontSize: "16px", fontWeight: 600, margin: "0 0 4px" },
-  desc: { fontSize: "12px", color: "var(--dp-text-secondary)", margin: "0 0 12px", lineHeight: 1.6 },
-  code: { background: "var(--dp-btn-bg)", padding: "1px 5px", borderRadius: "3px", fontSize: "12px", fontFamily: "var(--dp-font-mono)" },
+  desc: { fontSize: "12px", color: "var(--havn-text-secondary)", margin: "0 0 12px", lineHeight: 1.6 },
+  code: { background: "var(--havn-btn-bg)", padding: "1px 5px", borderRadius: "3px", fontSize: "12px", fontFamily: "var(--havn-font-mono)" },
   table: { width: "100%", borderCollapse: "collapse", marginBottom: "12px", fontSize: "12px" },
-  th: { textAlign: "left", padding: "6px 10px", borderBottom: "2px solid var(--dp-border-light)", color: "var(--dp-text-secondary)", fontWeight: 600 },
-  td: { padding: "6px 10px", borderBottom: "1px solid var(--dp-border)" },
-  masked: { color: "var(--dp-text-secondary)", fontFamily: "var(--dp-font-mono)" },
+  th: { textAlign: "left", padding: "6px 10px", borderBottom: "2px solid var(--havn-border-light)", color: "var(--havn-text-secondary)", fontWeight: 600 },
+  td: { padding: "6px 10px", borderBottom: "1px solid var(--havn-border)" },
+  masked: { color: "var(--havn-text-secondary)", fontFamily: "var(--havn-font-mono)" },
   addRow: { display: "flex", gap: "8px", alignItems: "center" },
-  input: { flex: 1, padding: "6px 10px", background: "var(--dp-bg-tertiary)", border: "1px solid var(--dp-border-light)", borderRadius: "var(--dp-radius-lg)", color: "var(--dp-text)", fontSize: "13px" },
-  roleSelect: { padding: "4px 8px", background: "var(--dp-bg-tertiary)", border: "1px solid var(--dp-border-light)", borderRadius: "var(--dp-radius)", color: "var(--dp-text)", fontSize: "12px" },
-  addBtn: { padding: "6px 14px", background: "var(--dp-green)", border: "1px solid var(--dp-green-border)", borderRadius: "var(--dp-radius-lg)", color: "#fff", cursor: "pointer", fontSize: "12px", fontWeight: 500, whiteSpace: "nowrap" },
-  delBtn: { padding: "3px 8px", background: "var(--dp-btn-bg)", border: "1px solid var(--dp-btn-border)", borderRadius: "var(--dp-radius)", color: "var(--dp-red)", cursor: "pointer", fontSize: "11px" },
-  label: { display: "block", fontSize: "12px", color: "var(--dp-text-secondary)", marginBottom: "4px" },
-  configTextarea: { width: "100%", padding: "10px 12px", background: "var(--dp-bg-tertiary)", border: "1px solid var(--dp-border-light)", borderRadius: "var(--dp-radius-lg)", color: "var(--dp-text)", fontFamily: "var(--dp-font-mono)", fontSize: "12px", lineHeight: 1.6, resize: "vertical", boxSizing: "border-box", outline: "none" },
+  input: { flex: 1, padding: "6px 10px", background: "var(--havn-bg-tertiary)", border: "1px solid var(--havn-border-light)", borderRadius: "var(--havn-radius-lg)", color: "var(--havn-text)", fontSize: "13px" },
+  roleSelect: { padding: "4px 8px", background: "var(--havn-bg-tertiary)", border: "1px solid var(--havn-border-light)", borderRadius: "var(--havn-radius)", color: "var(--havn-text)", fontSize: "12px" },
+  addBtn: { padding: "6px 14px", background: "var(--havn-green)", border: "1px solid var(--havn-green-border)", borderRadius: "var(--havn-radius-lg)", color: "#fff", cursor: "pointer", fontSize: "12px", fontWeight: 500, whiteSpace: "nowrap" },
+  delBtn: { padding: "3px 8px", background: "var(--havn-btn-bg)", border: "1px solid var(--havn-btn-border)", borderRadius: "var(--havn-radius)", color: "var(--havn-red)", cursor: "pointer", fontSize: "11px" },
+  label: { display: "block", fontSize: "12px", color: "var(--havn-text-secondary)", marginBottom: "4px" },
+  configTextarea: { width: "100%", padding: "10px 12px", background: "var(--havn-bg-tertiary)", border: "1px solid var(--havn-border-light)", borderRadius: "var(--havn-radius-lg)", color: "var(--havn-text)", fontFamily: "var(--havn-font-mono)", fontSize: "12px", lineHeight: 1.6, resize: "vertical", boxSizing: "border-box", outline: "none" },
   themeGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: "10px" },
-  themeCard: { padding: "12px", borderRadius: "var(--dp-radius-lg)", cursor: "pointer", textAlign: "left", display: "block" },
+  themeCard: { padding: "12px", borderRadius: "var(--havn-radius-lg)", cursor: "pointer", textAlign: "left", display: "block" },
 };

@@ -115,8 +115,8 @@ export default function SentinelPanel() {
               onClick={() => setView(t)}
               style={{
                 ...st.tab,
-                borderBottom: view === t ? "2px solid var(--dp-accent, #58a6ff)" : "2px solid transparent",
-                color: view === t ? "var(--dp-text)" : "var(--dp-text-secondary)",
+                borderBottom: view === t ? "2px solid var(--havn-accent, #58a6ff)" : "2px solid transparent",
+                color: view === t ? "var(--havn-text)" : "var(--havn-text-secondary)",
               }}
             >
               {t.charAt(0).toUpperCase() + t.slice(1)}
@@ -245,11 +245,11 @@ export default function SentinelPanel() {
                   onClick={() => loadImpacts(d.diff_id)}
                   style={{
                     ...st.diffListItem,
-                    background: selectedDiff === d.diff_id ? "var(--dp-bg-tertiary)" : "transparent",
+                    background: selectedDiff === d.diff_id ? "var(--havn-bg-tertiary)" : "transparent",
                   }}
                 >
                   <div style={{ fontWeight: 600, fontSize: 12 }}>{d.source_name}</div>
-                  <div style={{ fontSize: 11, color: "var(--dp-text-dim)" }}>
+                  <div style={{ fontSize: 11, color: "var(--havn-text-dim)" }}>
                     {d.created_at?.slice(0, 19)} &middot; {d.changes?.length || 0} change(s)
                     {d.changes?.some(c => c.severity === "breaking") && (
                       <span style={{ color: "#f85149", marginLeft: 6 }}>BREAKING</span>
@@ -304,7 +304,7 @@ export default function SentinelPanel() {
                   onClick={() => loadHistory(s.name)}
                   style={{
                     ...st.diffListItem,
-                    background: selectedSource === s.name ? "var(--dp-bg-tertiary)" : "transparent",
+                    background: selectedSource === s.name ? "var(--havn-bg-tertiary)" : "transparent",
                   }}
                 >
                   <span style={{ fontWeight: 500, fontSize: 12 }}>{s.name}</span>
@@ -329,21 +329,21 @@ export default function SentinelPanel() {
                   {history.map((snap, i) => (
                     <div key={i} style={st.historyItem}>
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                        <span style={{ fontSize: 11, color: "var(--dp-text-dim)" }}>
+                        <span style={{ fontSize: 11, color: "var(--havn-text-dim)" }}>
                           {snap.captured_at?.slice(0, 19)}
                         </span>
-                        <span style={{ fontSize: 10, color: "var(--dp-text-dim)" }}>
+                        <span style={{ fontSize: 10, color: "var(--havn-text-dim)" }}>
                           {snap.columns?.length} col(s) &middot; {snap.schema_hash?.slice(0, 8)}
                         </span>
                       </div>
                       <div style={{ marginTop: 4, fontSize: 11 }}>
                         {snap.columns?.slice(0, 10).map((c, j) => (
                           <span key={j} style={st.colTag}>
-                            {c.name}: <span style={{ color: "var(--dp-text-dim)" }}>{c.type}</span>
+                            {c.name}: <span style={{ color: "var(--havn-text-dim)" }}>{c.type}</span>
                           </span>
                         ))}
                         {snap.columns?.length > 10 && (
-                          <span style={{ fontSize: 10, color: "var(--dp-text-dim)" }}>
+                          <span style={{ fontSize: 10, color: "var(--havn-text-dim)" }}>
                             +{snap.columns.length - 10} more
                           </span>
                         )}
@@ -366,35 +366,35 @@ export default function SentinelPanel() {
 
 const st = {
   container: { display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" },
-  header: { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 12px", borderBottom: "1px solid var(--dp-border)", fontSize: 13 },
+  header: { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 12px", borderBottom: "1px solid var(--havn-border)", fontSize: 13 },
   title: { fontWeight: 600 },
   tabs: { display: "flex", gap: 4 },
   tab: { background: "none", border: "none", cursor: "pointer", padding: "4px 10px", fontSize: 12, fontWeight: 500 },
   body: { flex: 1, overflow: "auto", padding: 12 },
-  error: { padding: "8px 12px", background: "#f8514920", color: "#f85149", fontSize: 12, borderBottom: "1px solid var(--dp-border)" },
+  error: { padding: "8px 12px", background: "#f8514920", color: "#f85149", fontSize: 12, borderBottom: "1px solid var(--havn-border)" },
   actionBar: { display: "flex", alignItems: "center", gap: 12, marginBottom: 12 },
-  btn: { padding: "6px 14px", background: "var(--dp-accent, #58a6ff)", color: "#fff", border: "none", borderRadius: 4, cursor: "pointer", fontSize: 12, fontWeight: 600 },
-  dim: { color: "var(--dp-text-dim)", fontSize: 12 },
+  btn: { padding: "6px 14px", background: "var(--havn-accent, #58a6ff)", color: "#fff", border: "none", borderRadius: 4, cursor: "pointer", fontSize: 12, fontWeight: 600 },
+  dim: { color: "var(--havn-text-dim)", fontSize: 12 },
   success: { padding: 12, background: "#3fb95015", color: "#3fb950", borderRadius: 4, fontSize: 12, fontWeight: 500 },
-  diffCard: { border: "1px solid var(--dp-border)", borderRadius: 6, marginBottom: 12, overflow: "hidden" },
-  diffHeader: { display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", background: "var(--dp-bg-secondary)", borderBottom: "1px solid var(--dp-border)" },
+  diffCard: { border: "1px solid var(--havn-border)", borderRadius: 6, marginBottom: 12, overflow: "hidden" },
+  diffHeader: { display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", background: "var(--havn-bg-secondary)", borderBottom: "1px solid var(--havn-border)" },
   diffSource: { fontWeight: 600, fontSize: 13 },
   breakingBadge: { background: "#f85149", color: "#fff", padding: "1px 6px", borderRadius: 3, fontSize: 10, fontWeight: 700 },
   table: { width: "100%", borderCollapse: "collapse", fontSize: 12 },
-  th: { textAlign: "left", padding: "6px 12px", background: "var(--dp-bg-tertiary)", borderBottom: "1px solid var(--dp-border)", fontWeight: 600, fontSize: 11 },
-  td: { padding: "5px 12px", borderBottom: "1px solid var(--dp-border-light)", fontSize: 12 },
+  th: { textAlign: "left", padding: "6px 12px", background: "var(--havn-bg-tertiary)", borderBottom: "1px solid var(--havn-border)", fontWeight: 600, fontSize: 11 },
+  td: { padding: "5px 12px", borderBottom: "1px solid var(--havn-border-light)", fontSize: 12 },
   sevBadge: { color: "#fff", padding: "1px 5px", borderRadius: 3, fontSize: 10, fontWeight: 600 },
   impactSection: { padding: "8px 12px" },
-  impactTitle: { fontWeight: 600, fontSize: 12, marginBottom: 6, color: "var(--dp-text-secondary)" },
-  impactRow: { padding: "6px 0", borderBottom: "1px solid var(--dp-border-light)", display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8 },
+  impactTitle: { fontWeight: 600, fontSize: 12, marginBottom: 6, color: "var(--havn-text-secondary)" },
+  impactRow: { padding: "6px 0", borderBottom: "1px solid var(--havn-border-light)", display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8 },
   impactBadge: { color: "#fff", padding: "1px 6px", borderRadius: 3, fontSize: 10, fontWeight: 600 },
   impactModel: { fontWeight: 600, fontSize: 12 },
-  fixSuggestion: { width: "100%", fontSize: 11, color: "var(--dp-text-secondary)", marginTop: 2, paddingLeft: 4, borderLeft: "2px solid var(--dp-border-light)" },
-  dismissBtn: { background: "none", border: "1px solid var(--dp-border)", borderRadius: 3, padding: "1px 8px", fontSize: 10, cursor: "pointer", color: "var(--dp-text-secondary)" },
+  fixSuggestion: { width: "100%", fontSize: 11, color: "var(--havn-text-secondary)", marginTop: 2, paddingLeft: 4, borderLeft: "2px solid var(--havn-border-light)" },
+  dismissBtn: { background: "none", border: "1px solid var(--havn-border)", borderRadius: 3, padding: "1px 8px", fontSize: 10, cursor: "pointer", color: "var(--havn-text-secondary)" },
   splitView: { display: "flex", gap: 0, height: "calc(100% - 8px)" },
-  leftPane: { width: 280, borderRight: "1px solid var(--dp-border)", overflow: "auto", padding: "8px 0" },
+  leftPane: { width: 280, borderRight: "1px solid var(--havn-border)", overflow: "auto", padding: "8px 0" },
   rightPane: { flex: 1, overflow: "auto", padding: "8px 12px" },
-  diffListItem: { padding: "8px 12px", cursor: "pointer", borderBottom: "1px solid var(--dp-border-light)" },
-  historyItem: { padding: "8px 0", borderBottom: "1px solid var(--dp-border-light)" },
+  diffListItem: { padding: "8px 12px", cursor: "pointer", borderBottom: "1px solid var(--havn-border-light)" },
+  historyItem: { padding: "8px 0", borderBottom: "1px solid var(--havn-border-light)" },
   colTag: { display: "inline-block", marginRight: 8, fontSize: 11 },
 };

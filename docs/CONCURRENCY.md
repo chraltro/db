@@ -1,8 +1,8 @@
 # Connection Pooling and DuckDB Concurrency
 
-## How dp Uses DuckDB Connections
+## How havn Uses DuckDB Connections
 
-dp uses DuckDB as an **embedded database** — there is no database server. Every operation opens a direct connection to the `.duckdb` file.
+havn uses DuckDB as an **embedded database** — there is no database server. Every operation opens a direct connection to the `.duckdb` file.
 
 ### Connection lifecycle
 
@@ -18,22 +18,22 @@ There is **no connection pool**. Each operation creates a fresh connection and c
 1. DuckDB connections are fast to create (~1ms)
 2. DuckDB's file-based locking handles concurrency
 3. Connection pools add complexity without meaningful benefit for embedded databases
-4. dp is designed for batch workloads, not thousands of concurrent connections
+4. havn is designed for batch workloads, not thousands of concurrent connections
 
 ### Where connections are opened
 
 | Component | Pattern | Lifetime |
 |-----------|---------|----------|
-| CLI commands (`dp transform`, `dp query`) | Open → run → close | Duration of the command |
-| Stream execution (`dp stream`) | Open → run all steps → close | Duration of the stream |
+| CLI commands (`havn transform`, `havn query`) | Open → run → close | Duration of the command |
+| Stream execution (`havn stream`) | Open → run all steps → close | Duration of the stream |
 | Web UI API endpoints | Open → handle request → close | Duration of the HTTP request |
-| Script execution (`dp run`) | Open → pass to script as `db` → close | Duration of script + timeout |
+| Script execution (`havn run`) | Open → pass to script as `db` → close | Duration of script + timeout |
 | Connector test/discover | Open in-memory → test → close | Seconds |
 
 ### The `connect()` function
 
 ```python
-# src/dp/engine/database.py
+# src/havn/engine/database.py
 def connect(db_path, read_only=False):
     conn = duckdb.connect(str(db_path), read_only=read_only)
     conn.execute("SET enable_progress_bar = true")
@@ -53,25 +53,25 @@ DuckDB uses a **WAL (Write-Ahead Log)** for concurrency:
 - Write operations acquire an exclusive lock
 - Readers do not block writers, and writers do not block readers (MVCC)
 
-### What this means for dp
+### What this means for havn
 
 | Scenario | Works? | Notes |
 |----------|--------|-------|
-| Run `dp query` while `dp serve` is running | Yes | Read queries don't conflict |
-| Run `dp transform` while browsing the web UI | Mostly | Transforms write; API reads still work, but API writes will wait |
-| Run two `dp transform` simultaneously | No | Second one will fail or wait for the lock |
-| Run `dp stream` while `dp serve` handles a write request | Depends | The write request will wait until the stream step releases the lock |
+| Run `havn query` while `havn serve` is running | Yes | Read queries don't conflict |
+| Run `havn transform` while browsing the web UI | Mostly | Transforms write; API reads still work, but API writes will wait |
+| Run two `havn transform` simultaneously | No | Second one will fail or wait for the lock |
+| Run `havn stream` while `havn serve` handles a write request | Depends | The write request will wait until the stream step releases the lock |
 | Browse tables in web UI during a long export | Yes | Export writes, UI reads — no conflict |
 
 ### Lock contention in practice
 
-For typical dp usage (batch transforms, occasional queries, web UI browsing), you'll rarely hit lock contention. Problems arise when:
+For typical havn usage (batch transforms, occasional queries, web UI browsing), you'll rarely hit lock contention. Problems arise when:
 
 1. **Long-running transforms** hold the write lock for minutes
 2. **Concurrent CLI commands** try to write at the same time
 3. **API write endpoints** (file writes, query execution) run during transforms
 
-DuckDB will **wait** for the lock (with a timeout), not immediately fail. The default timeout is configurable but dp doesn't override it.
+DuckDB will **wait** for the lock (with a timeout), not immediately fail. The default timeout is configurable but havn doesn't override it.
 
 ### Error handling
 
@@ -81,7 +81,7 @@ If a write operation can't acquire the lock within the timeout:
 IOException: Could not set lock on file "warehouse.duckdb": Resource temporarily unavailable
 ```
 
-This is not a dp bug — it's DuckDB's concurrency model working as designed. Solutions:
+This is not a havn bug — it's DuckDB's concurrency model working as designed. Solutions:
 
 - Wait for the running operation to finish
 - Use `read_only=True` for operations that only need to read
@@ -98,7 +98,7 @@ Connection pools solve a specific problem: reusing expensive TCP connections to 
 | Connection state | Per-connection settings | Per-connection settings |
 | Pool benefit | High | Negligible |
 
-Adding a connection pool to dp would:
+Adding a connection pool to havn would:
 
 - Add complexity (pool size config, health checks, leak detection)
 - Not improve performance (connections are already cheap)
@@ -114,7 +114,7 @@ Adding a connection pool to dp would:
 
 ## External Database Connections
 
-When dp connects to **external databases** (PostgreSQL, MySQL) via DuckDB's extension system, the pattern is different:
+When havn connects to **external databases** (PostgreSQL, MySQL) via DuckDB's extension system, the pattern is different:
 
 ```sql
 -- DuckDB opens a connection to the external database
@@ -129,7 +129,7 @@ DETACH pg_src
 
 These external connections are:
 
-- Managed by DuckDB's extension (not dp)
+- Managed by DuckDB's extension (not havn)
 - Read-only by default (safer, no accidental writes to production)
 - Not pooled — each `ATTACH` creates a new connection
 - Closed on `DETACH` (or when the DuckDB connection closes)
@@ -155,10 +155,10 @@ This handles transient network failures, DNS resolution delays, and database ser
 
 ## Parallel Transform Execution
 
-`dp transform` supports a `--parallel` flag that runs independent models concurrently:
+`havn transform` supports a `--parallel` flag that runs independent models concurrently:
 
 ```bash
-dp transform --parallel --workers 4
+havn transform --parallel --workers 4
 ```
 
 ### How it works
@@ -195,7 +195,7 @@ All parallel execution uses the **same DuckDB connection**. This is safe because
 
 1. **Don't worry about connection pooling.** DuckDB connections are cheap. Open and close them freely.
 
-2. **Avoid concurrent writes.** Run one `dp transform` or `dp stream` at a time. The web UI's read endpoints will continue working fine during transforms.
+2. **Avoid concurrent writes.** Run one `havn transform` or `havn stream` at a time. The web UI's read endpoints will continue working fine during transforms.
 
 3. **Use `--parallel` for large projects.** If you have 20+ independent models per tier, parallel execution can significantly reduce total build time.
 

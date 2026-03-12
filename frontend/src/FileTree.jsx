@@ -11,7 +11,7 @@ function FileNode({ node, depth, onSelect, activeFile, onNewFile, onDeleteFile }
     return (
       <div>
         <div
-          data-dp-file=""
+          data-havn-file=""
           style={{ ...styles.item, paddingLeft: 8 + depth * 16 }}
           onClick={() => setExpanded(!expanded)}
           onMouseEnter={() => setHovered(true)}
@@ -71,16 +71,16 @@ function FileNode({ node, depth, onSelect, activeFile, onNewFile, onDeleteFile }
   }
 
   const ext = node.name.split(".").pop();
-  const iconColor = ext === "sql" ? "var(--dp-accent)" : ext === "py" ? "var(--dp-green)" : "var(--dp-text-secondary)";
+  const iconColor = ext === "sql" ? "var(--havn-accent)" : ext === "py" ? "var(--havn-green)" : "var(--havn-text-secondary)";
 
   return (
     <div
-      data-dp-file=""
+      data-havn-file=""
       style={{
         ...styles.item,
         paddingLeft: 8 + depth * 16,
-        background: isActive ? "var(--dp-bg-secondary)" : "transparent",
-        borderLeft: isActive ? "2px solid var(--dp-accent)" : "2px solid transparent",
+        background: isActive ? "var(--havn-bg-secondary)" : "transparent",
+        borderLeft: isActive ? "2px solid var(--havn-accent)" : "2px solid transparent",
       }}
       onClick={() => onSelect(node.path)}
       onMouseEnter={() => setHovered(true)}
@@ -114,14 +114,14 @@ export default function FileTree({ files, onSelect, activeFile, onNewFile, onDel
 
 const styles = {
   item: { display: "flex", alignItems: "center", gap: "6px", padding: "4px 8px", cursor: "pointer", fontSize: "13px", whiteSpace: "nowrap", margin: "0 4px", borderRadius: "3px" },
-  icon: { fontSize: "10px", color: "var(--dp-text-secondary)", width: "10px", display: "inline-block", transition: "transform 0.12s ease" },
-  dirName: { color: "var(--dp-text)", fontWeight: 500 },
-  addBtn: { marginLeft: "auto", width: "18px", height: "18px", background: "none", border: "none", color: "var(--dp-text-secondary)", cursor: "pointer", fontSize: "14px", lineHeight: "18px", textAlign: "center", padding: 0, flexShrink: 0 },
+  icon: { fontSize: "10px", color: "var(--havn-text-secondary)", width: "10px", display: "inline-block", transition: "transform 0.12s ease" },
+  dirName: { color: "var(--havn-text)", fontWeight: 500 },
+  addBtn: { marginLeft: "auto", width: "18px", height: "18px", background: "none", border: "none", color: "var(--havn-text-secondary)", cursor: "pointer", fontSize: "14px", lineHeight: "18px", textAlign: "center", padding: 0, flexShrink: 0 },
   newFileRow: { display: "flex", padding: "2px 8px 4px", margin: "0 4px" },
-  newFileInput: { flex: 1, padding: "3px 6px", background: "var(--dp-bg)", border: "1px solid var(--dp-border-light)", borderRadius: "var(--dp-radius)", color: "var(--dp-text)", fontSize: "11px", fontFamily: "var(--dp-font-mono)", outline: "none" },
-  fileName: { color: "var(--dp-text)" },
-  activeFileName: { color: "var(--dp-accent)", fontWeight: 500 },
+  newFileInput: { flex: 1, padding: "3px 6px", background: "var(--havn-bg)", border: "1px solid var(--havn-border-light)", borderRadius: "var(--havn-radius)", color: "var(--havn-text)", fontSize: "11px", fontFamily: "var(--havn-font-mono)", outline: "none" },
+  fileName: { color: "var(--havn-text)" },
+  activeFileName: { color: "var(--havn-accent)", fontWeight: 500 },
   dot: { width: "6px", height: "6px", borderRadius: "50%", flexShrink: 0 },
-  deleteBtn: { marginLeft: "auto", width: "18px", height: "18px", background: "none", border: "none", color: "var(--dp-text-dim)", cursor: "pointer", fontSize: "14px", lineHeight: "18px", textAlign: "center", padding: 0, flexShrink: 0 },
-  empty: { padding: "12px", color: "var(--dp-text-dim)", fontSize: "12px", textAlign: "center" },
+  deleteBtn: { marginLeft: "auto", width: "18px", height: "18px", background: "none", border: "none", color: "var(--havn-text-dim)", cursor: "pointer", fontSize: "14px", lineHeight: "18px", textAlign: "center", padding: 0, flexShrink: 0 },
+  empty: { padding: "12px", color: "var(--havn-text-dim)", fontSize: "12px", textAlign: "center" },
 };

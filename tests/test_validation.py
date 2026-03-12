@@ -8,8 +8,8 @@ from pathlib import Path
 import duckdb
 import pytest
 
-from dp.engine.database import ensure_meta_table
-from dp.engine.transform import (
+from havn.engine.database import ensure_meta_table
+from havn.engine.transform import (
     SQLModel,
     ValidationError,
     discover_models,

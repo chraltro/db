@@ -1,4 +1,4 @@
-# dp — Platform Summary Report
+# havn — Platform Summary Report
 
 > **Date:** 2026-03-11
 > **Version:** 0.1.0
@@ -8,9 +8,9 @@
 
 ## Executive Summary
 
-**dp** is a self-hosted, zero-cost data platform that consolidates the entire analytics stack — ingestion, transformation, quality, orchestration, collaboration, and serving — into a single tool backed by a single DuckDB file. No data leaves the machine. No cloud account required. No vendor lock-in.
+**havn** is a self-hosted, zero-cost data platform that consolidates the entire analytics stack — ingestion, transformation, quality, orchestration, collaboration, and serving — into a single tool backed by a single DuckDB file. No data leaves the machine. No cloud account required. No vendor lock-in.
 
-Where Databricks requires a cloud account, Spark cluster, and dozens of services, dp runs on a laptop with `pip install dp` and delivers 80% of the capability at 0% of the cost.
+Where Databricks requires a cloud account, Spark cluster, and dozens of services, havn runs on a laptop with `pip install havn` and delivers 80% of the capability at 0% of the cost.
 
 ---
 
@@ -18,7 +18,7 @@ Where Databricks requires a cloud account, Spark cluster, and dozens of services
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│                      dp CLI / Web UI                    │
+│                      havn CLI / Web UI                    │
 ├─────────────┬─────────────┬─────────────┬───────────────┤
 │  Ingest     │  Transform  │  Export     │  Notebooks    │
 │  (Python)   │  (SQL DAG)  │  (Python)  │  (.dpnb)      │
@@ -41,7 +41,7 @@ All metadata (model state, run logs, profiles, users, tokens, alerts, CDC state,
 
 ### 1. SQL Transform Engine
 
-The core of dp. SQL files in `transform/` are automatically discovered, dependency-ordered, and executed.
+The core of havn. SQL files in `transform/` are automatically discovered, dependency-ordered, and executed.
 
 | Capability | Description |
 |---|---|
@@ -54,7 +54,7 @@ The core of dp. SQL files in `transform/` are automatically discovered, dependen
 | **Column documentation** | `-- column: name: description` comments parsed and surfaced in docs |
 | **Profile statistics** | Auto-computes row counts, null percentages, distinct counts after each build |
 | **Freshness monitoring** | Configurable SLA thresholds; alerts when models go stale |
-| **Force rebuild** | `dp transform --force` ignores cache and rebuilds everything |
+| **Force rebuild** | `havn transform --force` ignores cache and rebuilds everything |
 | **Selective builds** | Build individual models or filtered subsets |
 | **No Jinja** | Plain SQL only — config via comments, no templating language to learn |
 
@@ -95,7 +95,7 @@ Pluggable connectors for external data sources with auto-generated ingest script
 | **Connector framework** | `BaseConnector` abstract class for custom sources |
 | **Auto-generation** | `setup_connector()` creates ingest scripts, updates project.yml, stores secrets |
 | **Discovery** | Connectors expose `discover()` to list available tables/endpoints |
-| **Connection testing** | `dp test-connection` verifies connectivity before committing config |
+| **Connection testing** | `havn test-connection` verifies connectivity before committing config |
 | **Preview** | Non-destructive preview before import |
 
 ### 5. Change Data Capture (CDC)
@@ -121,7 +121,7 @@ Two complementary systems for ensuring data correctness.
 | **Assertion types** | `row_count`, `no_nulls`, `unique`, `accepted_values`, custom SQL expressions |
 | **Severity levels** | `error` (fails pipeline) or `warn` (logs warning, continues) |
 | **History tracking** | Results stored in `_dp_internal.assertion_results` and `contract_results` |
-| **Batch execution** | `dp contracts` evaluates all contracts; supports filtering |
+| **Batch execution** | `havn contracts` evaluates all contracts; supports filtering |
 
 ### 7. Authentication & RBAC
 
@@ -133,7 +133,7 @@ Optional token-based security with role-based access control.
 | **Token auth** | 30-day expiring tokens; PBKDF2 password hashing (100k iterations) |
 | **Rate limiting** | 5 failed login attempts per 60 seconds per IP |
 | **User management** | Create, update, delete users; revoke tokens via CLI or API |
-| **Optional** | `dp serve` (no auth) vs `dp serve --auth` (enforced) |
+| **Optional** | `havn serve` (no auth) vs `havn serve --auth` (enforced) |
 
 ### 8. Secrets Management
 
@@ -144,7 +144,7 @@ Secure handling of credentials and connection strings.
 | **`.env` file** | Standard dotenv format; never committed to git |
 | **Variable expansion** | `${DB_PASSWORD}` in project.yml auto-resolved from .env |
 | **Log masking** | Secret values masked in logs and API responses |
-| **CLI management** | `dp secret set/get/delete` without manual file editing |
+| **CLI management** | `havn secret set/get/delete` without manual file editing |
 
 ### 9. Scheduling & Orchestration
 
@@ -193,7 +193,7 @@ Lightweight project state comparison without full versioning.
 | **Project snapshots** | Hash file contents + table schemas for baseline comparison |
 | **Model diff** | Row-level diff with added/removed/modified counts and sample rows |
 | **Schema diff** | Detects column additions, removals, and type changes |
-| **Primary key support** | `-- dp:primary_key = col1, col2` enables modified-row detection |
+| **Primary key support** | `-- havn:primary_key = col1, col2` enables modified-row detection |
 | **Non-destructive** | Compares SQL output against materialized table without modifying warehouse |
 
 ### 13. SQL Analysis & Lineage
@@ -227,7 +227,7 @@ SQLFluff integration for consistent SQL style.
 | Capability | Description |
 |---|---|
 | **DuckDB dialect** | Defaults to DuckDB syntax rules |
-| **Auto-fix** | `dp lint --fix` applies fixable violations |
+| **Auto-fix** | `havn lint --fix` applies fixable violations |
 | **Header preservation** | Config comment headers preserved during fixes |
 | **Configurable** | Rules and dialect configurable in project.yml or `.sqlfluff` |
 
@@ -237,7 +237,7 @@ GitHub Actions workflow generation with PR-level data diff feedback.
 
 | Capability | Description |
 |---|---|
-| **Workflow generation** | Auto-creates `.github/workflows/dp-ci.yml` |
+| **Workflow generation** | Auto-creates `.github/workflows/havn-ci.yml` |
 | **PR comments** | Posts formatted data diff results as PR comments |
 | **Full pipeline** | Checkout → install → transform → snapshot → diff → comment |
 
@@ -329,7 +329,7 @@ All processing is local. No telemetry, no cloud sync, no third-party data access
 Configuration via SQL comments (`-- config:`, `-- depends_on:`, `-- assert:`). No templating language to learn, no macro system to debug, no compile step. Every `.sql` file is valid SQL that runs directly in DuckDB.
 
 ### 5. AI-Native Simplicity
-The comment-based convention system means LLMs can write correct dp SQL models on the first attempt. No proprietary DSL or macro system to hallucinate about.
+The comment-based convention system means LLMs can write correct havn SQL models on the first attempt. No proprietary DSL or macro system to hallucinate about.
 
 ### 6. Batteries Included
 Ingestion, transformation, quality, orchestration, serving, authentication, documentation, linting, versioning, CI/CD, collaboration — all in one `pip install`. No ecosystem of plugins to assemble.
@@ -338,7 +338,7 @@ Ingestion, transformation, quality, orchestration, serving, authentication, docu
 Columnar OLAP engine that handles analytical queries at speeds rivaling cloud warehouses, on local hardware. Parquet, CSV, JSON native support. No ETL into a separate system.
 
 ### 8. Incremental by Default
-Change detection (SHA256 hashing) means `dp transform` only rebuilds what changed. Incremental models support append, delete+insert, and merge strategies with automatic schema evolution.
+Change detection (SHA256 hashing) means `havn transform` only rebuilds what changed. Incremental models support append, delete+insert, and merge strategies with automatic schema evolution.
 
 ### 9. Data Quality as Code
 Inline assertions and YAML contracts provide two complementary quality gates. Assertions fail the pipeline; contracts with `warn` severity log issues without blocking.
@@ -374,35 +374,35 @@ Same tool for local development and production deployment. Environment overrides
 
 | Command | Description |
 |---|---|
-| `dp init` | Scaffold a new project |
-| `dp transform` | Build SQL models (DAG-ordered, change-detected) |
-| `dp transform --force` | Force rebuild all models |
-| `dp run <script>` | Execute an ingest/export Python script |
-| `dp stream <name>` | Run a named multi-step pipeline |
-| `dp query "<sql>"` | Ad-hoc SQL execution |
-| `dp tables` | List warehouse objects |
-| `dp lint` | Check SQL style |
-| `dp lint --fix` | Auto-fix SQL style violations |
-| `dp seed` | Load CSV seed data |
-| `dp serve` | Start web UI (port 3000) |
-| `dp serve --auth` | Start web UI with authentication |
-| `dp history` | Show pipeline run log |
-| `dp docs` | Generate documentation |
-| `dp diff` | Compare model output vs. materialized state |
-| `dp contracts` | Evaluate data quality contracts |
-| `dp snapshot` | Create a project checkpoint |
-| `dp version create` | Create a warehouse version |
-| `dp version restore` | Restore from a version |
-| `dp watch` | Auto-rebuild on file changes |
-| `dp schedule` | Start the cron scheduler |
-| `dp secret set/get/delete` | Manage secrets |
-| `dp user create/list/delete` | Manage users |
-| `dp ci generate` | Generate GitHub Actions workflow |
-| `dp test-connection` | Verify external source connectivity |
-| `dp validate` | Validate project configuration |
-| `dp status` | Show project status |
-| `dp context` | Show project context for AI assistants |
+| `havn init` | Scaffold a new project |
+| `havn transform` | Build SQL models (DAG-ordered, change-detected) |
+| `havn transform --force` | Force rebuild all models |
+| `havn run <script>` | Execute an ingest/export Python script |
+| `havn stream <name>` | Run a named multi-step pipeline |
+| `havn query "<sql>"` | Ad-hoc SQL execution |
+| `havn tables` | List warehouse objects |
+| `havn lint` | Check SQL style |
+| `havn lint --fix` | Auto-fix SQL style violations |
+| `havn seed` | Load CSV seed data |
+| `havn serve` | Start web UI (port 3000) |
+| `havn serve --auth` | Start web UI with authentication |
+| `havn history` | Show pipeline run log |
+| `havn docs` | Generate documentation |
+| `havn diff` | Compare model output vs. materialized state |
+| `havn contracts` | Evaluate data quality contracts |
+| `havn snapshot` | Create a project checkpoint |
+| `havn version create` | Create a warehouse version |
+| `havn version restore` | Restore from a version |
+| `havn watch` | Auto-rebuild on file changes |
+| `havn schedule` | Start the cron scheduler |
+| `havn secret set/get/delete` | Manage secrets |
+| `havn user create/list/delete` | Manage users |
+| `havn ci generate` | Generate GitHub Actions workflow |
+| `havn test-connection` | Verify external source connectivity |
+| `havn validate` | Validate project configuration |
+| `havn status` | Show project status |
+| `havn context` | Show project context for AI assistants |
 
 ---
 
-*This report covers all features and unique selling points of dp v0.1.0 as of 2026-03-11.*
+*This report covers all features and unique selling points of havn v0.1.0 as of 2026-03-11.*

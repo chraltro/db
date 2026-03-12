@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from dp.config import load_project
+from havn.config import load_project
 
 
 def test_load_missing_config(tmp_path):

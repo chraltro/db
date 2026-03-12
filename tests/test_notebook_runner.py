@@ -4,7 +4,7 @@ import json
 
 import duckdb
 
-from dp.engine.notebook import (
+from havn.engine.notebook import (
     create_notebook,
     load_notebook,
     run_notebook,

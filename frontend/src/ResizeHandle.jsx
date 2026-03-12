@@ -70,21 +70,21 @@ export default function ResizeHandle({ direction, onResize, onResizeStart }) {
     width: "1px",
     height: "24px",
     borderRadius: "1px",
-    background: active ? "var(--dp-accent)" : "var(--dp-border-light)",
+    background: active ? "var(--havn-accent)" : "var(--havn-border-light)",
     opacity: dragging ? 1 : (hovered ? 0.6 : 0.4),
     transition: "background 0.15s ease, opacity 0.15s ease",
   } : {
     height: "1px",
     width: "24px",
     borderRadius: "1px",
-    background: active ? "var(--dp-accent)" : "var(--dp-border-light)",
+    background: active ? "var(--havn-accent)" : "var(--havn-border-light)",
     opacity: dragging ? 1 : (hovered ? 0.6 : 0.4),
     transition: "background 0.15s ease, opacity 0.15s ease",
   };
 
   return (
     <div
-      data-dp-resize-handle=""
+      data-havn-resize-handle=""
       style={containerStyle}
       onMouseDown={handleMouseDown}
       onMouseEnter={() => setHovered(true)}

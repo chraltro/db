@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <!-- Background shield -->
+  <rect width="128" height="128" rx="24" fill="#0B0E14"/>
+
+  <!-- Wave pattern (pixel-art inspired, Harbour Teal) -->
+  <path d="M20 80 L32 60 L44 72 L56 48 L68 64 L80 44 L92 56 L104 36"
+        stroke="#3ECFB4" stroke-width="6" fill="none"
+        stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- Harbour wave (Nordic Indigo) -->
+  <path d="M16 88 Q40 100 64 88 Q88 76 112 88"
+        stroke="#7C8CF5" stroke-width="4" fill="none"
+        stroke-linecap="round"/>
+
+  <!-- Water base -->
+  <path d="M16 96 Q40 104 64 96 Q88 88 112 96"
+        stroke="#7C8CF5" stroke-width="3" fill="none"
+        stroke-linecap="round" opacity="0.5"/>
+</svg>

@@ -2,11 +2,11 @@
 
 ## Status
 
-**Design only.** This document describes the architecture for branch-aware warehousing in dp. Implementation is deferred until teams need concurrent branch development on the same warehouse.
+**Design only.** This document describes the architecture for branch-aware warehousing in havn. Implementation is deferred until teams need concurrent branch development on the same warehouse.
 
 ## Problem
 
-When multiple team members work on different branches, they may modify the same SQL models. Currently, running `dp transform` on one branch overwrites the shared warehouse, making it impossible to:
+When multiple team members work on different branches, they may modify the same SQL models. Currently, running `havn transform` on one branch overwrites the shared warehouse, making it impossible to:
 
 - Develop two features that touch the same gold table simultaneously
 - Compare the output of a model on branch A vs branch B
@@ -14,7 +14,7 @@ When multiple team members work on different branches, they may modify the same 
 
 ## Approach: Schema Prefixing
 
-When on a non-main branch, dp prefixes all schema names with a sanitized branch name.
+When on a non-main branch, havn prefixes all schema names with a sanitized branch name.
 
 ### Schema naming
 
@@ -51,15 +51,15 @@ branching:
 
 ### Read fallback
 
-When a branched model depends on a schema that hasn't been built on the current branch, dp falls back to reading from main's schema.
+When a branched model depends on a schema that hasn't been built on the current branch, havn falls back to reading from main's schema.
 
-Example: `feature_add_risk__gold.earthquake_summary` depends on `silver.earthquake_events`. If `feature_add_risk__silver.earthquake_events` doesn't exist, dp reads from `silver.earthquake_events` (main's version).
+Example: `feature_add_risk__gold.earthquake_summary` depends on `silver.earthquake_events`. If `feature_add_risk__silver.earthquake_events` doesn't exist, havn reads from `silver.earthquake_events` (main's version).
 
 This means you only need to build the models you've changed on your branch.
 
 ### SQL rewriting
 
-When executing a model on a branch, dp rewrites the SQL to:
+When executing a model on a branch, havn rewrites the SQL to:
 1. **Target** the branched schema: `CREATE TABLE feature_x__gold.model AS ...`
 2. **Read from** branched schemas if they exist, falling back to main: use a view or CTE wrapper
 
@@ -79,7 +79,7 @@ The rewriting must handle:
 - Subqueries referencing branched schemas
 - `depends_on` references in comments (for DAG resolution)
 
-### `dp serve` on a branch
+### `havn serve` on a branch
 
 When running the web UI on a branch:
 - Show the branch's tables (prefixed schemas) as if they were the real schemas
@@ -90,7 +90,7 @@ The API layer strips the branch prefix for display purposes.
 
 ## Commands
 
-### `dp branch status`
+### `havn branch status`
 
 Show what branch you're on and which models have been built:
 
@@ -108,28 +108,28 @@ Using main's version:
   gold.top_earthquakes (100 rows)
 ```
 
-### `dp branch clean`
+### `havn branch clean`
 
 Drop all tables prefixed with the current branch name:
 
 ```bash
-dp branch clean                    # clean current branch
-dp branch clean feature/old-work   # clean a specific branch
-dp branch clean --all              # clean all branch tables (keep main)
+havn branch clean                    # clean current branch
+havn branch clean feature/old-work   # clean a specific branch
+havn branch clean --all              # clean all branch tables (keep main)
 ```
 
-### `dp branch merge`
+### `havn branch merge`
 
 Promote branch tables to the real schemas. This is a destructive operation (overwrites main's tables):
 
 ```bash
-dp branch merge                    # merge current branch into main schemas
-dp branch merge --dry-run          # show what would change
+havn branch merge                    # merge current branch into main schemas
+havn branch merge --dry-run          # show what would change
 ```
 
 Implementation: rename/copy tables from `branch_prefix__schema.table` to `schema.table`.
 
-### `dp branch list`
+### `havn branch list`
 
 Show all branches that have tables in the warehouse:
 
@@ -149,7 +149,7 @@ Each branch creates copies of modified tables. For a project with 20 gold tables
 
 Mitigation strategies:
 - Only branch schemas that change (silver/gold, not landing/bronze)
-- `dp branch clean` to remove stale branch data
+- `havn branch clean` to remove stale branch data
 - Auto-clean branches that haven't been touched in N days (configurable)
 
 ## Conflict Resolution
@@ -157,15 +157,15 @@ Mitigation strategies:
 When two branches modify the same model:
 1. Each branch has its own copy — no conflict during development
 2. On merge, the second branch to merge overwrites the first
-3. `dp branch merge --dry-run` shows which main tables will be replaced
-4. Use `dp diff` to compare branch output vs current main before merging
+3. `havn branch merge --dry-run` shows which main tables will be replaced
+4. Use `havn diff` to compare branch output vs current main before merging
 
 There is no automatic conflict resolution. The last merge wins. This matches how SQL schema changes work in practice — the final DDL statement defines the table.
 
 ## Implementation Order
 
 1. **Schema prefixing logic** — the core rewriting engine
-2. **`dp transform` branch awareness** — detect branch, rewrite SQL
+2. **`havn transform` branch awareness** — detect branch, rewrite SQL
 3. **Read fallback** — check branched schema first, fall back to main
 4. **CLI commands** — branch status, clean, merge, list
 5. **Web UI** — branch-aware table display
@@ -175,7 +175,7 @@ There is no automatic conflict resolution. The last merge wins. This matches how
 
 1. **Views vs tables on branches**: Should branched views point to branched tables? This creates a cascade — changing one silver table means rebuilding all downstream views on the branch.
 
-2. **Cross-branch queries**: Should `dp query` on a branch automatically use branched schemas? Probably yes for consistency, but this could surprise users.
+2. **Cross-branch queries**: Should `havn query` on a branch automatically use branched schemas? Probably yes for consistency, but this could surprise users.
 
 3. **DuckDB schema search path**: DuckDB supports `SET search_path`. Could we use this instead of SQL rewriting? This would be simpler but might not handle all cases (explicit schema references in SQL).
 

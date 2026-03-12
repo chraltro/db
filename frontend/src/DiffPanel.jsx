@@ -67,7 +67,7 @@ export default function DiffPanel({ api, addOutput }) {
       </p>
 
       {results && (
-        <div data-dp-hint="diff-results">
+        <div data-havn-hint="diff-results">
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
             <thead>
               <tr style={{ borderBottom: "2px solid var(--border)", textAlign: "left" }}>

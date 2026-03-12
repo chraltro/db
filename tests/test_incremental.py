@@ -8,9 +8,9 @@ from pathlib import Path
 import duckdb
 import pytest
 
-from dp.engine.database import ensure_meta_table
-from dp.engine.sql_analysis import parse_config as _parse_config
-from dp.engine.transform import (
+from havn.engine.database import ensure_meta_table
+from havn.engine.sql_analysis import parse_config as _parse_config
+from havn.engine.transform import (
     SQLModel,
     run_transform,
 )

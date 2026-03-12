@@ -20,7 +20,7 @@ function renderMessage(message, style, onOpenFile) {
         <span
           style={styles.fileLink}
           onClick={() => onOpenFile(filePath, line, col)}
-          onMouseEnter={(e) => { e.currentTarget.style.color = "var(--dp-accent)"; e.currentTarget.style.textDecoration = "underline"; }}
+          onMouseEnter={(e) => { e.currentTarget.style.color = "var(--havn-accent)"; e.currentTarget.style.textDecoration = "underline"; }}
           onMouseLeave={(e) => { e.currentTarget.style.color = ""; e.currentTarget.style.textDecoration = ""; }}
           title={`Open ${filePath} at line ${line}`}
         >
@@ -41,7 +41,7 @@ function renderMessage(message, style, onOpenFile) {
         <span
           style={styles.fileLink}
           onClick={() => onOpenFile(ref, 1, 1)}
-          onMouseEnter={(e) => { e.currentTarget.style.color = "var(--dp-accent)"; e.currentTarget.style.textDecoration = "underline"; }}
+          onMouseEnter={(e) => { e.currentTarget.style.color = "var(--havn-accent)"; e.currentTarget.style.textDecoration = "underline"; }}
           onMouseLeave={(e) => { e.currentTarget.style.color = ""; e.currentTarget.style.textDecoration = ""; }}
           title={`Open ${ref}`}
         >
@@ -71,7 +71,7 @@ function renderMessage(message, style, onOpenFile) {
             key={i}
             style={styles.fileLink}
             onClick={() => onOpenFile(p.text, 1, 1)}
-            onMouseEnter={(e) => { e.currentTarget.style.color = "var(--dp-accent)"; e.currentTarget.style.textDecoration = "underline"; }}
+            onMouseEnter={(e) => { e.currentTarget.style.color = "var(--havn-accent)"; e.currentTarget.style.textDecoration = "underline"; }}
             onMouseLeave={(e) => { e.currentTarget.style.color = ""; e.currentTarget.style.textDecoration = ""; }}
             title={`Open ${p.text}`}
           >
@@ -110,9 +110,9 @@ export default function OutputPanel({ output, onClear, height = 180, onOpenFile 
             <span style={styles.ts}>{entry.ts}</span>
             <span style={{
               ...styles.indicator,
-              background: entry.type === "error" ? "var(--dp-red)"
-                : entry.type === "warn" ? "var(--dp-yellow)"
-                : "var(--dp-accent)",
+              background: entry.type === "error" ? "var(--havn-red)"
+                : entry.type === "warn" ? "var(--havn-yellow)"
+                : "var(--havn-accent)",
             }} />
             {renderMessage(entry.message, typeStyles[entry.type] || typeStyles.info, onOpenFile)}
           </div>
@@ -124,22 +124,22 @@ export default function OutputPanel({ output, onClear, height = 180, onOpenFile 
 }
 
 const typeStyles = {
-  info: { color: "var(--dp-text)" },
-  error: { color: "var(--dp-red)" },
-  warn: { color: "var(--dp-yellow)" },
-  log: { color: "var(--dp-text-secondary)" },
+  info: { color: "var(--havn-text)" },
+  error: { color: "var(--havn-red)" },
+  warn: { color: "var(--havn-yellow)" },
+  log: { color: "var(--havn-text-secondary)" },
 };
 
 const styles = {
-  container: { borderTop: "1px solid var(--dp-border)", display: "flex", flexDirection: "column", background: "var(--dp-bg-tertiary)" },
-  header: { display: "flex", alignItems: "center", gap: "8px", padding: "4px 12px", fontSize: "12px", fontWeight: "600", color: "var(--dp-text-secondary)", borderBottom: "1px solid var(--dp-border)" },
+  container: { borderTop: "1px solid var(--havn-border)", display: "flex", flexDirection: "column", background: "var(--havn-bg-tertiary)" },
+  header: { display: "flex", alignItems: "center", gap: "8px", padding: "4px 12px", fontSize: "12px", fontWeight: "600", color: "var(--havn-text-secondary)", borderBottom: "1px solid var(--havn-border)" },
   headerTitle: { fontSize: "11px", textTransform: "uppercase", letterSpacing: "0.5px" },
-  count: { fontSize: "10px", color: "var(--dp-text-dim)", flex: 1 },
-  clearBtn: { background: "none", border: "none", color: "var(--dp-text-secondary)", cursor: "pointer", fontSize: "11px" },
-  log: { flex: 1, overflow: "auto", padding: "4px 12px", fontFamily: "var(--dp-font-mono)", fontSize: "12px", lineHeight: "1.7" },
-  placeholder: { color: "var(--dp-text-dim)", fontStyle: "italic", padding: "8px 0", fontSize: "12px" },
+  count: { fontSize: "10px", color: "var(--havn-text-dim)", flex: 1 },
+  clearBtn: { background: "none", border: "none", color: "var(--havn-text-secondary)", cursor: "pointer", fontSize: "11px" },
+  log: { flex: 1, overflow: "auto", padding: "4px 12px", fontFamily: "var(--havn-font-mono)", fontSize: "12px", lineHeight: "1.7" },
+  placeholder: { color: "var(--havn-text-dim)", fontStyle: "italic", padding: "8px 0", fontSize: "12px" },
   entry: { display: "flex", gap: "8px", alignItems: "baseline" },
-  ts: { color: "var(--dp-text-dim)", flexShrink: 0, fontSize: "11px" },
+  ts: { color: "var(--havn-text-dim)", flexShrink: 0, fontSize: "11px" },
   indicator: { width: "4px", height: "4px", borderRadius: "50%", flexShrink: 0, marginTop: "2px" },
   fileLink: { cursor: "pointer", transition: "color 0.15s" },
 };

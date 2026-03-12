@@ -57,12 +57,12 @@ export default function HistoryPanel({ onOpenFile }) {
                   <td style={styles.td}>
                     <span style={styles.typeBadge}>{row.run_type}</span>
                   </td>
-                  <td style={{ ...styles.td, fontFamily: "var(--dp-font-mono)", fontWeight: 500 }}>
+                  <td style={{ ...styles.td, fontFamily: "var(--havn-font-mono)", fontWeight: 500 }}>
                     {onOpenFile && row.target ? (
                       <span
                         style={styles.fileLink}
                         onClick={() => onOpenFile(row.target, 1, 1)}
-                        onMouseEnter={(e) => { e.currentTarget.style.color = "var(--dp-accent)"; e.currentTarget.style.textDecoration = "underline"; }}
+                        onMouseEnter={(e) => { e.currentTarget.style.color = "var(--havn-accent)"; e.currentTarget.style.textDecoration = "underline"; }}
                         onMouseLeave={(e) => { e.currentTarget.style.color = ""; e.currentTarget.style.textDecoration = ""; }}
                         title={`Open ${row.target}`}
                       >
@@ -74,21 +74,21 @@ export default function HistoryPanel({ onOpenFile }) {
                     <span style={{
                       ...styles.statusBadge,
                       background: row.status === "success"
-                        ? "color-mix(in srgb, var(--dp-green) 12%, transparent)"
-                        : "color-mix(in srgb, var(--dp-red) 12%, transparent)",
-                      color: row.status === "success" ? "var(--dp-green)" : "var(--dp-red)",
+                        ? "color-mix(in srgb, var(--havn-green) 12%, transparent)"
+                        : "color-mix(in srgb, var(--havn-red) 12%, transparent)",
+                      color: row.status === "success" ? "var(--havn-green)" : "var(--havn-red)",
                     }}>{row.status}</span>
                   </td>
-                  <td style={{ ...styles.td, color: "var(--dp-text-secondary)" }}>
+                  <td style={{ ...styles.td, color: "var(--havn-text-secondary)" }}>
                     {row.started_at ? row.started_at.slice(0, 19).replace("T", " ") : ""}
                   </td>
-                  <td style={{ ...styles.td, textAlign: "right", fontFamily: "var(--dp-font-mono)" }}>
+                  <td style={{ ...styles.td, textAlign: "right", fontFamily: "var(--havn-font-mono)" }}>
                     {row.duration_ms != null ? `${row.duration_ms}ms` : ""}
                   </td>
-                  <td style={{ ...styles.td, textAlign: "right", fontFamily: "var(--dp-font-mono)" }}>
+                  <td style={{ ...styles.td, textAlign: "right", fontFamily: "var(--havn-font-mono)" }}>
                     {row.rows_affected || ""}
                   </td>
-                  <td style={{ ...styles.td, color: "var(--dp-red)", maxWidth: "300px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  <td style={{ ...styles.td, color: "var(--havn-red)", maxWidth: "300px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                     {row.error || ""}
                   </td>
                 </tr>
@@ -103,17 +103,17 @@ export default function HistoryPanel({ onOpenFile }) {
 
 const styles = {
   container: { display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" },
-  header: { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 12px", borderBottom: "1px solid var(--dp-border)" },
+  header: { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 12px", borderBottom: "1px solid var(--havn-border)" },
   headerTitle: { fontWeight: 600, fontSize: "13px" },
-  refreshBtn: { background: "var(--dp-btn-bg)", border: "1px solid var(--dp-btn-border)", borderRadius: "var(--dp-radius-lg)", color: "var(--dp-text)", padding: "4px 12px", cursor: "pointer", fontSize: "12px", fontWeight: 500 },
-  loading: { padding: "24px", color: "var(--dp-text-secondary)", textAlign: "center" },
-  empty: { padding: "24px", color: "var(--dp-text-dim)", textAlign: "center" },
-  error: { padding: "24px", color: "var(--dp-red)", textAlign: "center" },
+  refreshBtn: { background: "var(--havn-btn-bg)", border: "1px solid var(--havn-btn-border)", borderRadius: "var(--havn-radius-lg)", color: "var(--havn-text)", padding: "4px 12px", cursor: "pointer", fontSize: "12px", fontWeight: 500 },
+  loading: { padding: "24px", color: "var(--havn-text-secondary)", textAlign: "center" },
+  empty: { padding: "24px", color: "var(--havn-text-dim)", textAlign: "center" },
+  error: { padding: "24px", color: "var(--havn-red)", textAlign: "center" },
   tableWrap: { flex: 1, overflow: "auto" },
   table: { width: "100%", borderCollapse: "collapse", fontSize: "12px" },
-  th: { textAlign: "left", padding: "6px 12px", borderBottom: "2px solid var(--dp-border-light)", color: "var(--dp-text-secondary)", fontWeight: 600, position: "sticky", top: 0, background: "var(--dp-bg)" },
-  td: { padding: "5px 12px", borderBottom: "1px solid var(--dp-border)", color: "var(--dp-text)", fontSize: "12px" },
-  typeBadge: { background: "var(--dp-btn-bg)", padding: "2px 8px", borderRadius: "var(--dp-radius)", fontSize: "11px", fontWeight: 500, textTransform: "capitalize" },
-  statusBadge: { padding: "2px 8px", borderRadius: "var(--dp-radius)", fontSize: "11px", fontWeight: 600 },
+  th: { textAlign: "left", padding: "6px 12px", borderBottom: "2px solid var(--havn-border-light)", color: "var(--havn-text-secondary)", fontWeight: 600, position: "sticky", top: 0, background: "var(--havn-bg)" },
+  td: { padding: "5px 12px", borderBottom: "1px solid var(--havn-border)", color: "var(--havn-text)", fontSize: "12px" },
+  typeBadge: { background: "var(--havn-btn-bg)", padding: "2px 8px", borderRadius: "var(--havn-radius)", fontSize: "11px", fontWeight: 500, textTransform: "capitalize" },
+  statusBadge: { padding: "2px 8px", borderRadius: "var(--havn-radius)", fontSize: "11px", fontWeight: 600 },
   fileLink: { cursor: "pointer", transition: "color 0.15s" },
 };

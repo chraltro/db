@@ -1,8 +1,8 @@
 /**
- * Comprehensive E2E smoke test for dp web UI.
+ * Comprehensive E2E smoke test for havn web UI.
  *
  * Prerequisites – run once before the test suite:
- *   cd test-project && dp stream full-refresh --force && dp serve
+ *   cd test-project && havn stream full-refresh --force && havn serve
  *
  * Then from frontend/:
  *   npx playwright test
@@ -46,14 +46,14 @@ async function goTab(page: Page, name: string) {
   if (!mapping) throw new Error(`Unknown tab: ${name}`);
 
   // Click the section in the header nav
-  const sectionNav = page.locator(`[data-dp-guide="tabs"]`);
+  const sectionNav = page.locator(`[data-havn-guide="tabs"]`);
   await sectionNav.getByText(mapping.section, { exact: true }).click();
   await page.waitForTimeout(300);
 
   // If there's a sub-tab, click it
   if (mapping.subTab) {
-    // Sub-tabs are in a separate bar below the header, with data-dp-tab attribute
-    await page.locator(`[data-dp-tab]`).getByText(mapping.subTab, { exact: true }).click();
+    // Sub-tabs are in a separate bar below the header, with data-havn-tab attribute
+    await page.locator(`[data-havn-tab]`).getByText(mapping.subTab, { exact: true }).click();
     await page.waitForTimeout(300);
   }
 }
@@ -71,11 +71,11 @@ async function dismissGuide(page: Page) {
 /* tests                                                               */
 /* ------------------------------------------------------------------ */
 
-test.describe("dp UI smoke tests", () => {
+test.describe("havn UI smoke tests", () => {
 
   test.beforeEach(async ({ page }) => {
     await page.goto("/");
-    await expect(page.locator(`[data-dp-guide="tabs"]`)).toBeVisible({ timeout: 15000 });
+    await expect(page.locator(`[data-havn-guide="tabs"]`)).toBeVisible({ timeout: 15000 });
     await dismissGuide(page);
   });
 
@@ -90,7 +90,7 @@ test.describe("dp UI smoke tests", () => {
   /* ---- Editor ---- */
   test("Editor tab shows file tree", async ({ page }) => {
     await goTab(page, "Editor");
-    const sidebar = page.locator(`[data-dp-guide="sidebar"]`);
+    const sidebar = page.locator(`[data-havn-guide="sidebar"]`);
     await expect(sidebar).toBeVisible();
     await expect(sidebar.getByText("transform")).toBeVisible({ timeout: 5000 });
     await expect(sidebar.getByText("ingest")).toBeVisible();
@@ -98,7 +98,7 @@ test.describe("dp UI smoke tests", () => {
 
   test("Editor can open a SQL file", async ({ page }) => {
     await goTab(page, "Editor");
-    const sidebar = page.locator(`[data-dp-guide="sidebar"]`);
+    const sidebar = page.locator(`[data-havn-guide="sidebar"]`);
     await sidebar.getByText("earthquakes.sql").first().click({ timeout: 10000 });
     await page.waitForTimeout(1000);
     await expect(page.locator(".monaco-editor")).toBeVisible({ timeout: 10000 });
@@ -261,7 +261,7 @@ test.describe("dp UI smoke tests", () => {
 
   /* ---- Action bar ---- */
   test("Action bar has Run and New buttons", async ({ page }) => {
-    const actions = page.locator(`[data-dp-guide="actions"]`);
+    const actions = page.locator(`[data-havn-guide="actions"]`);
     await expect(actions).toBeVisible();
     await expect(actions.getByRole("button", { name: /Run/ }).first()).toBeVisible();
     await expect(actions.getByRole("button", { name: /New/ })).toBeVisible();
@@ -273,7 +273,7 @@ test.describe("dp UI smoke tests", () => {
     await page.getByText("Run a Query").click();
     await page.waitForTimeout(500);
     // Should now be on Query tab (within Explore section)
-    await expect(page.locator(`[data-dp-tab][data-dp-active="true"]`).getByText("Query")).toBeVisible({ timeout: 5000 });
+    await expect(page.locator(`[data-havn-tab][data-havn-active="true"]`).getByText("Query")).toBeVisible({ timeout: 5000 });
 
     // Go back to Overview
     await goTab(page, "Overview");

@@ -5,8 +5,8 @@ from pathlib import Path
 
 import duckdb
 
-from dp.engine.database import ensure_meta_table
-from dp.engine.runner import run_script, run_scripts_in_dir
+from havn.engine.database import ensure_meta_table
+from havn.engine.runner import run_script, run_scripts_in_dir
 
 
 def test_run_script_success(tmp_path):

@@ -13,7 +13,7 @@ from fastapi.testclient import TestClient
 
 
 def test_mask_hash():
-    from dp.engine.masking import mask_hash
+    from havn.engine.masking import mask_hash
 
     result = mask_hash("hello@example.com")
     assert isinstance(result, str)
@@ -24,7 +24,7 @@ def test_mask_hash():
 
 
 def test_mask_redact():
-    from dp.engine.masking import mask_redact
+    from havn.engine.masking import mask_redact
 
     assert mask_redact("sensitive") == "***"
     assert mask_redact(12345) == "***"
@@ -32,7 +32,7 @@ def test_mask_redact():
 
 
 def test_mask_null():
-    from dp.engine.masking import mask_null
+    from havn.engine.masking import mask_null
 
     assert mask_null("anything") is None
     assert mask_null(42) is None
@@ -40,7 +40,7 @@ def test_mask_null():
 
 
 def test_mask_partial():
-    from dp.engine.masking import mask_partial
+    from havn.engine.masking import mask_partial
 
     # Show first 2, last 3
     assert mask_partial("hello@example.com", show_first=2, show_last=3) == "he************com"
@@ -54,7 +54,7 @@ def test_mask_partial():
 
 
 def test_apply_mask():
-    from dp.engine.masking import apply_mask
+    from havn.engine.masking import apply_mask
 
     assert apply_mask("test", "redact") == "***"
     assert apply_mask("test", "null") is None
@@ -90,7 +90,7 @@ def conn(tmp_path):
         (2, 'Bob', 'bob@example.com', 'inactive'),
         (3, 'Charlie', 'charlie@example.com', 'active')
     """)
-    from dp.engine.masking import ensure_masking_table
+    from havn.engine.masking import ensure_masking_table
 
     ensure_masking_table(db)
     yield db
@@ -98,7 +98,7 @@ def conn(tmp_path):
 
 
 def test_create_and_list_policies(conn):
-    from dp.engine.masking import create_policy, list_policies
+    from havn.engine.masking import create_policy, list_policies
 
     policy = create_policy(
         conn,
@@ -118,7 +118,7 @@ def test_create_and_list_policies(conn):
 
 
 def test_get_and_update_policy(conn):
-    from dp.engine.masking import create_policy, get_policy, update_policy
+    from havn.engine.masking import create_policy, get_policy, update_policy
 
     policy = create_policy(
         conn,
@@ -136,7 +136,7 @@ def test_get_and_update_policy(conn):
 
 
 def test_delete_policy(conn):
-    from dp.engine.masking import create_policy, delete_policy, list_policies
+    from havn.engine.masking import create_policy, delete_policy, list_policies
 
     policy = create_policy(
         conn, schema_name="gold", table_name="customers",
@@ -148,7 +148,7 @@ def test_delete_policy(conn):
 
 
 def test_invalid_method(conn):
-    from dp.engine.masking import create_policy
+    from havn.engine.masking import create_policy
 
     with pytest.raises(ValueError, match="Unknown masking method"):
         create_policy(
@@ -158,7 +158,7 @@ def test_invalid_method(conn):
 
 
 def test_apply_masking_basic(conn):
-    from dp.engine.masking import apply_masking, create_policy
+    from havn.engine.masking import apply_masking, create_policy
 
     create_policy(
         conn, schema_name="gold", table_name="customers",
@@ -180,7 +180,7 @@ def test_apply_masking_basic(conn):
 
 
 def test_apply_masking_admin_exempt(conn):
-    from dp.engine.masking import apply_masking, create_policy
+    from havn.engine.masking import apply_masking, create_policy
 
     create_policy(
         conn, schema_name="gold", table_name="customers",
@@ -196,7 +196,7 @@ def test_apply_masking_admin_exempt(conn):
 
 
 def test_apply_masking_conditional(conn):
-    from dp.engine.masking import apply_masking, create_policy
+    from havn.engine.masking import apply_masking, create_policy
 
     # Only mask email when status == 'inactive'
     create_policy(
@@ -220,7 +220,7 @@ def test_apply_masking_conditional(conn):
 
 def test_apply_masking_adhoc_query(conn):
     """Ad-hoc queries (no schema/table) match on column name alone."""
-    from dp.engine.masking import apply_masking, create_policy
+    from havn.engine.masking import apply_masking, create_policy
 
     create_policy(
         conn, schema_name="gold", table_name="customers",
@@ -236,7 +236,7 @@ def test_apply_masking_adhoc_query(conn):
 
 def test_apply_masking_no_policies(conn):
     """No policies means rows pass through unchanged."""
-    from dp.engine.masking import apply_masking
+    from havn.engine.masking import apply_masking
 
     columns = ["email"]
     rows = [["alice@example.com"]]
@@ -246,7 +246,7 @@ def test_apply_masking_no_policies(conn):
 
 def test_apply_masking_schema_mismatch(conn):
     """Exact schema/table matching should not mask wrong table."""
-    from dp.engine.masking import apply_masking, create_policy
+    from havn.engine.masking import apply_masking, create_policy
 
     create_policy(
         conn, schema_name="gold", table_name="customers",
@@ -294,7 +294,7 @@ streams:
     """)
     db.execute("INSERT INTO gold.customers VALUES (1, 'Alice', 'alice@example.com')")
     db.execute("INSERT INTO gold.customers VALUES (2, 'Bob', 'bob@example.com')")
-    from dp.engine.database import ensure_meta_table
+    from havn.engine.database import ensure_meta_table
 
     ensure_meta_table(db)
     db.close()
@@ -303,7 +303,7 @@ streams:
 
 @pytest.fixture
 def client(project):
-    import dp.server.app as server_app
+    import havn.server.app as server_app
 
     server_app.PROJECT_DIR = project
     return TestClient(server_app.app)

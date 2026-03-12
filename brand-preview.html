@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>havn — Brand Preview</title>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family:'Outfit',sans-serif; }
+
+  /* ── Hero ── */
+  .hero { background:#0B0E14; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:80px 40px; }
+  .hero h1 { font-size:64px; font-weight:800; color:#3ECFB4; letter-spacing:-2px; margin:32px 0 8px; }
+  .hero p { font-size:16px; color:#fff; opacity:0.4; }
+
+  /* ── Palette strip ── */
+  .palette { display:flex; background:#0B0E14; justify-content:center; gap:20px; padding:32px; flex-wrap:wrap; }
+  .palette .s { width:60px; height:60px; border-radius:10px; }
+  .palette .label { font-size:10px; font-family:'JetBrains Mono',monospace; color:#fff; opacity:0.35; text-align:center; margin-top:6px; }
+
+  /* ── App mockup ── */
+  .mockup { background:#0B0E14; padding:40px; display:flex; justify-content:center; }
+  .app { width:900px; border:1px solid #1a2030; border-radius:12px; overflow:hidden; background:#121620; }
+  .app-header { display:flex; align-items:center; gap:12px; padding:12px 20px; border-bottom:1px solid #1a2030; background:#0B0E14; }
+  .app-header svg { flex-shrink:0; }
+  .app-header .brand { font-size:16px; font-weight:700; color:#3ECFB4; letter-spacing:-0.5px; }
+  .app-header .tabs { display:flex; gap:4px; margin-left:24px; }
+  .app-header .tab { padding:6px 14px; font-size:12px; border-radius:6px; color:#fff; opacity:0.35; cursor:pointer; }
+  .app-header .tab.active { background:#1a2030; opacity:1; color:#3ECFB4; }
+  .app-body { display:flex; height:400px; }
+  .sidebar { width:200px; border-right:1px solid #1a2030; padding:16px; }
+  .sidebar .sh { font-size:10px; font-family:'JetBrains Mono',monospace; color:#3ECFB4; letter-spacing:1px; text-transform:uppercase; margin-bottom:8px; }
+  .sidebar .item { font-size:13px; color:#fff; opacity:0.5; padding:5px 8px; border-radius:4px; cursor:pointer; }
+  .sidebar .item.active { background:#1a2030; opacity:1; }
+  .main { flex:1; padding:20px; }
+  .main .card { background:#0B0E14; border:1px solid #1a2030; border-radius:8px; padding:16px; margin-bottom:12px; }
+  .main .card h3 { font-size:13px; color:#3ECFB4; margin-bottom:8px; font-weight:600; }
+  .main .row { display:flex; gap:8px; font-size:12px; font-family:'JetBrains Mono',monospace; color:#fff; opacity:0.5; padding:3px 0; }
+  .main .row .ok { color:#34D399; }
+  .main .row .err { color:#F87171; }
+  .main .row .warn { color:#FBBF24; }
+  .main .badge { display:inline-block; padding:2px 8px; border-radius:4px; font-size:11px; font-family:'JetBrains Mono',monospace; }
+  .main .badge.green { background:#34D39920; color:#34D399; }
+  .main .badge.red { background:#F8717120; color:#F87171; }
+  .main .badge.purple { background:#A78BFA20; color:#A78BFA; }
+
+  /* ── CLI mockup ── */
+  .cli-mock { background:#0B0E14; padding:40px; display:flex; justify-content:center; }
+  .terminal { width:600px; background:#121620; border:1px solid #1a2030; border-radius:10px; overflow:hidden; }
+  .terminal-bar { padding:10px 16px; background:#0B0E14; border-bottom:1px solid #1a2030; display:flex; gap:6px; }
+  .terminal-bar .dot { width:10px; height:10px; border-radius:50%; background:#1a2030; }
+  .terminal pre { padding:20px; font-family:'JetBrains Mono',monospace; font-size:13px; line-height:1.8; color:#fff; opacity:0.7; margin:0; }
+  .terminal .accent { color:#3ECFB4; opacity:1; }
+  .terminal .green { color:#34D399; opacity:1; }
+  .terminal .dim { opacity:0.3; }
+
+  /* ── Light section ── */
+  .light { background:#F4F6F8; display:flex; align-items:center; justify-content:center; gap:24px; padding:60px; }
+  .light h1 { font-size:48px; font-weight:800; color:#3ECFB4; letter-spacing:-1.5px; margin:0; }
+  .light p { font-size:14px; color:#0B0E14; opacity:0.45; }
+
+  /* ── Favicon sizes ── */
+  .sizes { background:#0B0E14; display:flex; align-items:center; justify-content:center; gap:40px; padding:40px; }
+  .sizes .size-label { font-size:10px; font-family:'JetBrains Mono',monospace; color:#fff; opacity:0.2; text-align:center; margin-top:8px; }
+</style>
+</head>
+<body>
+
+<!-- ── HERO ── -->
+<div class="hero">
+  <svg width="160" height="160" viewBox="0 0 14 12" shape-rendering="crispEdges">
+    <rect x="1" y="0" width="12" height="2" fill="#3ECFB4"/>
+    <rect x="1" y="2" width="2" height="4" fill="#3ECFB4"/>
+    <rect x="11" y="2" width="2" height="4" fill="#3ECFB4"/>
+    <rect x="1" y="4" width="2" height="2" fill="#3ECFB4"/>
+    <rect x="3" y="3" width="2" height="2" fill="#3ECFB4"/>
+    <rect x="5" y="4" width="2" height="2" fill="#3ECFB4"/>
+    <rect x="7" y="5" width="2" height="2" fill="#3ECFB4"/>
+    <rect x="9" y="4" width="2" height="2" fill="#3ECFB4"/>
+    <rect x="11" y="3" width="2" height="2" fill="#3ECFB4"/>
+    <rect x="2" y="6" width="2" height="2" fill="#3ECFB4"/>
+    <rect x="10" y="6" width="2" height="2" fill="#3ECFB4"/>
+    <rect x="3" y="8" width="2" height="2" fill="#3ECFB4"/>
+    <rect x="9" y="8" width="2" height="2" fill="#3ECFB4"/>
+    <rect x="4" y="9" width="2" height="2" fill="#3ECFB4"/>
+    <rect x="8" y="9" width="2" height="2" fill="#3ECFB4"/>
+    <rect x="5" y="10" width="4" height="2" fill="#3ECFB4"/>
+  </svg>
+  <h1>havn</h1>
+  <p>Data in safe waters.</p>
+</div>
+
+<!-- ── PALETTE ── -->
+<div class="palette">
+  <div><div class="s" style="background:#3ECFB4;"></div><div class="label">Harbour Teal</div></div>
+  <div><div class="s" style="background:#7C8CF5;"></div><div class="label">Nordic Indigo</div></div>
+  <div><div class="s" style="background:#0B0E14;border:1px solid #1a2030;"></div><div class="label">Deep Water</div></div>
+  <div><div class="s" style="background:#121620;"></div><div class="label">Twilight</div></div>
+  <div><div class="s" style="background:#F4F6F8;"></div><div class="label">Glacier</div></div>
+  <div><div class="s" style="background:#34D399;"></div><div class="label">Success</div></div>
+  <div><div class="s" style="background:#FBBF24;"></div><div class="label">Warning</div></div>
+  <div><div class="s" style="background:#F87171;"></div><div class="label">Error</div></div>
+  <div><div class="s" style="background:#A78BFA;"></div><div class="label">Info</div></div>
+</div>
+
+<!-- ── APP MOCKUP ── -->
+<div class="mockup">
+  <div class="app">
+    <div class="app-header">
+      <svg width="20" height="18" viewBox="0 0 14 12" shape-rendering="crispEdges">
+        <rect x="1" y="0" width="12" height="2" fill="#3ECFB4"/>
+        <rect x="1" y="2" width="2" height="4" fill="#3ECFB4"/><rect x="11" y="2" width="2" height="4" fill="#3ECFB4"/>
+        <rect x="3" y="3" width="2" height="2" fill="#3ECFB4"/><rect x="5" y="4" width="2" height="2" fill="#3ECFB4"/><rect x="7" y="5" width="2" height="2" fill="#3ECFB4"/><rect x="9" y="4" width="2" height="2" fill="#3ECFB4"/><rect x="11" y="3" width="2" height="2" fill="#3ECFB4"/>
+        <rect x="2" y="6" width="2" height="2" fill="#3ECFB4"/><rect x="10" y="6" width="2" height="2" fill="#3ECFB4"/>
+        <rect x="3" y="8" width="2" height="2" fill="#3ECFB4"/><rect x="9" y="8" width="2" height="2" fill="#3ECFB4"/>
+        <rect x="4" y="9" width="2" height="2" fill="#3ECFB4"/><rect x="8" y="9" width="2" height="2" fill="#3ECFB4"/>
+        <rect x="5" y="10" width="4" height="2" fill="#3ECFB4"/>
+      </svg>
+      <span class="brand">havn</span>
+      <div class="tabs">
+        <div class="tab active">Overview</div>
+        <div class="tab">Editor</div>
+        <div class="tab">Query</div>
+        <div class="tab">Tables</div>
+        <div class="tab">DAG</div>
+        <div class="tab">History</div>
+      </div>
+    </div>
+    <div class="app-body">
+      <div class="sidebar">
+        <div class="sh">Streams</div>
+        <div class="item active">daily-refresh</div>
+        <div class="item">weekly-report</div>
+        <div class="item">hourly-sync</div>
+        <div class="sh" style="margin-top:16px;">Models</div>
+        <div class="item">bronze.raw_orders</div>
+        <div class="item">silver.dim_customers</div>
+        <div class="item">silver.fct_orders</div>
+        <div class="item">gold.revenue_daily</div>
+      </div>
+      <div class="main">
+        <div class="card">
+          <h3>Pipeline Status</h3>
+          <div class="row"><span class="ok">&#10003;</span> daily-refresh <span style="margin-left:auto" class="badge green">healthy</span></div>
+          <div class="row"><span class="ok">&#10003;</span> weekly-report <span style="margin-left:auto" class="badge green">healthy</span></div>
+          <div class="row"><span class="warn">!</span> hourly-sync <span style="margin-left:auto" class="badge red">stale 3h</span></div>
+        </div>
+        <div class="card">
+          <h3>Recent Transforms</h3>
+          <div class="row"><span class="ok">&#10003;</span> gold.revenue_daily <span style="margin-left:auto" class="badge purple">0.4s</span></div>
+          <div class="row"><span class="ok">&#10003;</span> silver.fct_orders <span style="margin-left:auto" class="badge purple">0.8s</span></div>
+          <div class="row"><span class="ok">&#10003;</span> silver.dim_customers <span style="margin-left:auto" class="badge purple">0.3s</span></div>
+          <div class="row"><span class="err">&#10007;</span> bronze.raw_events <span style="margin-left:auto" class="badge red">failed</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── CLI MOCKUP ── -->
+<div class="cli-mock">
+  <div class="terminal">
+    <div class="terminal-bar"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>
+    <pre><span class="accent">havn</span> <span class="dim">v0.1.0</span>
+Data in safe waters.
+
+<span class="dim">$</span> <span class="accent">havn transform</span>
+  bronze.raw_orders       <span class="green">done</span>  0.2s
+  bronze.raw_customers    <span class="green">done</span>  0.3s
+  silver.fct_orders       <span class="green">done</span>  0.6s
+  gold.revenue_daily      <span class="green">done</span>  0.4s
+
+<span class="green">&#10003;</span> 4 models built in 1.5s — 8 cached
+
+<span class="dim">$</span> <span class="accent">havn serve</span>
+  <span class="dim">&#9679;</span> http://localhost:3000</pre>
+  </div>
+</div>
+
+<!-- ── LIGHT MODE ── -->
+<div class="light">
+  <svg width="48" height="48" viewBox="0 0 14 12" shape-rendering="crispEdges">
+    <rect x="1" y="0" width="12" height="2" fill="#3ECFB4"/>
+    <rect x="1" y="2" width="2" height="4" fill="#3ECFB4"/><rect x="11" y="2" width="2" height="4" fill="#3ECFB4"/>
+    <rect x="3" y="3" width="2" height="2" fill="#3ECFB4"/><rect x="5" y="4" width="2" height="2" fill="#3ECFB4"/><rect x="7" y="5" width="2" height="2" fill="#3ECFB4"/><rect x="9" y="4" width="2" height="2" fill="#3ECFB4"/><rect x="11" y="3" width="2" height="2" fill="#3ECFB4"/>
+    <rect x="2" y="6" width="2" height="2" fill="#3ECFB4"/><rect x="10" y="6" width="2" height="2" fill="#3ECFB4"/>
+    <rect x="3" y="8" width="2" height="2" fill="#3ECFB4"/><rect x="9" y="8" width="2" height="2" fill="#3ECFB4"/>
+    <rect x="4" y="9" width="2" height="2" fill="#3ECFB4"/><rect x="8" y="9" width="2" height="2" fill="#3ECFB4"/>
+    <rect x="5" y="10" width="4" height="2" fill="#3ECFB4"/>
+  </svg>
+  <div>
+    <h1>havn</h1>
+    <p>Data in safe waters.</p>
+  </div>
+</div>
+
+<!-- ── FAVICON SIZES ── -->
+<div class="sizes">
+  <div>
+    <svg width="128" height="128" viewBox="0 0 14 12" shape-rendering="crispEdges">
+      <rect x="1" y="0" width="12" height="2" fill="#3ECFB4"/><rect x="1" y="2" width="2" height="4" fill="#3ECFB4"/><rect x="11" y="2" width="2" height="4" fill="#3ECFB4"/>
+      <rect x="3" y="3" width="2" height="2" fill="#3ECFB4"/><rect x="5" y="4" width="2" height="2" fill="#3ECFB4"/><rect x="7" y="5" width="2" height="2" fill="#3ECFB4"/><rect x="9" y="4" width="2" height="2" fill="#3ECFB4"/><rect x="11" y="3" width="2" height="2" fill="#3ECFB4"/>
+      <rect x="2" y="6" width="2" height="2" fill="#3ECFB4"/><rect x="10" y="6" width="2" height="2" fill="#3ECFB4"/>
+      <rect x="3" y="8" width="2" height="2" fill="#3ECFB4"/><rect x="9" y="8" width="2" height="2" fill="#3ECFB4"/>
+      <rect x="4" y="9" width="2" height="2" fill="#3ECFB4"/><rect x="8" y="9" width="2" height="2" fill="#3ECFB4"/>
+      <rect x="5" y="10" width="4" height="2" fill="#3ECFB4"/>
+    </svg>
+    <div class="size-label">128px</div>
+  </div>
+  <div>
+    <svg width="48" height="48" viewBox="0 0 14 12" shape-rendering="crispEdges">
+      <rect x="1" y="0" width="12" height="2" fill="#3ECFB4"/><rect x="1" y="2" width="2" height="4" fill="#3ECFB4"/><rect x="11" y="2" width="2" height="4" fill="#3ECFB4"/>
+      <rect x="3" y="3" width="2" height="2" fill="#3ECFB4"/><rect x="5" y="4" width="2" height="2" fill="#3ECFB4"/><rect x="7" y="5" width="2" height="2" fill="#3ECFB4"/><rect x="9" y="4" width="2" height="2" fill="#3ECFB4"/><rect x="11" y="3" width="2" height="2" fill="#3ECFB4"/>
+      <rect x="2" y="6" width="2" height="2" fill="#3ECFB4"/><rect x="10" y="6" width="2" height="2" fill="#3ECFB4"/>
+      <rect x="3" y="8" width="2" height="2" fill="#3ECFB4"/><rect x="9" y="8" width="2" height="2" fill="#3ECFB4"/>
+      <rect x="4" y="9" width="2" height="2" fill="#3ECFB4"/><rect x="8" y="9" width="2" height="2" fill="#3ECFB4"/>
+      <rect x="5" y="10" width="4" height="2" fill="#3ECFB4"/>
+    </svg>
+    <div class="size-label">48px</div>
+  </div>
+  <div>
+    <svg width="24" height="24" viewBox="0 0 14 12" shape-rendering="crispEdges">
+      <rect x="1" y="0" width="12" height="2" fill="#3ECFB4"/><rect x="1" y="2" width="2" height="4" fill="#3ECFB4"/><rect x="11" y="2" width="2" height="4" fill="#3ECFB4"/>
+      <rect x="3" y="3" width="2" height="2" fill="#3ECFB4"/><rect x="5" y="4" width="2" height="2" fill="#3ECFB4"/><rect x="7" y="5" width="2" height="2" fill="#3ECFB4"/><rect x="9" y="4" width="2" height="2" fill="#3ECFB4"/><rect x="11" y="3" width="2" height="2" fill="#3ECFB4"/>
+      <rect x="2" y="6" width="2" height="2" fill="#3ECFB4"/><rect x="10" y="6" width="2" height="2" fill="#3ECFB4"/>
+      <rect x="3" y="8" width="2" height="2" fill="#3ECFB4"/><rect x="9" y="8" width="2" height="2" fill="#3ECFB4"/>
+      <rect x="4" y="9" width="2" height="2" fill="#3ECFB4"/><rect x="8" y="9" width="2" height="2" fill="#3ECFB4"/>
+      <rect x="5" y="10" width="4" height="2" fill="#3ECFB4"/>
+    </svg>
+    <div class="size-label">24px</div>
+  </div>
+  <div>
+    <svg width="16" height="16" viewBox="0 0 14 12" shape-rendering="crispEdges">
+      <rect x="1" y="0" width="12" height="2" fill="#3ECFB4"/><rect x="1" y="2" width="2" height="4" fill="#3ECFB4"/><rect x="11" y="2" width="2" height="4" fill="#3ECFB4"/>
+      <rect x="3" y="3" width="2" height="2" fill="#3ECFB4"/><rect x="5" y="4" width="2" height="2" fill="#3ECFB4"/><rect x="7" y="5" width="2" height="2" fill="#3ECFB4"/><rect x="9" y="4" width="2" height="2" fill="#3ECFB4"/><rect x="11" y="3" width="2" height="2" fill="#3ECFB4"/>
+      <rect x="2" y="6" width="2" height="2" fill="#3ECFB4"/><rect x="10" y="6" width="2" height="2" fill="#3ECFB4"/>
+      <rect x="3" y="8" width="2" height="2" fill="#3ECFB4"/><rect x="9" y="8" width="2" height="2" fill="#3ECFB4"/>
+      <rect x="4" y="9" width="2" height="2" fill="#3ECFB4"/><rect x="8" y="9" width="2" height="2" fill="#3ECFB4"/>
+      <rect x="5" y="10" width="4" height="2" fill="#3ECFB4"/>
+    </svg>
+    <div class="size-label">16px</div>
+  </div>
+</div>
+
+</body>
+</html>

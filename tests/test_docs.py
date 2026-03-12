@@ -4,7 +4,7 @@ from pathlib import Path
 
 import duckdb
 
-from dp.engine.docs import generate_docs
+from havn.engine.docs import generate_docs
 
 
 def test_generate_docs_empty(tmp_path):

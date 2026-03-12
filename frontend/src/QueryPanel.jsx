@@ -105,20 +105,20 @@ function SchemaSidebar({ tables, onInsert }) {
 }
 
 const sbSt = {
-  container: { width: "100%", height: "100%", overflow: "auto", background: "var(--dp-bg-tertiary)", fontSize: "12px" },
-  header: { padding: "8px 10px", fontWeight: 600, fontSize: "11px", color: "var(--dp-text-secondary)", textTransform: "uppercase", letterSpacing: "0.3px", borderBottom: "1px solid var(--dp-border)" },
+  container: { width: "100%", height: "100%", overflow: "auto", background: "var(--havn-bg-tertiary)", fontSize: "12px" },
+  header: { padding: "8px 10px", fontWeight: 600, fontSize: "11px", color: "var(--havn-text-secondary)", textTransform: "uppercase", letterSpacing: "0.3px", borderBottom: "1px solid var(--havn-border)" },
   list: { padding: "4px 0" },
-  empty: { padding: "16px 10px", color: "var(--dp-text-dim)", fontSize: "12px", textAlign: "center" },
+  empty: { padding: "16px 10px", color: "var(--havn-text-dim)", fontSize: "12px", textAlign: "center" },
   schemaRow: { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "5px 10px 2px", marginTop: "4px" },
-  schemaName: { fontWeight: 600, color: "var(--dp-accent)", fontSize: "11px", textTransform: "uppercase", letterSpacing: "0.3px" },
-  schemaCount: { fontSize: "10px", color: "var(--dp-text-dim)" },
+  schemaName: { fontWeight: 600, color: "var(--havn-accent)", fontSize: "11px", textTransform: "uppercase", letterSpacing: "0.3px" },
+  schemaCount: { fontSize: "10px", color: "var(--havn-text-dim)" },
   tableRow: { display: "flex", alignItems: "center", padding: "2px 6px 2px 8px" },
-  expandBtn: { background: "none", border: "none", color: "var(--dp-text-dim)", cursor: "pointer", fontSize: "10px", padding: "2px 4px", width: "18px" },
-  tableName: { background: "none", border: "none", color: "var(--dp-text)", cursor: "pointer", fontSize: "12px", fontFamily: "var(--dp-font-mono)", padding: "2px 4px", textAlign: "left", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
+  expandBtn: { background: "none", border: "none", color: "var(--havn-text-dim)", cursor: "pointer", fontSize: "10px", padding: "2px 4px", width: "18px" },
+  tableName: { background: "none", border: "none", color: "var(--havn-text)", cursor: "pointer", fontSize: "12px", fontFamily: "var(--havn-font-mono)", padding: "2px 4px", textAlign: "left", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
   colList: { paddingLeft: "30px", paddingBottom: "2px" },
-  colItem: { display: "flex", justifyContent: "space-between", gap: "6px", padding: "1px 8px", cursor: "pointer", borderRadius: "var(--dp-radius)" },
-  colName: { fontFamily: "var(--dp-font-mono)", color: "var(--dp-text-secondary)", fontSize: "11px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
-  colType: { color: "var(--dp-text-dim)", fontSize: "10px", flexShrink: 0 },
+  colItem: { display: "flex", justifyContent: "space-between", gap: "6px", padding: "1px 8px", cursor: "pointer", borderRadius: "var(--havn-radius)" },
+  colName: { fontFamily: "var(--havn-font-mono)", color: "var(--havn-text-secondary)", fontSize: "11px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
+  colType: { color: "var(--havn-text-dim)", fontSize: "10px", flexShrink: 0 },
 };
 
 export default function QueryPanel({ addOutput }) {
@@ -360,7 +360,7 @@ export default function QueryPanel({ addOutput }) {
     <div style={st.container}>
       <div style={st.main}>
         {/* Schema sidebar */}
-        <div data-dp-hint="query-sidebar" style={{ display: "flex", flexDirection: "column", width: sidebarWidth, flexShrink: 0 }}>
+        <div data-havn-hint="query-sidebar" style={{ display: "flex", flexDirection: "column", width: sidebarWidth, flexShrink: 0 }}>
           <SchemaSidebar tables={tables} onInsert={insertAtCursor} />
         </div>
         <ResizeHandle direction="horizontal" onResize={onSidebarResize} onResizeStart={onSidebarResizeStart} />
@@ -426,7 +426,7 @@ export default function QueryPanel({ addOutput }) {
                         key={i}
                         onClick={() => { setSql(h.sql); setHistoryOpen(false); }}
                         style={st.historyItem}
-                        onMouseEnter={(e) => e.currentTarget.style.background = "var(--dp-btn-bg)"}
+                        onMouseEnter={(e) => e.currentTarget.style.background = "var(--havn-btn-bg)"}
                         onMouseLeave={(e) => e.currentTarget.style.background = "none"}
                       >
                         <span style={st.historySQL}>{h.sql.substring(0, 80)}{h.sql.length > 80 ? "..." : ""}</span>
@@ -491,12 +491,12 @@ const st = {
   main: { display: "flex", flex: 1, overflow: "hidden" },
 
   queryArea: { flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" },
-  toolbar: { display: "flex", alignItems: "center", gap: "8px", padding: "6px 12px", borderBottom: "1px solid var(--dp-border)", flexShrink: 0 },
+  toolbar: { display: "flex", alignItems: "center", gap: "8px", padding: "6px 12px", borderBottom: "1px solid var(--havn-border)", flexShrink: 0 },
   runBtn: {
     padding: "5px 14px",
-    background: "var(--dp-green)",
-    border: "1px solid var(--dp-green-border)",
-    borderRadius: "var(--dp-radius-lg)",
+    background: "var(--havn-green)",
+    border: "1px solid var(--havn-green-border)",
+    borderRadius: "var(--havn-radius-lg)",
     color: "#fff",
     cursor: "pointer",
     fontSize: "12px",
@@ -506,39 +506,39 @@ const st = {
     gap: "6px",
   },
   shortcut: { fontSize: "10px", opacity: 0.7 },
-  fmtBtn: { padding: "5px 10px", background: "var(--dp-btn-bg)", border: "1px solid var(--dp-btn-border)", borderRadius: "var(--dp-radius-lg)", color: "var(--dp-text-secondary)", cursor: "pointer", fontSize: "12px", fontWeight: 500, display: "flex", alignItems: "center", gap: "6px" },
+  fmtBtn: { padding: "5px 10px", background: "var(--havn-btn-bg)", border: "1px solid var(--havn-btn-border)", borderRadius: "var(--havn-radius-lg)", color: "var(--havn-text-secondary)", cursor: "pointer", fontSize: "12px", fontWeight: 500, display: "flex", alignItems: "center", gap: "6px" },
 
   historyWrapper: { position: "relative" },
-  historyBtn: { background: "var(--dp-btn-bg)", border: "1px solid var(--dp-btn-border)", borderRadius: "var(--dp-radius-lg)", color: "var(--dp-text-secondary)", cursor: "pointer", padding: "4px 8px", fontSize: "14px", display: "flex", alignItems: "center", gap: "4px" },
-  historyCount: { fontSize: "10px", background: "var(--dp-bg-tertiary)", padding: "0 5px", borderRadius: "8px", color: "var(--dp-text-dim)", fontWeight: 500 },
-  historyDropdown: { position: "absolute", top: "100%", left: 0, marginTop: "4px", background: "var(--dp-bg-secondary)", border: "1px solid var(--dp-border)", borderRadius: "var(--dp-radius)", zIndex: 100, width: "400px", maxHeight: "300px", overflow: "auto", boxShadow: "0 4px 12px rgba(0,0,0,0.3)" },
-  historyHeader: { padding: "6px 12px", fontSize: "11px", fontWeight: 600, color: "var(--dp-text-secondary)", borderBottom: "1px solid var(--dp-border)" },
-  historyEmpty: { padding: "16px", color: "var(--dp-text-dim)", fontSize: "12px", textAlign: "center" },
-  historyItem: { display: "block", width: "100%", padding: "6px 12px", background: "none", border: "none", borderBottom: "1px solid var(--dp-border)", color: "var(--dp-text)", cursor: "pointer", textAlign: "left", fontSize: "12px" },
-  historySQL: { fontFamily: "var(--dp-font-mono)", fontSize: "11px", color: "var(--dp-text)", display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
+  historyBtn: { background: "var(--havn-btn-bg)", border: "1px solid var(--havn-btn-border)", borderRadius: "var(--havn-radius-lg)", color: "var(--havn-text-secondary)", cursor: "pointer", padding: "4px 8px", fontSize: "14px", display: "flex", alignItems: "center", gap: "4px" },
+  historyCount: { fontSize: "10px", background: "var(--havn-bg-tertiary)", padding: "0 5px", borderRadius: "8px", color: "var(--havn-text-dim)", fontWeight: 500 },
+  historyDropdown: { position: "absolute", top: "100%", left: 0, marginTop: "4px", background: "var(--havn-bg-secondary)", border: "1px solid var(--havn-border)", borderRadius: "var(--havn-radius)", zIndex: 100, width: "400px", maxHeight: "300px", overflow: "auto", boxShadow: "0 4px 12px rgba(0,0,0,0.3)" },
+  historyHeader: { padding: "6px 12px", fontSize: "11px", fontWeight: 600, color: "var(--havn-text-secondary)", borderBottom: "1px solid var(--havn-border)" },
+  historyEmpty: { padding: "16px", color: "var(--havn-text-dim)", fontSize: "12px", textAlign: "center" },
+  historyItem: { display: "block", width: "100%", padding: "6px 12px", background: "none", border: "none", borderBottom: "1px solid var(--havn-border)", color: "var(--havn-text)", cursor: "pointer", textAlign: "left", fontSize: "12px" },
+  historySQL: { fontFamily: "var(--havn-font-mono)", fontSize: "11px", color: "var(--havn-text)", display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
 
-  viewToggle: { display: "flex", marginLeft: "auto", gap: "1px", background: "var(--dp-border)", borderRadius: "var(--dp-radius-lg)", overflow: "hidden" },
-  viewBtn: { padding: "3px 10px", background: "var(--dp-btn-bg)", border: "none", color: "var(--dp-text-secondary)", cursor: "pointer", fontSize: "11px", fontWeight: 500 },
-  viewBtnActive: { padding: "3px 10px", background: "var(--dp-bg-secondary)", border: "none", color: "var(--dp-text)", cursor: "pointer", fontSize: "11px", fontWeight: 600 },
+  viewToggle: { display: "flex", marginLeft: "auto", gap: "1px", background: "var(--havn-border)", borderRadius: "var(--havn-radius-lg)", overflow: "hidden" },
+  viewBtn: { padding: "3px 10px", background: "var(--havn-btn-bg)", border: "none", color: "var(--havn-text-secondary)", cursor: "pointer", fontSize: "11px", fontWeight: 500 },
+  viewBtnActive: { padding: "3px 10px", background: "var(--havn-bg-secondary)", border: "none", color: "var(--havn-text)", cursor: "pointer", fontSize: "11px", fontWeight: 600 },
 
   editorWrapper: { flexShrink: 0 },
-  textarea: { width: "100%", height: "100%", padding: "10px 12px", background: "var(--dp-bg)", border: "none", color: "var(--dp-text)", fontFamily: "var(--dp-font-mono)", fontSize: "13px", resize: "none", outline: "none", boxSizing: "border-box", lineHeight: 1.5, display: "block" },
-  shortcutHint: { height: "22px", display: "flex", alignItems: "center", padding: "0 10px", gap: "2px", fontSize: "10px", color: "var(--dp-text-dim)", background: "var(--dp-bg)", borderTop: "1px solid var(--dp-border)" },
-  shortcutKey: { background: "var(--dp-btn-bg)", border: "1px solid var(--dp-btn-border)", borderRadius: "3px", padding: "0 4px", fontSize: "10px", fontFamily: "var(--dp-font-mono)", color: "var(--dp-text-secondary)" },
-  acDropdown: { maxHeight: "180px", overflow: "auto", background: "var(--dp-bg-secondary)", borderBottom: "1px solid var(--dp-border)", flexShrink: 0 },
+  textarea: { width: "100%", height: "100%", padding: "10px 12px", background: "var(--havn-bg)", border: "none", color: "var(--havn-text)", fontFamily: "var(--havn-font-mono)", fontSize: "13px", resize: "none", outline: "none", boxSizing: "border-box", lineHeight: 1.5, display: "block" },
+  shortcutHint: { height: "22px", display: "flex", alignItems: "center", padding: "0 10px", gap: "2px", fontSize: "10px", color: "var(--havn-text-dim)", background: "var(--havn-bg)", borderTop: "1px solid var(--havn-border)" },
+  shortcutKey: { background: "var(--havn-btn-bg)", border: "1px solid var(--havn-btn-border)", borderRadius: "3px", padding: "0 4px", fontSize: "10px", fontFamily: "var(--havn-font-mono)", color: "var(--havn-text-secondary)" },
+  acDropdown: { maxHeight: "180px", overflow: "auto", background: "var(--havn-bg-secondary)", borderBottom: "1px solid var(--havn-border)", flexShrink: 0 },
   acItem: { display: "flex", alignItems: "center", gap: "8px", padding: "5px 10px", cursor: "pointer", fontSize: "12px" },
-  acItemActive: { display: "flex", alignItems: "center", gap: "8px", padding: "5px 10px", cursor: "pointer", fontSize: "12px", background: "var(--dp-btn-bg)" },
-  acKind: { fontSize: "9px", fontFamily: "var(--dp-font-mono)", color: "var(--dp-text-dim)", background: "var(--dp-bg-tertiary)", border: "1px solid var(--dp-border)", borderRadius: "3px", padding: "0 4px", flexShrink: 0, width: "22px", textAlign: "center" },
-  acLabel: { fontFamily: "var(--dp-font-mono)", color: "var(--dp-text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
+  acItemActive: { display: "flex", alignItems: "center", gap: "8px", padding: "5px 10px", cursor: "pointer", fontSize: "12px", background: "var(--havn-btn-bg)" },
+  acKind: { fontSize: "9px", fontFamily: "var(--havn-font-mono)", color: "var(--havn-text-dim)", background: "var(--havn-bg-tertiary)", border: "1px solid var(--havn-border)", borderRadius: "3px", padding: "0 4px", flexShrink: 0, width: "22px", textAlign: "center" },
+  acLabel: { fontFamily: "var(--havn-font-mono)", color: "var(--havn-text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
 
-  suggestions: { display: "flex", alignItems: "center", gap: "6px", padding: "8px 12px", flexWrap: "wrap", borderBottom: "1px solid var(--dp-border)" },
-  suggestLabel: { fontSize: "11px", color: "var(--dp-text-dim)", fontWeight: 500 },
-  suggestBtn: { padding: "3px 10px", background: "var(--dp-bg-secondary)", border: "1px solid var(--dp-border)", borderRadius: "var(--dp-radius-lg)", color: "var(--dp-accent)", cursor: "pointer", fontSize: "11px", fontWeight: 500 },
+  suggestions: { display: "flex", alignItems: "center", gap: "6px", padding: "8px 12px", flexWrap: "wrap", borderBottom: "1px solid var(--havn-border)" },
+  suggestLabel: { fontSize: "11px", color: "var(--havn-text-dim)", fontWeight: 500 },
+  suggestBtn: { padding: "3px 10px", background: "var(--havn-bg-secondary)", border: "1px solid var(--havn-border)", borderRadius: "var(--havn-radius-lg)", color: "var(--havn-accent)", cursor: "pointer", fontSize: "11px", fontWeight: 500 },
 
-  error: { padding: "8px 12px", background: "rgba(255,0,0,0.05)", borderBottom: "1px solid var(--dp-red)", color: "var(--dp-red)", fontSize: "12px", fontFamily: "var(--dp-font-mono)", whiteSpace: "pre-wrap" },
+  error: { padding: "8px 12px", background: "rgba(255,0,0,0.05)", borderBottom: "1px solid var(--havn-red)", color: "var(--havn-red)", fontSize: "12px", fontFamily: "var(--havn-font-mono)", whiteSpace: "pre-wrap" },
   errorLabel: { fontWeight: 600, marginRight: "8px" },
 
   results: { flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" },
-  resultsHeader: { padding: "6px 12px", fontSize: "11px", color: "var(--dp-text-secondary)", borderBottom: "1px solid var(--dp-border)", flexShrink: 0 },
+  resultsHeader: { padding: "6px 12px", fontSize: "11px", color: "var(--havn-text-secondary)", borderBottom: "1px solid var(--havn-border)", flexShrink: 0 },
   resultsBody: { flex: 1, overflow: "auto", display: "flex", flexDirection: "column" },
 };

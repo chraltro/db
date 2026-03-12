@@ -4,7 +4,7 @@ from pathlib import Path
 
 import duckdb
 
-from dp.engine.auth import (
+from havn.engine.auth import (
     authenticate,
     create_user,
     delete_user,

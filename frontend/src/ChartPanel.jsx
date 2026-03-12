@@ -205,7 +205,7 @@ function exportChart(svgEl, format) {
   const blob = new Blob([svgStr], { type: "image/svg+xml;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   img.onload = () => {
-    const bg = getComputedStyle(document.documentElement).getPropertyValue("--dp-bg").trim() || "#0c0e14";
+    const bg = getComputedStyle(document.documentElement).getPropertyValue("--havn-bg").trim() || "#0c0e14";
     ctx.fillStyle = bg;
     ctx.fillRect(0, 0, rect.width, rect.height);
     ctx.drawImage(img, 0, 0, rect.width, rect.height);
@@ -367,7 +367,7 @@ export default function ChartPanel({ columns, rows }) {
         {/* Grid */}
         {scale.ticks.map((t) => (
           <g key={t}>
-            <line x1={0} y1={yPos(t)} x2={plotW} y2={yPos(t)} stroke="var(--dp-border-light)" strokeDasharray="3,3" opacity={0.5} />
+            <line x1={0} y1={yPos(t)} x2={plotW} y2={yPos(t)} stroke="var(--havn-border-light)" strokeDasharray="3,3" opacity={0.5} />
             <text x={-8} y={yPos(t) + 3.5} textAnchor="end" style={axLabelStyle}>{fmtAxis(t)}</text>
           </g>
         ))}
@@ -401,7 +401,7 @@ export default function ChartPanel({ columns, rows }) {
           })
         )}
         {/* Zero line */}
-        {scale.min < 0 && <line x1={0} y1={zeroY} x2={plotW} y2={zeroY} stroke="var(--dp-text-dim)" strokeWidth={1} opacity={0.6} />}
+        {scale.min < 0 && <line x1={0} y1={zeroY} x2={plotW} y2={zeroY} stroke="var(--havn-text-dim)" strokeWidth={1} opacity={0.6} />}
       </g>
     );
   }
@@ -421,7 +421,7 @@ export default function ChartPanel({ columns, rows }) {
         {/* Grid */}
         {scale.ticks.map((t) => (
           <g key={t}>
-            <line x1={0} y1={yPos(t)} x2={plotW} y2={yPos(t)} stroke="var(--dp-border-light)" strokeDasharray="3,3" opacity={0.5} />
+            <line x1={0} y1={yPos(t)} x2={plotW} y2={yPos(t)} stroke="var(--havn-border-light)" strokeDasharray="3,3" opacity={0.5} />
             <text x={-8} y={yPos(t) + 3.5} textAnchor="end" style={axLabelStyle}>{fmtAxis(t)}</text>
           </g>
         ))}
@@ -449,7 +449,7 @@ export default function ChartPanel({ columns, rows }) {
           s.values.map((v, i) => (
             <circle key={`${si}-${i}`} cx={xPos(i)} cy={yPos(v)}
               r={hoveredIndex === i ? 5 : 3}
-              fill={s.color} stroke="var(--dp-bg)" strokeWidth={2}
+              fill={s.color} stroke="var(--havn-bg)" strokeWidth={2}
               opacity={hoveredIndex !== null && hoveredIndex !== i ? 0.3 : 1}
               style={{ transition: "r 0.15s, opacity 0.15s" }}
             />
@@ -458,7 +458,7 @@ export default function ChartPanel({ columns, rows }) {
         {/* Crosshair */}
         {hoveredIndex !== null && (
           <line x1={xPos(hoveredIndex)} y1={0} x2={xPos(hoveredIndex)} y2={plotH}
-            stroke="var(--dp-text-dim)" strokeWidth={1} strokeDasharray="4,4" opacity={0.6} />
+            stroke="var(--havn-text-dim)" strokeWidth={1} strokeDasharray="4,4" opacity={0.6} />
         )}
         {/* Hover overlay */}
         <rect x={0} y={0} width={plotW} height={plotH} fill="transparent" style={{ cursor: "crosshair" }}
@@ -479,7 +479,7 @@ export default function ChartPanel({ columns, rows }) {
   // ─── SCATTER CHART ──────────────────────────────────────
   function renderScatter() {
     const { scatterPoints } = chartData;
-    if (scatterPoints.length === 0) return <text x={W / 2} y={H / 2} textAnchor="middle" style={{ fill: "var(--dp-text-dim)", fontSize: "13px" }}>No numeric data for scatter plot</text>;
+    if (scatterPoints.length === 0) return <text x={W / 2} y={H / 2} textAnchor="middle" style={{ fill: "var(--havn-text-dim)", fontSize: "13px" }}>No numeric data for scatter plot</text>;
 
     const xVals = scatterPoints.map((p) => p.x);
     const yVals = scatterPoints.map((p) => p.y);
@@ -497,7 +497,7 @@ export default function ChartPanel({ columns, rows }) {
         {/* Y grid */}
         {yScale.ticks.map((t) => (
           <g key={`y${t}`}>
-            <line x1={0} y1={yPos(t)} x2={plotW} y2={yPos(t)} stroke="var(--dp-border-light)" strokeDasharray="3,3" opacity={0.5} />
+            <line x1={0} y1={yPos(t)} x2={plotW} y2={yPos(t)} stroke="var(--havn-border-light)" strokeDasharray="3,3" opacity={0.5} />
             <text x={-8} y={yPos(t) + 3.5} textAnchor="end" style={axLabelStyle}>{fmtAxis(t)}</text>
           </g>
         ))}
@@ -506,7 +506,7 @@ export default function ChartPanel({ columns, rows }) {
           if (i % labelStepX !== 0) return null;
           return (
             <g key={`x${t}`}>
-              <line x1={xPos(t)} y1={0} x2={xPos(t)} y2={plotH} stroke="var(--dp-border-light)" strokeDasharray="3,3" opacity={0.3} />
+              <line x1={xPos(t)} y1={0} x2={xPos(t)} y2={plotH} stroke="var(--havn-border-light)" strokeDasharray="3,3" opacity={0.3} />
               <text x={xPos(t)} y={plotH + 18} textAnchor="middle" style={axLabelStyle}>{fmtAxis(t)}</text>
             </g>
           );
@@ -535,7 +535,7 @@ export default function ChartPanel({ columns, rows }) {
   // ─── PIE / DONUT CHART ──────────────────────────────────
   function renderPie(isDonut) {
     const { slices } = chartData;
-    if (slices.length === 0) return <text x={W / 2} y={H / 2} textAnchor="middle" style={{ fill: "var(--dp-text-dim)", fontSize: "13px" }}>No data for chart</text>;
+    if (slices.length === 0) return <text x={W / 2} y={H / 2} textAnchor="middle" style={{ fill: "var(--havn-text-dim)", fontSize: "13px" }}>No data for chart</text>;
 
     const total = slices.reduce((s, d) => s + d.value, 0) || 1;
     const cx = W / 2;
@@ -582,7 +582,7 @@ export default function ChartPanel({ columns, rows }) {
           const ly = cy + lr * Math.sin(a.midAngle);
           return (
             <text key={`l${a.index}`} x={lx} y={ly} textAnchor="middle" dominantBaseline="central"
-              style={{ fill: "#fff", fontSize: "11px", fontWeight: 600, fontFamily: "var(--dp-font-mono)", pointerEvents: "none", textShadow: "0 1px 2px rgba(0,0,0,0.5)" }}>
+              style={{ fill: "#fff", fontSize: "11px", fontWeight: 600, fontFamily: "var(--havn-font-mono)", pointerEvents: "none", textShadow: "0 1px 2px rgba(0,0,0,0.5)" }}>
               {a.pct}%
             </text>
           );
@@ -590,10 +590,10 @@ export default function ChartPanel({ columns, rows }) {
         {/* Center label for donut */}
         {isDonut && (
           <g>
-            <text x={cx} y={cy - 6} textAnchor="middle" style={{ fill: "var(--dp-text)", fontSize: "18px", fontWeight: 700, fontFamily: "var(--dp-font-mono)" }}>
+            <text x={cx} y={cy - 6} textAnchor="middle" style={{ fill: "var(--havn-text)", fontSize: "18px", fontWeight: 700, fontFamily: "var(--havn-font-mono)" }}>
               {fmtNum(total)}
             </text>
-            <text x={cx} y={cy + 12} textAnchor="middle" style={{ fill: "var(--dp-text-dim)", fontSize: "10px", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+            <text x={cx} y={cy + 12} textAnchor="middle" style={{ fill: "var(--havn-text-dim)", fontSize: "10px", textTransform: "uppercase", letterSpacing: "0.5px" }}>
               Total
             </text>
           </g>
@@ -619,7 +619,7 @@ export default function ChartPanel({ columns, rows }) {
           return (
             <g key={a.index}>
               <rect x={x} y={ly} width={8} height={8} rx={2} fill={a.color} />
-              <text x={x + 12} y={ly + 8} style={{ fill: "var(--dp-text-secondary)", fontSize: "10px", fontFamily: "var(--dp-font-mono)" }}>
+              <text x={x + 12} y={ly + 8} style={{ fill: "var(--havn-text-secondary)", fontSize: "10px", fontFamily: "var(--havn-font-mono)" }}>
                 {trunc(a.label, 10)}
               </text>
             </g>
@@ -655,7 +655,7 @@ export default function ChartPanel({ columns, rows }) {
         {/* X grid (value axis) */}
         {scale.ticks.map((t) => (
           <g key={t}>
-            <line x1={xPosH(t)} y1={0} x2={xPosH(t)} y2={plotH} stroke="var(--dp-border-light)" strokeDasharray="3,3" opacity={0.5} />
+            <line x1={xPosH(t)} y1={0} x2={xPosH(t)} y2={plotH} stroke="var(--havn-border-light)" strokeDasharray="3,3" opacity={0.5} />
             <text x={xPosH(t)} y={plotH + 18} textAnchor="middle" style={axLabelStyle}>{fmtAxis(t)}</text>
           </g>
         ))}
@@ -687,7 +687,7 @@ export default function ChartPanel({ columns, rows }) {
           })
         )}
         {/* Zero line */}
-        {scale.min < 0 && <line x1={zeroXH} y1={0} x2={zeroXH} y2={plotH} stroke="var(--dp-text-dim)" strokeWidth={1} opacity={0.6} />}
+        {scale.min < 0 && <line x1={zeroXH} y1={0} x2={zeroXH} y2={plotH} stroke="var(--havn-text-dim)" strokeWidth={1} opacity={0.6} />}
       </g>
     );
   }
@@ -708,7 +708,7 @@ export default function ChartPanel({ columns, rows }) {
         {/* Grid */}
         {scale.ticks.map((t) => (
           <g key={t}>
-            <line x1={0} y1={yPos(t)} x2={plotW} y2={yPos(t)} stroke="var(--dp-border-light)" strokeDasharray="3,3" opacity={0.5} />
+            <line x1={0} y1={yPos(t)} x2={plotW} y2={yPos(t)} stroke="var(--havn-border-light)" strokeDasharray="3,3" opacity={0.5} />
             <text x={-8} y={yPos(t) + 3.5} textAnchor="end" style={axLabelStyle}>{fmtAxis(t)}</text>
           </g>
         ))}
@@ -740,7 +740,7 @@ export default function ChartPanel({ columns, rows }) {
                   const total = series.reduce((sum, ss) => sum + Math.max(0, ss.values[i]), 0);
                   showTip(e, labels[i], [
                     ...series.map((ss) => ({ name: ss.name, value: Math.max(0, ss.values[i]), color: ss.color })),
-                    { name: "Total", value: total, color: "var(--dp-text-secondary)" },
+                    { name: "Total", value: total, color: "var(--havn-text-secondary)" },
                   ]);
                 }}
                 onMouseLeave={hideTip}
@@ -805,7 +805,7 @@ export default function ChartPanel({ columns, rows }) {
                       {availableYCols.map((c) => (
                         <button key={c.index} style={st.dropdownItem}
                           onClick={() => { setYCols([...yCols, c.index]); setAddYOpen(false); }}
-                          onMouseEnter={(e) => e.currentTarget.style.background = "var(--dp-btn-bg)"}
+                          onMouseEnter={(e) => e.currentTarget.style.background = "var(--havn-btn-bg)"}
                           onMouseLeave={(e) => e.currentTarget.style.background = "none"}>
                           {c.name}
                         </button>
@@ -837,12 +837,12 @@ export default function ChartPanel({ columns, rows }) {
           {exportOpen && (
             <div style={{ ...st.dropdown, right: 0, left: "auto" }}>
               <button style={st.dropdownItem} onClick={() => { exportChart(svgRef.current, "png"); setExportOpen(false); }}
-                onMouseEnter={(e) => e.currentTarget.style.background = "var(--dp-btn-bg)"}
+                onMouseEnter={(e) => e.currentTarget.style.background = "var(--havn-btn-bg)"}
                 onMouseLeave={(e) => e.currentTarget.style.background = "none"}>
                 Download PNG
               </button>
               <button style={st.dropdownItem} onClick={() => { exportChart(svgRef.current, "svg"); setExportOpen(false); }}
-                onMouseEnter={(e) => e.currentTarget.style.background = "var(--dp-btn-bg)"}
+                onMouseEnter={(e) => e.currentTarget.style.background = "var(--havn-btn-bg)"}
                 onMouseLeave={(e) => e.currentTarget.style.background = "none"}>
                 Download SVG
               </button>
@@ -899,9 +899,9 @@ export default function ChartPanel({ columns, rows }) {
 // ═══════════════════════════════════════════════════════════════════
 
 const axLabelStyle = {
-  fill: "var(--dp-text-dim)",
+  fill: "var(--havn-text-dim)",
   fontSize: "10px",
-  fontFamily: "var(--dp-font-mono)",
+  fontFamily: "var(--havn-font-mono)",
 };
 
 // ═══════════════════════════════════════════════════════════════════
@@ -920,7 +920,7 @@ const st = {
     alignItems: "center",
     justifyContent: "center",
     height: "100%",
-    color: "var(--dp-text-dim)",
+    color: "var(--havn-text-dim)",
     fontSize: "13px",
   },
 
@@ -930,8 +930,8 @@ const st = {
     alignItems: "center",
     gap: "8px",
     padding: "6px 10px",
-    borderBottom: "1px solid var(--dp-border)",
-    background: "var(--dp-bg-secondary)",
+    borderBottom: "1px solid var(--havn-border)",
+    background: "var(--havn-bg-secondary)",
     flexShrink: 0,
     flexWrap: "wrap",
     minHeight: "36px",
@@ -939,24 +939,24 @@ const st = {
   typeGroup: {
     display: "flex",
     gap: "1px",
-    background: "var(--dp-border)",
-    borderRadius: "var(--dp-radius-lg)",
+    background: "var(--havn-border)",
+    borderRadius: "var(--havn-radius-lg)",
     overflow: "hidden",
   },
   typeBtn: {
     padding: "5px 8px",
-    background: "var(--dp-btn-bg)",
+    background: "var(--havn-btn-bg)",
     border: "none",
-    color: "var(--dp-text-dim)",
+    color: "var(--havn-text-dim)",
     cursor: "pointer",
     display: "flex",
     alignItems: "center",
   },
   typeBtnActive: {
     padding: "5px 8px",
-    background: "var(--dp-bg)",
+    background: "var(--havn-bg)",
     border: "none",
-    color: "var(--dp-accent)",
+    color: "var(--havn-accent)",
     cursor: "pointer",
     display: "flex",
     alignItems: "center",
@@ -964,7 +964,7 @@ const st = {
   sep: {
     width: "1px",
     height: "20px",
-    background: "var(--dp-border)",
+    background: "var(--havn-border)",
     flexShrink: 0,
   },
   axisGroup: {
@@ -975,19 +975,19 @@ const st = {
   axisLabel: {
     fontSize: "10px",
     fontWeight: 600,
-    color: "var(--dp-text-dim)",
+    color: "var(--havn-text-dim)",
     textTransform: "uppercase",
     letterSpacing: "0.5px",
     flexShrink: 0,
   },
   select: {
     padding: "3px 6px",
-    background: "var(--dp-bg-tertiary)",
-    border: "1px solid var(--dp-border-light)",
-    borderRadius: "var(--dp-radius)",
-    color: "var(--dp-text)",
+    background: "var(--havn-bg-tertiary)",
+    border: "1px solid var(--havn-border-light)",
+    borderRadius: "var(--havn-radius)",
+    color: "var(--havn-text)",
     fontSize: "11px",
-    fontFamily: "var(--dp-font-mono)",
+    fontFamily: "var(--havn-font-mono)",
     maxWidth: "140px",
   },
   yTag: {
@@ -995,12 +995,12 @@ const st = {
     alignItems: "center",
     gap: "4px",
     padding: "2px 8px 2px 4px",
-    background: "var(--dp-bg-tertiary)",
-    border: "1px solid var(--dp-border-light)",
-    borderRadius: "var(--dp-radius)",
+    background: "var(--havn-bg-tertiary)",
+    border: "1px solid var(--havn-border-light)",
+    borderRadius: "var(--havn-radius)",
     fontSize: "11px",
-    fontFamily: "var(--dp-font-mono)",
-    color: "var(--dp-text)",
+    fontFamily: "var(--havn-font-mono)",
+    color: "var(--havn-text)",
   },
   yTagDot: {
     width: "6px",
@@ -1011,7 +1011,7 @@ const st = {
   yTagClose: {
     background: "none",
     border: "none",
-    color: "var(--dp-text-dim)",
+    color: "var(--havn-text-dim)",
     cursor: "pointer",
     fontSize: "14px",
     lineHeight: 1,
@@ -1019,20 +1019,20 @@ const st = {
   },
   addBtn: {
     padding: "2px 8px",
-    background: "var(--dp-btn-bg)",
-    border: "1px solid var(--dp-border-light)",
-    borderRadius: "var(--dp-radius)",
-    color: "var(--dp-text-secondary)",
+    background: "var(--havn-btn-bg)",
+    border: "1px solid var(--havn-border-light)",
+    borderRadius: "var(--havn-radius)",
+    color: "var(--havn-text-secondary)",
     cursor: "pointer",
     fontSize: "12px",
     fontWeight: 600,
   },
   exportBtn: {
     padding: "4px 8px",
-    background: "var(--dp-btn-bg)",
-    border: "1px solid var(--dp-btn-border)",
-    borderRadius: "var(--dp-radius)",
-    color: "var(--dp-text-secondary)",
+    background: "var(--havn-btn-bg)",
+    border: "1px solid var(--havn-btn-border)",
+    borderRadius: "var(--havn-radius)",
+    color: "var(--havn-text-secondary)",
     cursor: "pointer",
     display: "flex",
     alignItems: "center",
@@ -1042,9 +1042,9 @@ const st = {
     top: "100%",
     left: 0,
     marginTop: "4px",
-    background: "var(--dp-bg-secondary)",
-    border: "1px solid var(--dp-border)",
-    borderRadius: "var(--dp-radius)",
+    background: "var(--havn-bg-secondary)",
+    border: "1px solid var(--havn-border)",
+    borderRadius: "var(--havn-radius)",
     zIndex: 100,
     minWidth: "120px",
     boxShadow: "0 4px 16px rgba(0,0,0,0.3)",
@@ -1056,11 +1056,11 @@ const st = {
     padding: "6px 12px",
     background: "none",
     border: "none",
-    borderBottom: "1px solid var(--dp-border)",
-    color: "var(--dp-text)",
+    borderBottom: "1px solid var(--havn-border)",
+    color: "var(--havn-text)",
     cursor: "pointer",
     fontSize: "12px",
-    fontFamily: "var(--dp-font-mono)",
+    fontFamily: "var(--havn-font-mono)",
     textAlign: "left",
     whiteSpace: "nowrap",
   },
@@ -1078,9 +1078,9 @@ const st = {
     position: "absolute",
     pointerEvents: "none",
     zIndex: 50,
-    background: "var(--dp-bg-secondary)",
-    border: "1px solid var(--dp-border)",
-    borderRadius: "var(--dp-radius-lg)",
+    background: "var(--havn-bg-secondary)",
+    border: "1px solid var(--havn-border)",
+    borderRadius: "var(--havn-radius-lg)",
     padding: "8px 12px",
     boxShadow: "0 6px 20px rgba(0,0,0,0.35)",
     maxWidth: "220px",
@@ -1088,9 +1088,9 @@ const st = {
   tipLabel: {
     fontSize: "11px",
     fontWeight: 600,
-    color: "var(--dp-text)",
+    color: "var(--havn-text)",
     marginBottom: "4px",
-    fontFamily: "var(--dp-font-mono)",
+    fontFamily: "var(--havn-font-mono)",
   },
   tipRow: {
     display: "flex",
@@ -1106,12 +1106,12 @@ const st = {
     flexShrink: 0,
   },
   tipName: {
-    color: "var(--dp-text-secondary)",
+    color: "var(--havn-text-secondary)",
   },
   tipVal: {
     fontWeight: 600,
-    color: "var(--dp-text)",
-    fontFamily: "var(--dp-font-mono)",
+    color: "var(--havn-text)",
+    fontFamily: "var(--havn-font-mono)",
     marginLeft: "auto",
   },
 
@@ -1121,10 +1121,10 @@ const st = {
     alignItems: "center",
     gap: "16px",
     padding: "6px 16px",
-    borderTop: "1px solid var(--dp-border)",
+    borderTop: "1px solid var(--havn-border)",
     flexShrink: 0,
     flexWrap: "wrap",
-    background: "var(--dp-bg-secondary)",
+    background: "var(--havn-bg-secondary)",
   },
   legendItem: {
     display: "flex",
@@ -1139,7 +1139,7 @@ const st = {
     flexShrink: 0,
   },
   legendName: {
-    color: "var(--dp-text-secondary)",
-    fontFamily: "var(--dp-font-mono)",
+    color: "var(--havn-text-secondary)",
+    fontFamily: "var(--havn-font-mono)",
   },
 };

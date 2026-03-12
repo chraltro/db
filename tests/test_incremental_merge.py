@@ -12,8 +12,8 @@ class TestIncrementalMerge:
     """Test the 'merge' incremental strategy (true upsert)."""
 
     def test_merge_first_run_creates_table(self, tmp_path: Path):
-        from dp.engine.database import ensure_meta_table
-        from dp.engine.transform import SQLModel, _execute_incremental
+        from havn.engine.database import ensure_meta_table
+        from havn.engine.transform import SQLModel, _execute_incremental
 
         db_path = tmp_path / "test.duckdb"
         conn = duckdb.connect(str(db_path))
@@ -40,8 +40,8 @@ class TestIncrementalMerge:
         conn.close()
 
     def test_merge_updates_existing_and_inserts_new(self, tmp_path: Path):
-        from dp.engine.database import ensure_meta_table
-        from dp.engine.transform import SQLModel, _execute_incremental
+        from havn.engine.database import ensure_meta_table
+        from havn.engine.transform import SQLModel, _execute_incremental
 
         db_path = tmp_path / "test.duckdb"
         conn = duckdb.connect(str(db_path))
@@ -88,8 +88,8 @@ class TestIncrementalPartition:
     """Test partition_by config for partition-based pruning."""
 
     def test_partition_deletes_affected_partitions(self, tmp_path: Path):
-        from dp.engine.database import ensure_meta_table
-        from dp.engine.transform import SQLModel, _execute_incremental
+        from havn.engine.database import ensure_meta_table
+        from havn.engine.transform import SQLModel, _execute_incremental
 
         db_path = tmp_path / "test.duckdb"
         conn = duckdb.connect(str(db_path))
@@ -142,7 +142,7 @@ class TestIncrementalPartition:
         conn.close()
 
     def test_partition_by_parsed_from_config(self, tmp_path: Path):
-        from dp.engine.transform import discover_models
+        from havn.engine.transform import discover_models
 
         transform_dir = tmp_path / "transform" / "gold"
         transform_dir.mkdir(parents=True)

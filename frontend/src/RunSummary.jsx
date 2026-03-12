@@ -17,12 +17,12 @@ export default function RunSummary({ summary, onNavigate, onDismiss }) {
   return (
     <div style={{
       ...st.container,
-      borderColor: isSuccess ? "var(--dp-green)" : "var(--dp-red)",
+      borderColor: isSuccess ? "var(--havn-green)" : "var(--havn-red)",
     }}>
       <div style={st.header}>
         <span style={{
           ...st.statusBadge,
-          background: isSuccess ? "var(--dp-green)" : "var(--dp-red)",
+          background: isSuccess ? "var(--havn-green)" : "var(--havn-red)",
         }}>
           {isSuccess ? "Pipeline Complete" : "Pipeline Failed"}
         </span>
@@ -38,13 +38,13 @@ export default function RunSummary({ summary, onNavigate, onDismiss }) {
         )}
         {skippedCount > 0 && (
           <div style={st.stat}>
-            <span style={{ ...st.statValue, color: "var(--dp-text-secondary)" }}>{skippedCount}</span>
+            <span style={{ ...st.statValue, color: "var(--havn-text-secondary)" }}>{skippedCount}</span>
             <span style={st.statLabel}>skipped</span>
           </div>
         )}
         {errorCount > 0 && (
           <div style={st.stat}>
-            <span style={{ ...st.statValue, color: "var(--dp-red)" }}>{errorCount}</span>
+            <span style={{ ...st.statValue, color: "var(--havn-red)" }}>{errorCount}</span>
             <span style={st.statLabel}>error{errorCount !== 1 ? "s" : ""}</span>
           </div>
         )}
@@ -96,9 +96,9 @@ const st = {
   container: {
     margin: "8px 12px",
     padding: "12px 16px",
-    background: "var(--dp-bg-secondary)",
+    background: "var(--havn-bg-secondary)",
     border: "1px solid",
-    borderRadius: "var(--dp-radius-lg)",
+    borderRadius: "var(--havn-radius-lg)",
   },
   header: {
     display: "flex",
@@ -108,7 +108,7 @@ const st = {
   },
   statusBadge: {
     padding: "3px 10px",
-    borderRadius: "var(--dp-radius)",
+    borderRadius: "var(--havn-radius)",
     color: "#fff",
     fontSize: "12px",
     fontWeight: 600,
@@ -116,7 +116,7 @@ const st = {
   dismiss: {
     background: "none",
     border: "none",
-    color: "var(--dp-text-dim)",
+    color: "var(--havn-text-dim)",
     cursor: "pointer",
     fontSize: "11px",
   },
@@ -133,12 +133,12 @@ const st = {
   statValue: {
     fontSize: "16px",
     fontWeight: 700,
-    color: "var(--dp-text)",
-    fontFamily: "var(--dp-font-mono)",
+    color: "var(--havn-text)",
+    fontFamily: "var(--havn-font-mono)",
   },
   statLabel: {
     fontSize: "11px",
-    color: "var(--dp-text-secondary)",
+    color: "var(--havn-text-secondary)",
   },
   modelList: {
     display: "flex",
@@ -148,16 +148,16 @@ const st = {
   },
   modelChip: {
     fontSize: "11px",
-    fontFamily: "var(--dp-font-mono)",
+    fontFamily: "var(--havn-font-mono)",
     padding: "2px 8px",
-    background: "var(--dp-bg-tertiary)",
-    borderRadius: "var(--dp-radius)",
-    color: "var(--dp-text)",
+    background: "var(--havn-bg-tertiary)",
+    borderRadius: "var(--havn-radius)",
+    color: "var(--havn-text)",
   },
   moreChip: {
     fontSize: "11px",
     padding: "2px 8px",
-    color: "var(--dp-text-dim)",
+    color: "var(--havn-text-dim)",
   },
   actions: {
     display: "flex",
@@ -165,10 +165,10 @@ const st = {
   },
   actionBtn: {
     padding: "4px 12px",
-    background: "var(--dp-btn-bg)",
-    border: "1px solid var(--dp-btn-border)",
-    borderRadius: "var(--dp-radius-lg)",
-    color: "var(--dp-accent)",
+    background: "var(--havn-btn-bg)",
+    border: "1px solid var(--havn-btn-border)",
+    borderRadius: "var(--havn-radius-lg)",
+    color: "var(--havn-accent)",
     cursor: "pointer",
     fontSize: "12px",
     fontWeight: 500,

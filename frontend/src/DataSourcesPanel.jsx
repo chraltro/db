@@ -461,8 +461,8 @@ export default function DataSourcesPanel({ addOutput }) {
             {step >= 2 && testResult && (
               <div style={st.section}>
                 <h3 style={st.sectionTitle}>Connection Test</h3>
-                <div style={{ ...st.testResult, borderColor: testResult.success ? "var(--dp-green)" : "var(--dp-red)" }}>
-                  <span style={{ color: testResult.success ? "var(--dp-green)" : "var(--dp-red)", fontWeight: 600 }}>
+                <div style={{ ...st.testResult, borderColor: testResult.success ? "var(--havn-green)" : "var(--havn-red)" }}>
+                  <span style={{ color: testResult.success ? "var(--havn-green)" : "var(--havn-red)", fontWeight: 600 }}>
                     {testResult.success ? "Connected successfully" : "Connection failed"}
                   </span>
                   {testResult.error && <div style={st.testError}>{testResult.error}</div>}
@@ -747,8 +747,8 @@ export default function DataSourcesPanel({ addOutput }) {
                     <div style={st.connectorNameRow}>
                       <span style={st.connectorName}>{c.name}</span>
                       <span style={st.connectorType}>{c.type}</span>
-                      <span style={{ ...st.statusDot, background: h ? (h.status === "success" ? "var(--dp-green)" : "var(--dp-red)") : (c.has_script ? "var(--dp-yellow)" : "var(--dp-text-dim)") }} />
-                      {h && <span style={{ ...st.healthInfo, color: h.status === "success" ? "var(--dp-text-dim)" : "var(--dp-red)" }}>
+                      <span style={{ ...st.statusDot, background: h ? (h.status === "success" ? "var(--havn-green)" : "var(--havn-red)") : (c.has_script ? "var(--havn-yellow)" : "var(--havn-text-dim)") }} />
+                      {h && <span style={{ ...st.healthInfo, color: h.status === "success" ? "var(--havn-text-dim)" : "var(--havn-red)" }}>
                         {h.status === "success" ? `Last synced ${_timeAgo(h.started_at)}` : `Last sync failed ${_timeAgo(h.started_at)}`}
                       </span>}
                     </div>
@@ -821,17 +821,17 @@ export default function DataSourcesPanel({ addOutput }) {
           </div>
         </div>
         {configured.length > 0 && (
-          <div style={st.configuredSection} data-dp-hint="connector-list">
-            <div style={st.configuredHeader} data-dp-hint="connector-health">Active Connectors</div>
+          <div style={st.configuredSection} data-havn-hint="connector-list">
+            <div style={st.configuredHeader} data-havn-hint="connector-health">Active Connectors</div>
             {configured.map((c) => {
               const scriptKey = `ingest/${c.name}.py`;
               const h = health[scriptKey];
               return (
                 <div key={c.name} style={st.configuredRow}>
-                  <span style={{ ...st.statusDot, background: h ? (h.status === "success" ? "var(--dp-green)" : "var(--dp-red)") : (c.has_script ? "var(--dp-yellow)" : "var(--dp-text-dim)") }} />
+                  <span style={{ ...st.statusDot, background: h ? (h.status === "success" ? "var(--havn-green)" : "var(--havn-red)") : (c.has_script ? "var(--havn-yellow)" : "var(--havn-text-dim)") }} />
                   <span style={st.connectorName}>{c.name}</span>
                   <span style={st.connectorType}>{c.type}</span>
-                  {h && <span style={{ ...st.healthInfo, color: h.status === "success" ? "var(--dp-text-dim)" : "var(--dp-red)" }}>
+                  {h && <span style={{ ...st.healthInfo, color: h.status === "success" ? "var(--havn-text-dim)" : "var(--havn-red)" }}>
                     {h.status === "success" ? `synced ${_timeAgo(h.started_at)}` : `failed ${_timeAgo(h.started_at)}`}
                   </span>}
                   <button onClick={() => doSync(c.name)} disabled={syncing === c.name || !c.has_script} style={st.btnSmall}>
@@ -852,19 +852,19 @@ export default function DataSourcesPanel({ addOutput }) {
 
 const st = {
   container: { display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" },
-  center: { display: "flex", alignItems: "center", justifyContent: "center", height: "100%", color: "var(--dp-text-secondary)", fontSize: "13px" },
-  header: { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 12px", borderBottom: "1px solid var(--dp-border)" },
+  center: { display: "flex", alignItems: "center", justifyContent: "center", height: "100%", color: "var(--havn-text-secondary)", fontSize: "13px" },
+  header: { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 12px", borderBottom: "1px solid var(--havn-border)" },
   title: { fontWeight: 600, fontSize: "14px" },
   content: { flex: 1, overflow: "auto", padding: "16px" },
 
   // Home view
-  homeDesc: { fontSize: "14px", color: "var(--dp-text-secondary)", marginBottom: "20px" },
+  homeDesc: { fontSize: "14px", color: "var(--havn-text-secondary)", marginBottom: "20px" },
   methodGrid: { display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "12px", maxWidth: "800px", marginBottom: "24px" },
   methodCard: {
     padding: "24px 20px",
-    background: "var(--dp-bg-secondary)",
-    border: "1px solid var(--dp-border)",
-    borderRadius: "var(--dp-radius-lg)",
+    background: "var(--havn-bg-secondary)",
+    border: "1px solid var(--havn-border)",
+    borderRadius: "var(--havn-radius-lg)",
     cursor: "pointer",
     textAlign: "center",
     transition: "border-color 0.15s",
@@ -876,28 +876,28 @@ const st = {
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    background: "var(--dp-bg-tertiary)",
-    borderRadius: "var(--dp-radius-lg)",
+    background: "var(--havn-bg-tertiary)",
+    borderRadius: "var(--havn-radius-lg)",
     fontSize: "18px",
     fontWeight: 700,
-    color: "var(--dp-accent)",
-    fontFamily: "var(--dp-font-mono)",
+    color: "var(--havn-accent)",
+    fontFamily: "var(--havn-font-mono)",
   },
-  methodName: { fontSize: "14px", fontWeight: 600, color: "var(--dp-text)", marginBottom: "6px" },
-  methodDesc: { fontSize: "12px", color: "var(--dp-text-secondary)", lineHeight: 1.5 },
+  methodName: { fontSize: "14px", fontWeight: 600, color: "var(--havn-text)", marginBottom: "6px" },
+  methodDesc: { fontSize: "12px", color: "var(--havn-text-secondary)", lineHeight: 1.5 },
 
   // Configured connectors on home
   configuredSection: {
-    borderTop: "1px solid var(--dp-border)",
+    borderTop: "1px solid var(--havn-border)",
     paddingTop: "16px",
     maxWidth: "600px",
   },
-  configuredHeader: { fontSize: "12px", fontWeight: 600, color: "var(--dp-text-secondary)", marginBottom: "8px", textTransform: "uppercase", letterSpacing: "0.3px" },
+  configuredHeader: { fontSize: "12px", fontWeight: 600, color: "var(--havn-text-secondary)", marginBottom: "8px", textTransform: "uppercase", letterSpacing: "0.3px" },
   configuredRow: { display: "flex", alignItems: "center", gap: "8px", padding: "6px 0", fontSize: "13px" },
   manageLink: {
     background: "none",
     border: "none",
-    color: "var(--dp-accent)",
+    color: "var(--havn-accent)",
     cursor: "pointer",
     fontSize: "12px",
     fontWeight: 500,
@@ -905,98 +905,98 @@ const st = {
   },
 
   // Shared styles
-  btn: { padding: "5px 14px", background: "var(--dp-btn-bg)", border: "1px solid var(--dp-btn-border)", borderRadius: "var(--dp-radius-lg)", color: "var(--dp-text)", cursor: "pointer", fontSize: "12px", fontWeight: 500 },
-  btnPrimary: { padding: "5px 14px", background: "var(--dp-green)", border: "1px solid var(--dp-green-border)", borderRadius: "var(--dp-radius-lg)", color: "#fff", cursor: "pointer", fontSize: "12px", fontWeight: 500 },
-  btnDanger: { padding: "5px 14px", background: "var(--dp-btn-bg)", border: "1px solid var(--dp-btn-border)", borderRadius: "var(--dp-radius-lg)", color: "var(--dp-red)", cursor: "pointer", fontSize: "12px", fontWeight: 500 },
-  btnText: { background: "none", border: "none", color: "var(--dp-text-secondary)", cursor: "pointer", fontSize: "12px", fontWeight: 500 },
-  btnSmall: { padding: "2px 8px", background: "var(--dp-btn-bg)", border: "1px solid var(--dp-btn-border)", borderRadius: "var(--dp-radius)", color: "var(--dp-text-secondary)", cursor: "pointer", fontSize: "11px" },
+  btn: { padding: "5px 14px", background: "var(--havn-btn-bg)", border: "1px solid var(--havn-btn-border)", borderRadius: "var(--havn-radius-lg)", color: "var(--havn-text)", cursor: "pointer", fontSize: "12px", fontWeight: 500 },
+  btnPrimary: { padding: "5px 14px", background: "var(--havn-green)", border: "1px solid var(--havn-green-border)", borderRadius: "var(--havn-radius-lg)", color: "#fff", cursor: "pointer", fontSize: "12px", fontWeight: 500 },
+  btnDanger: { padding: "5px 14px", background: "var(--havn-btn-bg)", border: "1px solid var(--havn-btn-border)", borderRadius: "var(--havn-radius-lg)", color: "var(--havn-red)", cursor: "pointer", fontSize: "12px", fontWeight: 500 },
+  btnText: { background: "none", border: "none", color: "var(--havn-text-secondary)", cursor: "pointer", fontSize: "12px", fontWeight: 500 },
+  btnSmall: { padding: "2px 8px", background: "var(--havn-btn-bg)", border: "1px solid var(--havn-btn-border)", borderRadius: "var(--havn-radius)", color: "var(--havn-text-secondary)", cursor: "pointer", fontSize: "11px" },
 
   // Forms
   wizard: { maxWidth: "600px" },
   formGroup: { marginBottom: "12px", flex: 1 },
   formRow: { display: "flex", gap: "12px" },
-  label: { display: "block", fontSize: "11px", color: "var(--dp-text-secondary)", marginBottom: "4px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.3px" },
-  required: { color: "var(--dp-red)", marginLeft: "2px" },
-  secretBadge: { marginLeft: "6px", fontSize: "9px", color: "var(--dp-yellow)", background: "var(--dp-bg-tertiary)", padding: "1px 4px", borderRadius: "var(--dp-radius)", fontWeight: 500, textTransform: "none", letterSpacing: 0 },
-  input: { width: "100%", padding: "6px 10px", background: "var(--dp-bg-tertiary)", border: "1px solid var(--dp-border-light)", borderRadius: "var(--dp-radius-lg)", color: "var(--dp-text)", fontSize: "13px", boxSizing: "border-box" },
-  select: { width: "100%", padding: "6px 10px", background: "var(--dp-bg-tertiary)", border: "1px solid var(--dp-border-light)", borderRadius: "var(--dp-radius-lg)", color: "var(--dp-text)", fontSize: "13px" },
-  hint: { display: "block", fontSize: "11px", color: "var(--dp-text-dim)", marginTop: "2px" },
+  label: { display: "block", fontSize: "11px", color: "var(--havn-text-secondary)", marginBottom: "4px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.3px" },
+  required: { color: "var(--havn-red)", marginLeft: "2px" },
+  secretBadge: { marginLeft: "6px", fontSize: "9px", color: "var(--havn-yellow)", background: "var(--havn-bg-tertiary)", padding: "1px 4px", borderRadius: "var(--havn-radius)", fontWeight: 500, textTransform: "none", letterSpacing: 0 },
+  input: { width: "100%", padding: "6px 10px", background: "var(--havn-bg-tertiary)", border: "1px solid var(--havn-border-light)", borderRadius: "var(--havn-radius-lg)", color: "var(--havn-text)", fontSize: "13px", boxSizing: "border-box" },
+  select: { width: "100%", padding: "6px 10px", background: "var(--havn-bg-tertiary)", border: "1px solid var(--havn-border-light)", borderRadius: "var(--havn-radius-lg)", color: "var(--havn-text)", fontSize: "13px" },
+  hint: { display: "block", fontSize: "11px", color: "var(--havn-text-dim)", marginTop: "2px" },
   actions: { display: "flex", gap: "8px", marginTop: "12px" },
 
   // File upload
-  fileInput: { fontSize: "12px", color: "var(--dp-text-secondary)" },
-  uploadInfo: { fontSize: "12px", color: "var(--dp-accent)", marginTop: "4px" },
+  fileInput: { fontSize: "12px", color: "var(--havn-text-secondary)" },
+  uploadInfo: { fontSize: "12px", color: "var(--havn-accent)", marginTop: "4px" },
 
   // Preview table
-  previewSection: { marginTop: "24px", border: "1px solid var(--dp-border)", borderRadius: "var(--dp-radius-lg)", overflow: "hidden" },
-  previewHeader: { padding: "8px 12px", background: "var(--dp-bg-secondary)", borderBottom: "1px solid var(--dp-border)", fontSize: "12px", color: "var(--dp-text-secondary)" },
+  previewSection: { marginTop: "24px", border: "1px solid var(--havn-border)", borderRadius: "var(--havn-radius-lg)", overflow: "hidden" },
+  previewHeader: { padding: "8px 12px", background: "var(--havn-bg-secondary)", borderBottom: "1px solid var(--havn-border)", fontSize: "12px", color: "var(--havn-text-secondary)" },
   tableWrap: { maxHeight: "300px", overflow: "auto" },
-  table: { width: "100%", borderCollapse: "collapse", fontSize: "12px", fontFamily: "var(--dp-font-mono)" },
-  th: { textAlign: "left", padding: "4px 8px", borderBottom: "1px solid var(--dp-border-light)", color: "var(--dp-text-secondary)", fontWeight: 600, position: "sticky", top: 0, background: "var(--dp-bg-tertiary)" },
-  td: { padding: "3px 8px", borderBottom: "1px solid var(--dp-border)", color: "var(--dp-text)" },
-  colType: { color: "var(--dp-text-dim)", fontWeight: 400, fontSize: "10px" },
-  null: { color: "var(--dp-text-dim)", fontStyle: "italic" },
+  table: { width: "100%", borderCollapse: "collapse", fontSize: "12px", fontFamily: "var(--havn-font-mono)" },
+  th: { textAlign: "left", padding: "4px 8px", borderBottom: "1px solid var(--havn-border-light)", color: "var(--havn-text-secondary)", fontWeight: 600, position: "sticky", top: 0, background: "var(--havn-bg-tertiary)" },
+  td: { padding: "3px 8px", borderBottom: "1px solid var(--havn-border)", color: "var(--havn-text)" },
+  colType: { color: "var(--havn-text-dim)", fontWeight: 400, fontSize: "10px" },
+  null: { color: "var(--havn-text-dim)", fontStyle: "italic" },
 
   // Connector wizard
-  section: { marginBottom: "24px", paddingBottom: "16px", borderBottom: "1px solid var(--dp-border)" },
+  section: { marginBottom: "24px", paddingBottom: "16px", borderBottom: "1px solid var(--havn-border)" },
   sectionTitle: { fontSize: "14px", fontWeight: 600, margin: "0 0 12px" },
   steps: { display: "flex", gap: "4px", marginBottom: "24px" },
-  step: { display: "flex", alignItems: "center", gap: "6px", padding: "6px 12px", borderRadius: "var(--dp-radius-lg)", fontSize: "12px", color: "var(--dp-text-dim)", background: "var(--dp-bg-tertiary)" },
-  stepActive: { color: "var(--dp-text)", background: "var(--dp-btn-bg)", fontWeight: 500 },
-  stepNum: { width: "18px", height: "18px", borderRadius: "50%", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: "10px", fontWeight: 700, background: "var(--dp-bg-tertiary)", color: "var(--dp-text-secondary)" },
+  step: { display: "flex", alignItems: "center", gap: "6px", padding: "6px 12px", borderRadius: "var(--havn-radius-lg)", fontSize: "12px", color: "var(--havn-text-dim)", background: "var(--havn-bg-tertiary)" },
+  stepActive: { color: "var(--havn-text)", background: "var(--havn-btn-bg)", fontWeight: 500 },
+  stepNum: { width: "18px", height: "18px", borderRadius: "50%", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: "10px", fontWeight: 700, background: "var(--havn-bg-tertiary)", color: "var(--havn-text-secondary)" },
   stepLabel: {},
 
   // Test
-  testResult: { padding: "10px 14px", border: "1px solid", borderRadius: "var(--dp-radius-lg)", marginBottom: "8px" },
-  testError: { fontSize: "12px", color: "var(--dp-text-secondary)", marginTop: "4px" },
+  testResult: { padding: "10px 14px", border: "1px solid", borderRadius: "var(--havn-radius-lg)", marginBottom: "8px" },
+  testError: { fontSize: "12px", color: "var(--havn-text-secondary)", marginTop: "4px" },
 
   // Resources
-  discovering: { fontSize: "12px", color: "var(--dp-text-secondary)", fontWeight: 400 },
+  discovering: { fontSize: "12px", color: "var(--havn-text-secondary)", fontWeight: 400 },
   resourceList: { display: "flex", flexDirection: "column", gap: "2px", marginBottom: "8px" },
-  resourceItem: { display: "flex", alignItems: "center", gap: "8px", padding: "4px 8px", borderRadius: "var(--dp-radius)", cursor: "pointer", fontSize: "13px" },
-  checkbox: { accentColor: "var(--dp-green)" },
-  resourceName: { fontFamily: "var(--dp-font-mono)", fontWeight: 500 },
-  resourceDesc: { color: "var(--dp-text-secondary)", fontSize: "12px" },
+  resourceItem: { display: "flex", alignItems: "center", gap: "8px", padding: "4px 8px", borderRadius: "var(--havn-radius)", cursor: "pointer", fontSize: "13px" },
+  checkbox: { accentColor: "var(--havn-green)" },
+  resourceName: { fontFamily: "var(--havn-font-mono)", fontWeight: 500 },
+  resourceDesc: { color: "var(--havn-text-secondary)", fontSize: "12px" },
   resourceActions: { display: "flex", gap: "6px", alignItems: "center", marginBottom: "8px" },
-  resourceCount: { fontSize: "11px", color: "var(--dp-text-dim)" },
+  resourceCount: { fontSize: "11px", color: "var(--havn-text-dim)" },
 
   // Summary
-  summary: { background: "var(--dp-bg-tertiary)", borderRadius: "var(--dp-radius-lg)", padding: "12px 16px", marginBottom: "12px" },
-  summaryRow: { display: "flex", justifyContent: "space-between", padding: "4px 0", fontSize: "13px", borderBottom: "1px solid var(--dp-border)" },
-  summaryLabel: { color: "var(--dp-text-secondary)", fontWeight: 500 },
-  mono: { fontFamily: "var(--dp-font-mono)" },
-  dimText: { fontSize: "12px", color: "var(--dp-text-dim)", marginBottom: "8px" },
+  summary: { background: "var(--havn-bg-tertiary)", borderRadius: "var(--havn-radius-lg)", padding: "12px 16px", marginBottom: "12px" },
+  summaryRow: { display: "flex", justifyContent: "space-between", padding: "4px 0", fontSize: "13px", borderBottom: "1px solid var(--havn-border)" },
+  summaryLabel: { color: "var(--havn-text-secondary)", fontWeight: 500 },
+  mono: { fontFamily: "var(--havn-font-mono)" },
+  dimText: { fontSize: "12px", color: "var(--havn-text-dim)", marginBottom: "8px" },
 
   // Connector catalog
   catalog: { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: "12px", maxWidth: "900px" },
-  card: { padding: "16px", background: "var(--dp-bg-secondary)", border: "1px solid var(--dp-border)", borderRadius: "var(--dp-radius-lg)", cursor: "pointer", transition: "border-color 0.15s" },
+  card: { padding: "16px", background: "var(--havn-bg-secondary)", border: "1px solid var(--havn-border)", borderRadius: "var(--havn-radius-lg)", cursor: "pointer", transition: "border-color 0.15s" },
   cardName: { fontWeight: 600, fontSize: "14px", marginBottom: "8px" },
-  cardDesc: { fontSize: "12px", color: "var(--dp-text-secondary)", lineHeight: 1.5, marginBottom: "12px" },
+  cardDesc: { fontSize: "12px", color: "var(--havn-text-secondary)", lineHeight: 1.5, marginBottom: "12px" },
   cardMeta: { display: "flex", gap: "8px", alignItems: "center" },
-  cardType: { fontSize: "11px", color: "var(--dp-text-dim)", fontFamily: "var(--dp-font-mono)", background: "var(--dp-bg-tertiary)", padding: "1px 6px", borderRadius: "var(--dp-radius)" },
-  cardSchedule: { fontSize: "10px", color: "var(--dp-text-dim)" },
+  cardType: { fontSize: "11px", color: "var(--havn-text-dim)", fontFamily: "var(--havn-font-mono)", background: "var(--havn-bg-tertiary)", padding: "1px 6px", borderRadius: "var(--havn-radius)" },
+  cardSchedule: { fontSize: "10px", color: "var(--havn-text-dim)" },
 
   // Manage connectors
   connectorList: { display: "flex", flexDirection: "column", gap: "8px", maxWidth: "800px" },
-  connectorItem: { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 16px", background: "var(--dp-bg-secondary)", border: "1px solid var(--dp-border)", borderRadius: "var(--dp-radius-lg)", gap: "16px" },
+  connectorItem: { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 16px", background: "var(--havn-bg-secondary)", border: "1px solid var(--havn-border)", borderRadius: "var(--havn-radius-lg)", gap: "16px" },
   connectorMain: { flex: 1, minWidth: 0 },
   connectorNameRow: { display: "flex", alignItems: "center", gap: "8px", marginBottom: "4px" },
-  connectorName: { fontWeight: 600, fontSize: "14px", fontFamily: "var(--dp-font-mono)" },
-  connectorType: { fontSize: "11px", color: "var(--dp-text-secondary)", background: "var(--dp-bg-tertiary)", padding: "1px 6px", borderRadius: "var(--dp-radius)", fontWeight: 500 },
+  connectorName: { fontWeight: 600, fontSize: "14px", fontFamily: "var(--havn-font-mono)" },
+  connectorType: { fontSize: "11px", color: "var(--havn-text-secondary)", background: "var(--havn-bg-tertiary)", padding: "1px 6px", borderRadius: "var(--havn-radius)", fontWeight: 500 },
   statusDot: { width: "6px", height: "6px", borderRadius: "50%", flexShrink: 0 },
   connectorParams: { display: "flex", flexWrap: "wrap", gap: "4px" },
-  paramChip: { fontSize: "11px", color: "var(--dp-text-dim)", fontFamily: "var(--dp-font-mono)" },
+  paramChip: { fontSize: "11px", color: "var(--havn-text-dim)", fontFamily: "var(--havn-font-mono)" },
   connectorActions: { display: "flex", gap: "6px", flexShrink: 0 },
 
-  emptyState: { textAlign: "center", padding: "32px", color: "var(--dp-text-dim)", fontSize: "13px" },
+  emptyState: { textAlign: "center", padding: "32px", color: "var(--havn-text-dim)", fontSize: "13px" },
 
   // Success banner
   successBanner: {
     padding: "10px 16px",
     background: "rgba(46, 160, 67, 0.1)",
-    border: "1px solid var(--dp-green)",
-    borderRadius: "var(--dp-radius-lg)",
-    color: "var(--dp-green)",
+    border: "1px solid var(--havn-green)",
+    borderRadius: "var(--havn-radius-lg)",
+    color: "var(--havn-green)",
     fontSize: "13px",
     marginBottom: "16px",
     cursor: "pointer",

@@ -16,7 +16,7 @@ class TestContracts:
         """Create a project with a warehouse and contracts."""
         db_path = tmp_path / "test.duckdb"
         conn = duckdb.connect(str(db_path))
-        from dp.engine.database import ensure_meta_table
+        from havn.engine.database import ensure_meta_table
         ensure_meta_table(conn)
 
         conn.execute("CREATE SCHEMA IF NOT EXISTS gold")
@@ -44,7 +44,7 @@ class TestContracts:
         return conn, contracts_dir
 
     def test_discover_contracts(self, tmp_path: Path):
-        from dp.engine.contracts import discover_contracts
+        from havn.engine.contracts import discover_contracts
 
         _, contracts_dir = self._setup(tmp_path)
         contracts = discover_contracts(contracts_dir)
@@ -54,7 +54,7 @@ class TestContracts:
         assert len(contracts[0].assertions) == 4
 
     def test_run_contracts_all_pass(self, tmp_path: Path):
-        from dp.engine.contracts import run_contracts
+        from havn.engine.contracts import run_contracts
 
         conn, contracts_dir = self._setup(tmp_path)
         results = run_contracts(conn, contracts_dir)
@@ -64,7 +64,7 @@ class TestContracts:
         conn.close()
 
     def test_run_contracts_with_failure(self, tmp_path: Path):
-        from dp.engine.contracts import run_contracts
+        from havn.engine.contracts import run_contracts
 
         conn, contracts_dir = self._setup(tmp_path)
 
@@ -87,11 +87,11 @@ class TestContracts:
         conn.close()
 
     def test_contract_missing_table(self, tmp_path: Path):
-        from dp.engine.contracts import evaluate_contract, Contract
+        from havn.engine.contracts import evaluate_contract, Contract
 
         db_path = tmp_path / "test.duckdb"
         conn = duckdb.connect(str(db_path))
-        from dp.engine.database import ensure_meta_table
+        from havn.engine.database import ensure_meta_table
         ensure_meta_table(conn)
 
         contract = Contract(
@@ -106,7 +106,7 @@ class TestContracts:
         conn.close()
 
     def test_contract_history(self, tmp_path: Path):
-        from dp.engine.contracts import get_contract_history, run_contracts
+        from havn.engine.contracts import get_contract_history, run_contracts
 
         conn, contracts_dir = self._setup(tmp_path)
         run_contracts(conn, contracts_dir)
@@ -147,7 +147,7 @@ def project_with_contracts(tmp_path):
 
     # Create warehouse
     conn = duckdb.connect(str(tmp_path / "warehouse.duckdb"))
-    from dp.engine.database import ensure_meta_table
+    from havn.engine.database import ensure_meta_table
     ensure_meta_table(conn)
     conn.execute("CREATE SCHEMA IF NOT EXISTS bronze")
     conn.execute("CREATE TABLE bronze.test AS SELECT 1 AS id, 'Alice' AS name")
@@ -160,7 +160,7 @@ def project_with_contracts(tmp_path):
 def api_client(project_with_contracts):
     """Create a FastAPI TestClient."""
     from starlette.testclient import TestClient
-    import dp.server.app as server_app
+    import havn.server.app as server_app
     server_app.PROJECT_DIR = project_with_contracts
     server_app.AUTH_ENABLED = False
     return TestClient(server_app.app)
@@ -200,10 +200,10 @@ class TestContractsSecurity:
     """Test identifier injection prevention in contracts."""
 
     def test_contract_rejects_invalid_model_name(self, tmp_path: Path):
-        from dp.engine.contracts import Contract, evaluate_contract
+        from havn.engine.contracts import Contract, evaluate_contract
 
         conn = duckdb.connect(str(tmp_path / "test.duckdb"))
-        from dp.engine.database import ensure_meta_table
+        from havn.engine.database import ensure_meta_table
         ensure_meta_table(conn)
 
         contract = Contract(

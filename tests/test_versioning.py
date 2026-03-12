@@ -16,7 +16,7 @@ class TestVersioning:
         """Create a project with some tables."""
         db_path = tmp_path / "test.duckdb"
         conn = duckdb.connect(str(db_path))
-        from dp.engine.database import ensure_meta_table
+        from havn.engine.database import ensure_meta_table
         ensure_meta_table(conn)
 
         conn.execute("CREATE SCHEMA IF NOT EXISTS gold")
@@ -31,7 +31,7 @@ class TestVersioning:
         return conn
 
     def test_create_version(self, tmp_path: Path):
-        from dp.engine.versioning import create_version
+        from havn.engine.versioning import create_version
 
         conn = self._setup(tmp_path)
         result = create_version(conn, tmp_path, description="Initial snapshot")
@@ -50,7 +50,7 @@ class TestVersioning:
         conn.close()
 
     def test_list_versions(self, tmp_path: Path):
-        from dp.engine.versioning import create_version, list_versions
+        from havn.engine.versioning import create_version, list_versions
 
         conn = self._setup(tmp_path)
         create_version(conn, tmp_path, description="v1")
@@ -64,7 +64,7 @@ class TestVersioning:
         conn.close()
 
     def test_diff_versions(self, tmp_path: Path):
-        from dp.engine.versioning import create_version, diff_versions
+        from havn.engine.versioning import create_version, diff_versions
 
         conn = self._setup(tmp_path)
 
@@ -95,7 +95,7 @@ class TestVersioning:
         conn.close()
 
     def test_restore_version(self, tmp_path: Path):
-        from dp.engine.versioning import create_version, restore_version
+        from havn.engine.versioning import create_version, restore_version
 
         conn = self._setup(tmp_path)
 
@@ -116,7 +116,7 @@ class TestVersioning:
         conn.close()
 
     def test_table_timeline(self, tmp_path: Path):
-        from dp.engine.versioning import create_version, table_timeline
+        from havn.engine.versioning import create_version, table_timeline
 
         conn = self._setup(tmp_path)
 
@@ -132,7 +132,7 @@ class TestVersioning:
         conn.close()
 
     def test_cleanup_old_versions(self, tmp_path: Path):
-        from dp.engine.versioning import cleanup_old_versions, create_version, list_versions
+        from havn.engine.versioning import cleanup_old_versions, create_version, list_versions
 
         conn = self._setup(tmp_path)
 
@@ -150,7 +150,7 @@ class TestVersioning:
         conn.close()
 
     def test_restore_specific_tables(self, tmp_path: Path):
-        from dp.engine.versioning import create_version, restore_version
+        from havn.engine.versioning import create_version, restore_version
 
         conn = self._setup(tmp_path)
         v1 = create_version(conn, tmp_path)
@@ -198,7 +198,7 @@ def project_with_contracts(tmp_path):
 
     # Create warehouse
     conn = duckdb.connect(str(tmp_path / "warehouse.duckdb"))
-    from dp.engine.database import ensure_meta_table
+    from havn.engine.database import ensure_meta_table
     ensure_meta_table(conn)
     conn.execute("CREATE SCHEMA IF NOT EXISTS bronze")
     conn.execute("CREATE TABLE bronze.test AS SELECT 1 AS id, 'Alice' AS name")
@@ -211,7 +211,7 @@ def project_with_contracts(tmp_path):
 def api_client(project_with_contracts):
     """Create a FastAPI TestClient."""
     from starlette.testclient import TestClient
-    import dp.server.app as server_app
+    import havn.server.app as server_app
     server_app.PROJECT_DIR = project_with_contracts
     server_app.AUTH_ENABLED = False
     return TestClient(server_app.app)
@@ -249,11 +249,11 @@ class TestVersioningSecurity:
     """Test path traversal and identifier injection prevention in versioning."""
 
     def test_restore_rejects_path_traversal(self, tmp_path: Path):
-        from dp.engine.versioning import create_version, restore_version
+        from havn.engine.versioning import create_version, restore_version
 
         db_path = tmp_path / "test.duckdb"
         conn = duckdb.connect(str(db_path))
-        from dp.engine.database import ensure_meta_table
+        from havn.engine.database import ensure_meta_table
         ensure_meta_table(conn)
 
         conn.execute("CREATE SCHEMA IF NOT EXISTS gold")

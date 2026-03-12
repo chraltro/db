@@ -8,7 +8,7 @@ from pathlib import Path
 import duckdb
 import pytest
 
-from dp.engine.database import ensure_meta_table
+from havn.engine.database import ensure_meta_table
 
 
 @pytest.fixture
@@ -23,7 +23,7 @@ def db(tmp_path):
 
 class TestAlerts:
     def test_alert_log(self, db):
-        from dp.engine.alerts import Alert, AlertConfig, send_alert
+        from havn.engine.alerts import Alert, AlertConfig, send_alert
 
         config = AlertConfig(channels=["log"])
         alert = Alert(
@@ -45,21 +45,21 @@ class TestAlerts:
         assert row[2] == "test_model"
 
     def test_alert_pipeline_success(self, db):
-        from dp.engine.alerts import AlertConfig, alert_pipeline_success
+        from havn.engine.alerts import AlertConfig, alert_pipeline_success
 
         config = AlertConfig(channels=["log"])
         results = alert_pipeline_success("daily-refresh", 5.2, config, db, models_built=3)
         assert results[0]["status"] == "sent"
 
     def test_alert_pipeline_failure(self, db):
-        from dp.engine.alerts import AlertConfig, alert_pipeline_failure
+        from havn.engine.alerts import AlertConfig, alert_pipeline_failure
 
         config = AlertConfig(channels=["log"])
         results = alert_pipeline_failure("daily-refresh", 2.1, "Transform failed", config, db)
         assert results[0]["status"] == "sent"
 
     def test_alert_assertion_failed(self, db):
-        from dp.engine.alerts import AlertConfig, alert_assertion_failed
+        from havn.engine.alerts import AlertConfig, alert_assertion_failed
 
         config = AlertConfig(channels=["log"])
         results = alert_assertion_failed(
@@ -70,7 +70,7 @@ class TestAlerts:
         assert results[0]["status"] == "sent"
 
     def test_alert_stale_models(self, db):
-        from dp.engine.alerts import AlertConfig, alert_stale_models
+        from havn.engine.alerts import AlertConfig, alert_stale_models
 
         config = AlertConfig(channels=["log"])
         results = alert_stale_models(
@@ -82,7 +82,7 @@ class TestAlerts:
     def test_slack_webhook_format(self):
         """Test that Slack payload is correctly formatted (without actually sending)."""
         from unittest.mock import patch
-        from dp.engine.alerts import Alert, AlertConfig, _send_slack
+        from havn.engine.alerts import Alert, AlertConfig, _send_slack
 
         config = AlertConfig(slack_webhook_url="https://hooks.slack.com/test")
         alert = Alert(
@@ -92,7 +92,7 @@ class TestAlerts:
             details={"duration": "5s"},
         )
         # Mock urlopen so we don't depend on network and can verify payload
-        with patch("dp.engine.alerts.urlopen") as mock_urlopen:
+        with patch("havn.engine.alerts.urlopen") as mock_urlopen:
             _send_slack(alert, config)
             mock_urlopen.assert_called_once()
             call_args = mock_urlopen.call_args
@@ -101,7 +101,7 @@ class TestAlerts:
             assert req.get_header("Content-type") == "application/json"
 
     def test_unknown_channel(self, db):
-        from dp.engine.alerts import Alert, AlertConfig, send_alert
+        from havn.engine.alerts import Alert, AlertConfig, send_alert
 
         config = AlertConfig(channels=["pigeon_carrier"])
         alert = Alert(alert_type="test", target="test", message="test")
@@ -124,7 +124,7 @@ class TestAlertsConfig:
               on_failure: true
               freshness_hours: 12.0
         """))
-        from dp.config import load_project
+        from havn.config import load_project
         config = load_project(tmp_path)
         assert config.alerts.slack_webhook_url == "https://hooks.slack.com/services/xxx"
         assert config.alerts.channels == ["slack", "log"]
@@ -139,7 +139,7 @@ class TestAlertsConfig:
               path: warehouse.duckdb
             streams: {}
         """))
-        from dp.config import load_project
+        from havn.config import load_project
         config = load_project(tmp_path)
         assert config.alerts.slack_webhook_url is None
         assert config.alerts.channels == []

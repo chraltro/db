@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 
-from dp.engine.notebook import extract_notebook_outputs
+from havn.engine.notebook import extract_notebook_outputs
 
 
 def test_extract_notebook_outputs_explicit():

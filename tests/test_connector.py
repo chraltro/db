@@ -9,10 +9,10 @@ import duckdb
 import yaml
 
 # Register all connectors
-import dp.connectors  # noqa: F401
+import havn.connectors  # noqa: F401
 import pytest
 
-from dp.engine.connector import (
+from havn.engine.connector import (
     BaseConnector,
     DiscoveredResource,
     ParamSpec,
@@ -253,7 +253,7 @@ def test_csv_connector_script_execution(tmp_path):
     db_path = tmp_path / "test.duckdb"
     conn = duckdb.connect(str(db_path))
 
-    from dp.engine.runner import run_script
+    from havn.engine.runner import run_script
 
     result = run_script(conn, script_path, "ingest")
     assert result["status"] == "success"
@@ -665,7 +665,7 @@ def test_full_csv_pipeline(tmp_path):
     db_path = project_dir / "warehouse.duckdb"
     conn = duckdb.connect(str(db_path))
 
-    from dp.engine.runner import run_script
+    from havn.engine.runner import run_script
 
     run_result = run_script(conn, script_path, "ingest")
     assert run_result["status"] == "success"

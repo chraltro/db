@@ -9,4 +9,4 @@ Motivation or context for the change.
 ## Test plan
 
 - [ ] `pytest tests/` passes
-- [ ] Tested manually with `dp ...`
+- [ ] Tested manually with `havn ...`

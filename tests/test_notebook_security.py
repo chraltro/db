@@ -5,7 +5,7 @@ import json
 import duckdb
 import pytest
 
-from dp.engine.notebook import (
+from havn.engine.notebook import (
     _split_sql_statements,
     _validate_identifier,
     execute_ingest_cell,
@@ -65,7 +65,7 @@ def test_ingest_cell_rejects_injection_in_table():
 
 def test_resolve_path_prevents_traversal(tmp_path):
     """_resolve_path prevents path traversal outside project dir."""
-    from dp.engine.notebook import _resolve_path
+    from havn.engine.notebook import _resolve_path
 
     # Valid relative path should work
     result = _resolve_path("data/test.csv", tmp_path)

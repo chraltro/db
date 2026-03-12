@@ -6,8 +6,8 @@ function NavItem({ table, isActive, onClick }) {
     <div
       style={{
         ...s.navItem,
-        background: isActive ? "var(--dp-bg-secondary)" : "transparent",
-        borderLeft: isActive ? "2px solid var(--dp-accent)" : "2px solid transparent",
+        background: isActive ? "var(--havn-bg-secondary)" : "transparent",
+        borderLeft: isActive ? "2px solid var(--havn-accent)" : "2px solid transparent",
       }}
       onClick={onClick}
     >
@@ -148,7 +148,7 @@ export default function DocsPanel() {
       <div style={s.body}>
         {loading && <div style={s.loading}>Loading docs...</div>}
         {!loading && error && (
-          <div style={{ ...s.loading, color: "var(--dp-red)" }}>{error}</div>
+          <div style={{ ...s.loading, color: "var(--havn-red)" }}>{error}</div>
         )}
         {!loading && !error && (!data || data.schemas.length === 0) && (
           <div style={s.loading}>No documentation available. Run a pipeline first.</div>
@@ -188,37 +188,37 @@ export default function DocsPanel() {
 
 const s = {
   container: { display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" },
-  header: { display: "flex", alignItems: "center", gap: "8px", padding: "8px 12px", borderBottom: "1px solid var(--dp-border)", fontWeight: 600, fontSize: "13px" },
-  headerCount: { color: "var(--dp-text-dim)", fontWeight: 400, fontSize: "12px", flex: 1 },
-  refreshBtn: { background: "var(--dp-btn-bg)", border: "1px solid var(--dp-btn-border)", borderRadius: "var(--dp-radius-lg)", color: "var(--dp-text)", padding: "4px 12px", cursor: "pointer", fontSize: "12px", fontWeight: 500 },
+  header: { display: "flex", alignItems: "center", gap: "8px", padding: "8px 12px", borderBottom: "1px solid var(--havn-border)", fontWeight: 600, fontSize: "13px" },
+  headerCount: { color: "var(--havn-text-dim)", fontWeight: 400, fontSize: "12px", flex: 1 },
+  refreshBtn: { background: "var(--havn-btn-bg)", border: "1px solid var(--havn-btn-border)", borderRadius: "var(--havn-radius-lg)", color: "var(--havn-text)", padding: "4px 12px", cursor: "pointer", fontSize: "12px", fontWeight: 500 },
   body: { display: "flex", flex: 1, overflow: "hidden" },
-  loading: { color: "var(--dp-text-secondary)", textAlign: "center", padding: "24px", width: "100%" },
+  loading: { color: "var(--havn-text-secondary)", textAlign: "center", padding: "24px", width: "100%" },
   // Left nav
-  nav: { width: "220px", minWidth: "220px", borderRight: "1px solid var(--dp-border)", overflow: "auto", padding: "4px 0" },
-  schemaRow: { display: "flex", alignItems: "center", gap: "6px", padding: "6px 12px", cursor: "pointer", fontSize: "11px", fontWeight: 600, color: "var(--dp-text-dim)", letterSpacing: "0.5px", textTransform: "uppercase" },
+  nav: { width: "220px", minWidth: "220px", borderRight: "1px solid var(--havn-border)", overflow: "auto", padding: "4px 0" },
+  schemaRow: { display: "flex", alignItems: "center", gap: "6px", padding: "6px 12px", cursor: "pointer", fontSize: "11px", fontWeight: 600, color: "var(--havn-text-dim)", letterSpacing: "0.5px", textTransform: "uppercase" },
   schemaArrow: { fontSize: "10px", width: "10px", display: "inline-block", transition: "transform 0.12s ease" },
   schemaName: { flex: 1 },
-  schemaCount: { fontSize: "10px", color: "var(--dp-text-dim)", fontWeight: 400 },
+  schemaCount: { fontSize: "10px", color: "var(--havn-text-dim)", fontWeight: 400 },
   navItem: { display: "flex", alignItems: "center", gap: "6px", padding: "5px 12px 5px 28px", cursor: "pointer", fontSize: "12px", whiteSpace: "nowrap" },
-  navLabel: { flex: 1, overflow: "hidden", textOverflow: "ellipsis", color: "var(--dp-text)" },
-  navBadge: { fontSize: "10px", color: "var(--dp-text-dim)", flexShrink: 0 },
+  navLabel: { flex: 1, overflow: "hidden", textOverflow: "ellipsis", color: "var(--havn-text)" },
+  navBadge: { fontSize: "10px", color: "var(--havn-text-dim)", flexShrink: 0 },
   // Right content
   content: { flex: 1, overflow: "auto", padding: "20px 28px" },
-  detailEmpty: { color: "var(--dp-text-dim)", fontSize: "13px", padding: "24px", textAlign: "center" },
+  detailEmpty: { color: "var(--havn-text-dim)", fontSize: "13px", padding: "24px", textAlign: "center" },
   detail: {},
   detailHeader: { display: "flex", alignItems: "center", gap: "10px", marginBottom: "12px" },
-  detailTitle: { fontSize: "18px", fontWeight: 600, fontFamily: "var(--dp-font-mono)", color: "var(--dp-text)" },
-  detailType: { fontSize: "11px", fontWeight: 500, color: "var(--dp-text-dim)", background: "var(--dp-bg-secondary)", padding: "2px 8px", borderRadius: "var(--dp-radius)" },
-  detailDesc: { margin: "0 0 12px", fontSize: "13px", lineHeight: 1.5, color: "var(--dp-text-secondary)" },
+  detailTitle: { fontSize: "18px", fontWeight: 600, fontFamily: "var(--havn-font-mono)", color: "var(--havn-text)" },
+  detailType: { fontSize: "11px", fontWeight: 500, color: "var(--havn-text-dim)", background: "var(--havn-bg-secondary)", padding: "2px 8px", borderRadius: "var(--havn-radius)" },
+  detailDesc: { margin: "0 0 12px", fontSize: "13px", lineHeight: 1.5, color: "var(--havn-text-secondary)" },
   metaRow: { display: "flex", flexWrap: "wrap", gap: "8px", marginBottom: "16px" },
-  metaTag: { fontSize: "12px", color: "var(--dp-text-secondary)", background: "var(--dp-bg-secondary)", padding: "3px 10px", borderRadius: "var(--dp-radius)", display: "inline-flex", alignItems: "center", gap: "4px" },
-  depCode: { fontFamily: "var(--dp-font-mono)", fontSize: "11px", color: "var(--dp-accent)" },
-  sectionTitle: { fontSize: "13px", fontWeight: 600, margin: "16px 0 8px", color: "var(--dp-text)" },
-  colTable: { width: "100%", borderCollapse: "collapse", fontSize: "12px", fontFamily: "var(--dp-font-mono)" },
-  colTh: { textAlign: "left", padding: "6px 12px", borderBottom: "1px solid var(--dp-border-light)", color: "var(--dp-text-secondary)", fontWeight: 600, fontFamily: "var(--dp-font)", fontSize: "11px" },
-  colTd: { padding: "4px 12px", borderBottom: "1px solid var(--dp-border)", color: "var(--dp-text)", fontSize: "12px" },
-  colTdName: { padding: "4px 12px", borderBottom: "1px solid var(--dp-border)", color: "var(--dp-accent)", fontSize: "12px" },
+  metaTag: { fontSize: "12px", color: "var(--havn-text-secondary)", background: "var(--havn-bg-secondary)", padding: "3px 10px", borderRadius: "var(--havn-radius)", display: "inline-flex", alignItems: "center", gap: "4px" },
+  depCode: { fontFamily: "var(--havn-font-mono)", fontSize: "11px", color: "var(--havn-accent)" },
+  sectionTitle: { fontSize: "13px", fontWeight: 600, margin: "16px 0 8px", color: "var(--havn-text)" },
+  colTable: { width: "100%", borderCollapse: "collapse", fontSize: "12px", fontFamily: "var(--havn-font-mono)" },
+  colTh: { textAlign: "left", padding: "6px 12px", borderBottom: "1px solid var(--havn-border-light)", color: "var(--havn-text-secondary)", fontWeight: 600, fontFamily: "var(--havn-font)", fontSize: "11px" },
+  colTd: { padding: "4px 12px", borderBottom: "1px solid var(--havn-border)", color: "var(--havn-text)", fontSize: "12px" },
+  colTdName: { padding: "4px 12px", borderBottom: "1px solid var(--havn-border)", color: "var(--havn-accent)", fontSize: "12px" },
   sqlSection: { marginTop: "16px" },
-  sqlToggle: { background: "none", border: "none", color: "var(--dp-accent)", cursor: "pointer", fontSize: "12px", fontWeight: 500, padding: "4px 0" },
-  sqlBlock: { background: "var(--dp-bg-secondary)", border: "1px solid var(--dp-border)", borderRadius: "var(--dp-radius-lg)", padding: "12px", margin: "8px 0", fontSize: "12px", fontFamily: "var(--dp-font-mono)", overflow: "auto", color: "var(--dp-text)" },
+  sqlToggle: { background: "none", border: "none", color: "var(--havn-accent)", cursor: "pointer", fontSize: "12px", fontWeight: 500, padding: "4px 0" },
+  sqlBlock: { background: "var(--havn-bg-secondary)", border: "1px solid var(--havn-border)", borderRadius: "var(--havn-radius-lg)", padding: "12px", margin: "8px 0", fontSize: "12px", fontFamily: "var(--havn-font-mono)", overflow: "auto", color: "var(--havn-text)" },
 };

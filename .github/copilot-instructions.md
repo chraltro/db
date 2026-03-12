@@ -1,6 +1,6 @@
-## dp - Self-Hosted Data Platform
+## havn - Self-Hosted Data Platform
 
-dp uses DuckDB + plain SQL transforms + Python ingest/export. All data in a single `warehouse.duckdb` file.
+havn (Norwegian for harbour) uses DuckDB + plain SQL transforms + Python ingest/export. All data in a single `warehouse.duckdb` file. Data in safe waters.
 
 ### SQL models go in `transform/` with comment-based config:
 
@@ -19,14 +19,14 @@ def run(db: duckdb.DuckDBPyConnection) -> None:
     db.execute("CREATE OR REPLACE TABLE landing.x AS SELECT * FROM ...")
 ```
 
-### Key commands: `dp transform`, `dp run <script>`, `dp query "<sql>"`, `dp lint`, `dp tables`
+### Key commands: `havn transform`, `havn run <script>`, `havn query "<sql>"`, `havn lint`, `havn tables`
 
 ### Code patterns:
 - `from __future__ import annotations` in all Python files
-- Lazy imports in CLI commands (`src/dp/cli.py`)
+- Lazy imports in CLI commands (`src/havn/cli/`)
 - DuckDB connections: always `try/finally` with `conn.close()`
 - Tests: `pytest tests/` — uses real temp DuckDB, no mocks
-- API: FastAPI in `src/dp/server/app.py`, auth via `_require_permission()`
+- API: FastAPI in `src/havn/server/app.py`, auth via `_require_permission()`
 
 ### Don't:
 - Add Jinja/templating to SQL

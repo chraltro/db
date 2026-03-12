@@ -6,13 +6,13 @@ from pathlib import Path
 import duckdb
 import pytest
 
-from dp.engine.database import ensure_meta_table
-from dp.engine.sql_analysis import (
+from havn.engine.database import ensure_meta_table
+from havn.engine.sql_analysis import (
     parse_config as _parse_config,
     parse_depends as _parse_depends,
     strip_config_comments as _strip_config_comments,
 )
-from dp.engine.transform import (
+from havn.engine.transform import (
     SQLModel,
     build_dag,
     discover_models,

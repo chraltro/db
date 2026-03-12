@@ -261,7 +261,7 @@ export default function QualityPanel() {
                           <tr>
                             <td style={s.td}>
                               {cols.length > 0 ? (
-                                <span style={{ cursor: 'pointer', color: 'var(--dp-accent, #60a5fa)' }} onClick={() => setExpandedProfile(expandedProfile === i ? null : i)}>
+                                <span style={{ cursor: 'pointer', color: 'var(--havn-accent, #60a5fa)' }} onClick={() => setExpandedProfile(expandedProfile === i ? null : i)}>
                                   {expandedProfile === i ? '\u25BE' : '\u25B8'} {p.model}
                                 </span>
                               ) : p.model}

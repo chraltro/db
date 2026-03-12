@@ -11,12 +11,12 @@ function compareValues(a, b) {
 }
 
 const CLR = {
-  int: "var(--dp-accent)",
-  float: "var(--dp-accent)",
-  text: "var(--dp-green)",
-  bool: "var(--dp-purple)",
-  temporal: "var(--dp-yellow)",
-  other: "var(--dp-text-dim)",
+  int: "var(--havn-accent)",
+  float: "var(--havn-accent)",
+  text: "var(--havn-green)",
+  bool: "var(--havn-purple)",
+  temporal: "var(--havn-yellow)",
+  other: "var(--havn-text-dim)",
 };
 
 function typeDisplay(dbType) {
@@ -123,7 +123,7 @@ export default function SortableTable({ columns, rows, columnTypes }) {
                 <span style={styles.thInner}>
                   <span>{col}</span>
                   <span style={{ ...styles.typeSymbol, color: sym.color }}>{sym.label}</span>
-                  <span style={{ ...styles.sortIcon, color: isActive ? "var(--dp-accent)" : "var(--dp-text-dim)" }}>
+                  <span style={{ ...styles.sortIcon, color: isActive ? "var(--havn-accent)" : "var(--havn-text-dim)" }}>
                     {isActive ? (sortDir === "asc" ? "\u25B4" : "\u25BE") : "\u25B4\u25BE"}
                   </span>
                 </span>
@@ -148,11 +148,11 @@ export default function SortableTable({ columns, rows, columnTypes }) {
 }
 
 const styles = {
-  table: { width: "100%", borderCollapse: "collapse", fontSize: "12px", fontFamily: "var(--dp-font-mono)" },
-  th: { textAlign: "left", padding: "6px 12px", borderBottom: "2px solid var(--dp-border-light)", color: "var(--dp-text-secondary)", fontWeight: 600, position: "sticky", top: 0, background: "var(--dp-bg)", cursor: "pointer", userSelect: "none" },
+  table: { width: "100%", borderCollapse: "collapse", fontSize: "12px", fontFamily: "var(--havn-font-mono)" },
+  th: { textAlign: "left", padding: "6px 12px", borderBottom: "2px solid var(--havn-border-light)", color: "var(--havn-text-secondary)", fontWeight: 600, position: "sticky", top: 0, background: "var(--havn-bg)", cursor: "pointer", userSelect: "none" },
   thInner: { display: "flex", alignItems: "center", gap: "6px", width: "100%" },
   typeSymbol: { fontSize: "9px", fontWeight: 500, opacity: 0.8 },
   sortIcon: { fontSize: "8px", lineHeight: 1, marginLeft: "auto", flexShrink: 0 },
-  td: { padding: "4px 12px", borderBottom: "1px solid var(--dp-border)", color: "var(--dp-text)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "300px" },
-  null: { color: "var(--dp-text-dim)", fontStyle: "italic", fontSize: "11px" },
+  td: { padding: "4px 12px", borderBottom: "1px solid var(--havn-border)", color: "var(--havn-text)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "300px" },
+  null: { color: "var(--havn-text-dim)", fontStyle: "italic", fontSize: "11px" },
 };

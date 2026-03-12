@@ -8,8 +8,8 @@ from pathlib import Path
 import duckdb
 import pytest
 
-from dp.engine.database import ensure_meta_table
-from dp.engine.diff import (
+from havn.engine.database import ensure_meta_table
+from havn.engine.diff import (
     DiffResult,
     SchemaChange,
     _compute_schema_changes,
@@ -212,14 +212,14 @@ def test_diff_full_row_comparison_no_pk(tmp_path):
 
 def test_pk_parsed_from_sql_comment():
     """PK parsed from SQL comment."""
-    sql = "-- dp:primary_key = id\nSELECT 1 AS id"
+    sql = "-- havn:primary_key = id\nSELECT 1 AS id"
     pk = parse_primary_key_from_sql(sql)
     assert pk == ["id"]
 
 
 def test_pk_parsed_from_sql_comment_multi():
     """Multiple PK columns parsed from SQL comment."""
-    sql = "-- dp:primary_key = id, date\nSELECT 1 AS id"
+    sql = "-- havn:primary_key = id, date\nSELECT 1 AS id"
     pk = parse_primary_key_from_sql(sql)
     assert pk == ["id", "date"]
 
@@ -247,7 +247,7 @@ def test_pk_sql_takes_precedence():
     class FakeConfig:
         _raw = {"models": {"gold.metrics": {"primary_key": ["other_id"]}}}
 
-    sql = "-- dp:primary_key = id\nSELECT 1 AS id"
+    sql = "-- havn:primary_key = id\nSELECT 1 AS id"
     pk = get_primary_key(sql, FakeConfig(), "gold.metrics")
     assert pk == ["id"]
 
@@ -329,7 +329,7 @@ def test_compute_schema_changes():
 
 def test_snapshot_create_and_list(tmp_path):
     """Create snapshot, verify stored data."""
-    from dp.engine.snapshot import create_snapshot, list_snapshots
+    from havn.engine.snapshot import create_snapshot, list_snapshots
 
     conn = _setup_db(tmp_path)
     conn.execute("CREATE TABLE gold.metrics AS SELECT 1 AS id, 100 AS value")
@@ -351,7 +351,7 @@ def test_snapshot_create_and_list(tmp_path):
 
 def test_snapshot_diff_detects_changes(tmp_path):
     """Create snapshot, modify data, diff against snapshot detects changes."""
-    from dp.engine.snapshot import create_snapshot, diff_against_snapshot
+    from havn.engine.snapshot import create_snapshot, diff_against_snapshot
 
     conn = _setup_db(tmp_path)
     conn.execute("CREATE TABLE gold.metrics AS SELECT 1 AS id, 100 AS value")
@@ -373,7 +373,7 @@ def test_snapshot_diff_detects_changes(tmp_path):
 
 def test_snapshot_no_changes(tmp_path):
     """Create snapshot, no changes, diff shows clean."""
-    from dp.engine.snapshot import create_snapshot, diff_against_snapshot
+    from havn.engine.snapshot import create_snapshot, diff_against_snapshot
 
     conn = _setup_db(tmp_path)
     conn.execute("CREATE TABLE gold.metrics AS SELECT 1 AS id, 100 AS value")
@@ -393,7 +393,7 @@ def test_snapshot_no_changes(tmp_path):
 
 def test_snapshot_auto_naming(tmp_path):
     """Auto-naming format."""
-    from dp.engine.snapshot import create_snapshot
+    from havn.engine.snapshot import create_snapshot
 
     conn = _setup_db(tmp_path)
     (tmp_path / "project.yml").write_text("name: test")
@@ -405,7 +405,7 @@ def test_snapshot_auto_naming(tmp_path):
 
 def test_snapshot_deleted_table(tmp_path):
     """Snapshot with tables that no longer exist."""
-    from dp.engine.snapshot import create_snapshot, diff_against_snapshot
+    from havn.engine.snapshot import create_snapshot, diff_against_snapshot
 
     conn = _setup_db(tmp_path)
     conn.execute("CREATE TABLE gold.metrics AS SELECT 1 AS id")
@@ -423,7 +423,7 @@ def test_snapshot_deleted_table(tmp_path):
 
 def test_snapshot_file_manifest_changes(tmp_path):
     """File manifest detects added/removed/modified project files."""
-    from dp.engine.snapshot import create_snapshot, diff_against_snapshot
+    from havn.engine.snapshot import create_snapshot, diff_against_snapshot
 
     conn = _setup_db(tmp_path)
     (tmp_path / "project.yml").write_text("name: test")
@@ -444,7 +444,7 @@ def test_snapshot_file_manifest_changes(tmp_path):
 
 def test_snapshot_delete(tmp_path):
     """Delete a snapshot."""
-    from dp.engine.snapshot import create_snapshot, delete_snapshot, list_snapshots
+    from havn.engine.snapshot import create_snapshot, delete_snapshot, list_snapshots
 
     conn = _setup_db(tmp_path)
     (tmp_path / "project.yml").write_text("name: test")
@@ -463,7 +463,7 @@ def test_snapshot_delete(tmp_path):
 
 def test_is_git_repo_false_for_non_git(tmp_path):
     """is_git_repo returns false for non-git dirs."""
-    from dp.engine.git import is_git_repo
+    from havn.engine.git import is_git_repo
 
     assert is_git_repo(tmp_path) is False
 
@@ -486,7 +486,7 @@ def _git_commit(tmp_path, message):
 
 def test_git_functions_in_real_repo(tmp_path):
     """Test git functions in a real git repo."""
-    from dp.engine.git import (
+    from havn.engine.git import (
         changed_files,
         current_branch,
         is_dirty,
@@ -524,7 +524,7 @@ def test_git_functions_in_real_repo(tmp_path):
 
 def test_changed_files_detects_all_types(tmp_path):
     """changed_files detects modified, added, deleted files."""
-    from dp.engine.git import changed_files
+    from havn.engine.git import changed_files
 
     _git_init(tmp_path)
 
@@ -547,7 +547,7 @@ def test_diff_files_between(tmp_path):
     """diff_files_between returns correct files."""
     import subprocess
 
-    from dp.engine.git import diff_files_between
+    from havn.engine.git import diff_files_between
 
     _git_init(tmp_path)
 
@@ -566,7 +566,7 @@ def test_diff_files_between(tmp_path):
 
 def test_git_graceful_without_git(tmp_path):
     """All git functions degrade gracefully without git."""
-    from dp.engine.git import (
+    from havn.engine.git import (
         current_branch,
         is_dirty,
         is_git_repo,
@@ -586,7 +586,7 @@ def test_git_graceful_without_git(tmp_path):
 
 def test_ci_generate_workflow(tmp_path):
     """Generated YAML is valid."""
-    from dp.engine.ci import generate_workflow
+    from havn.engine.ci import generate_workflow
 
     (tmp_path / "project.yml").write_text("name: test")
     result = generate_workflow(tmp_path)
@@ -597,7 +597,7 @@ def test_ci_generate_workflow(tmp_path):
     import yaml
 
     content = yaml.safe_load(workflow_path.read_text())
-    assert content["name"] == "dp CI"
+    assert content["name"] == "havn CI"
     # YAML parses `on:` as boolean True, so check for that key
     assert True in content or "on" in content
     assert "diff" in content["jobs"]
@@ -605,7 +605,7 @@ def test_ci_generate_workflow(tmp_path):
 
 def test_ci_diff_comment_format():
     """Diff comment formatting is correct for various scenarios."""
-    from dp.engine.ci import _format_diff_comment
+    from havn.engine.ci import _format_diff_comment
 
     # No changes
     comment = _format_diff_comment([
@@ -643,7 +643,7 @@ def test_ci_diff_comment_format():
 
 def test_ci_diff_comment_snapshot_format():
     """Snapshot diff comment format."""
-    from dp.engine.ci import _format_diff_comment
+    from havn.engine.ci import _format_diff_comment
 
     comment = _format_diff_comment({
         "snapshot_name": "baseline",
@@ -662,9 +662,9 @@ def test_ci_diff_comment_snapshot_format():
 
 
 def test_ci_diff_comment_missing_token(tmp_path):
-    """dp ci diff-comment handles missing GITHUB_TOKEN gracefully."""
+    """havn ci diff-comment handles missing GITHUB_TOKEN gracefully."""
     import os
-    from dp.engine.ci import post_diff_comment
+    from havn.engine.ci import post_diff_comment
 
     # Ensure no token
     old_token = os.environ.pop("GITHUB_TOKEN", None)
@@ -677,9 +677,9 @@ def test_ci_diff_comment_missing_token(tmp_path):
 
 
 def test_ci_diff_comment_missing_file():
-    """dp ci diff-comment handles missing file gracefully."""
+    """havn ci diff-comment handles missing file gracefully."""
     import os
-    from dp.engine.ci import post_diff_comment
+    from havn.engine.ci import post_diff_comment
 
     os.environ["GITHUB_TOKEN"] = "test-token"
     try:

@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from dp.engine.secrets import (
+from havn.engine.secrets import (
     delete_secret,
     list_secrets,
     load_env,

@@ -1,6 +1,6 @@
-# Contributing to dp
+# Contributing to havn
 
-Thanks for your interest in contributing to dp! This document covers everything you need to get started.
+Thanks for your interest in contributing to havn! This document covers everything you need to get started.
 
 ## Development Setup
 
@@ -20,7 +20,7 @@ pytest tests/
 ## Project Structure
 
 ```
-src/dp/           Python package (CLI + engine + server)
+src/havn/           Python package (CLI + engine + server)
 frontend/         React + Vite web UI
 tests/            pytest test suite
 ```
@@ -31,7 +31,7 @@ See [CLAUDE.md](CLAUDE.md) for a detailed architecture reference.
 
 ### Backend (Python)
 
-1. Source is in `src/dp/`
+1. Source is in `src/havn/`
 2. CLI commands live in `cli.py`
 3. Engine logic is in `engine/` — `transform.py` is the core SQL DAG engine
 4. API endpoints are in `server/app.py`
@@ -70,8 +70,8 @@ SQL files are linted with SQLFluff (DuckDB dialect):
 - Identifiers: lower (`customer_id`, `order_count`)
 
 ```bash
-dp lint          # check
-dp lint --fix    # auto-fix
+havn lint          # check
+havn lint --fix    # auto-fix
 ```
 
 ## Pull Requests
@@ -94,7 +94,7 @@ Open an issue on GitHub with:
 
 ## Adding a New CLI Command
 
-1. Add `@app.command()` function in `src/dp/cli.py`
+1. Add `@app.command()` function in `src/havn/cli.py`
 2. Import engine modules lazily (inside the function body)
 3. Use `_resolve_project()` for project dir resolution
 4. Add corresponding API endpoint in `server/app.py` if needed
@@ -102,9 +102,9 @@ Open an issue on GitHub with:
 
 ## Adding a New Connector
 
-1. Create a new file in `src/dp/connectors/`
+1. Create a new file in `src/havn/connectors/`
 2. Define a connector class following the existing pattern
-3. Register it in `src/dp/connectors/__init__.py`
+3. Register it in `src/havn/connectors/__init__.py`
 4. Add tests
 
 ## License

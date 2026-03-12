@@ -1,11 +1,11 @@
-"""Tests for environment management, seeds, sources, exposures, and dp check."""
+"""Tests for environment management, seeds, sources, exposures, and havn check."""
 
 from pathlib import Path
 
 import duckdb
 import pytest
 
-from dp.config import load_project
+from havn.config import load_project
 
 
 # --- Environment management tests ---
@@ -112,8 +112,8 @@ database:
 
 def test_seeds_basic_loading(tmp_path):
     """Test basic CSV seed loading."""
-    from dp.engine.database import connect, ensure_meta_table
-    from dp.engine.seeds import load_seed, run_seeds
+    from havn.engine.database import connect, ensure_meta_table
+    from havn.engine.seeds import load_seed, run_seeds
 
     seeds_dir = tmp_path / "seeds"
     seeds_dir.mkdir()
@@ -136,8 +136,8 @@ def test_seeds_basic_loading(tmp_path):
 
 def test_seeds_change_detection(tmp_path):
     """Test that unchanged seeds are skipped."""
-    from dp.engine.database import connect, ensure_meta_table
-    from dp.engine.seeds import load_seed
+    from havn.engine.database import connect, ensure_meta_table
+    from havn.engine.seeds import load_seed
 
     seeds_dir = tmp_path / "seeds"
     seeds_dir.mkdir()
@@ -164,8 +164,8 @@ def test_seeds_change_detection(tmp_path):
 
 def test_seeds_force_reload(tmp_path):
     """Test that --force reloads all seeds."""
-    from dp.engine.database import connect, ensure_meta_table
-    from dp.engine.seeds import load_seed
+    from havn.engine.database import connect, ensure_meta_table
+    from havn.engine.seeds import load_seed
 
     seeds_dir = tmp_path / "seeds"
     seeds_dir.mkdir()
@@ -184,8 +184,8 @@ def test_seeds_force_reload(tmp_path):
 
 def test_seeds_empty_csv(tmp_path):
     """Test handling of empty CSV files."""
-    from dp.engine.database import connect, ensure_meta_table
-    from dp.engine.seeds import load_seed
+    from havn.engine.database import connect, ensure_meta_table
+    from havn.engine.seeds import load_seed
 
     seeds_dir = tmp_path / "seeds"
     seeds_dir.mkdir()
@@ -204,7 +204,7 @@ def test_seeds_empty_csv(tmp_path):
 
 def test_seeds_discover(tmp_path):
     """Test seed discovery."""
-    from dp.engine.seeds import discover_seeds
+    from havn.engine.seeds import discover_seeds
 
     seeds_dir = tmp_path / "seeds"
     seeds_dir.mkdir()
@@ -220,8 +220,8 @@ def test_seeds_discover(tmp_path):
 
 def test_seeds_run_all(tmp_path):
     """Test run_seeds loads all CSVs."""
-    from dp.engine.database import connect, ensure_meta_table
-    from dp.engine.seeds import run_seeds
+    from havn.engine.database import connect, ensure_meta_table
+    from havn.engine.seeds import run_seeds
 
     seeds_dir = tmp_path / "seeds"
     seeds_dir.mkdir()
@@ -240,7 +240,7 @@ def test_seeds_run_all(tmp_path):
 
 def test_seeds_in_dag(tmp_path):
     """Test that seeds integrate with the transform DAG."""
-    from dp.engine.seeds import discover_seeds
+    from havn.engine.seeds import discover_seeds
 
     seeds_dir = tmp_path / "seeds"
     seeds_dir.mkdir()
@@ -343,12 +343,12 @@ def test_exposures_empty(tmp_path):
     assert config.exposures == []
 
 
-# --- dp check with sources integration ---
+# --- havn check with sources integration ---
 
 
 def test_check_with_known_tables(tmp_path):
     """Test validate_models accepts known_tables for seeds/sources."""
-    from dp.engine.transform import SQLModel, ValidationError, validate_models
+    from havn.engine.transform import SQLModel, ValidationError, validate_models
 
     model = SQLModel(
         name="test_model",
@@ -375,7 +375,7 @@ def test_check_with_known_tables(tmp_path):
 
 def test_check_with_source_columns(tmp_path):
     """Test validate_models validates columns from sources.yml."""
-    from dp.engine.transform import SQLModel, validate_models
+    from havn.engine.transform import SQLModel, validate_models
 
     model = SQLModel(
         name="test_model",
@@ -426,8 +426,8 @@ streams:
 
 def test_docs_include_sources(tmp_path):
     """Test that generate_docs includes sources section."""
-    from dp.config import SourceColumn, SourceConfig, SourceTable
-    from dp.engine.docs import generate_docs
+    from havn.config import SourceColumn, SourceConfig, SourceTable
+    from havn.engine.docs import generate_docs
 
     conn = duckdb.connect(str(tmp_path / "test.duckdb"))
     conn.execute("CREATE SCHEMA IF NOT EXISTS bronze")
@@ -462,8 +462,8 @@ def test_docs_include_sources(tmp_path):
 
 def test_docs_include_exposures(tmp_path):
     """Test that generate_docs includes exposures section."""
-    from dp.config import ExposureConfig
-    from dp.engine.docs import generate_docs
+    from havn.config import ExposureConfig
+    from havn.engine.docs import generate_docs
 
     conn = duckdb.connect(str(tmp_path / "test.duckdb"))
     conn.execute("CREATE SCHEMA IF NOT EXISTS gold")

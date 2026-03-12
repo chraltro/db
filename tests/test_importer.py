@@ -6,7 +6,7 @@ from pathlib import Path
 
 import duckdb
 
-from dp.engine.importer import import_file, preview_file
+from havn.engine.importer import import_file, preview_file
 
 
 def _make_csv(tmp_path: Path, name: str = "test.csv") -> Path:

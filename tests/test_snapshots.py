@@ -6,7 +6,7 @@ from pathlib import Path
 import duckdb
 import pytest
 
-from dp.engine.snapshots import (
+from havn.engine.snapshots import (
     RewindConfig,
     SnapshotInfo,
     _compute_checksum,

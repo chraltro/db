@@ -11,7 +11,7 @@ import textwrap
 import duckdb
 import pytest
 
-from dp.engine.sql_analysis import (
+from havn.engine.sql_analysis import (
     extract_column_lineage,
     extract_table_refs,
     parse_assertions,

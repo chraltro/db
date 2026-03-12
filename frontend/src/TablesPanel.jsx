@@ -117,7 +117,7 @@ export default function TablesPanel({ selectedTable, onQueryTable }) {
   }
 
   if (error) {
-    return <div style={{ ...st.placeholder, color: "var(--dp-red)" }}>{error}</div>;
+    return <div style={{ ...st.placeholder, color: "var(--havn-red)" }}>{error}</div>;
   }
 
   function formatCount(n) {
@@ -142,7 +142,7 @@ export default function TablesPanel({ selectedTable, onQueryTable }) {
           </button>
         </div>
       </div>
-      <div style={st.columnsBar} data-dp-hint="columns-bar">
+      <div style={st.columnsBar} data-havn-hint="columns-bar">
         {columns.map((c) => (
           <button
             key={c.name}
@@ -193,23 +193,23 @@ export default function TablesPanel({ selectedTable, onQueryTable }) {
 
 const st = {
   container: { display: "flex", flexDirection: "column", height: "100%", overflow: "auto", padding: "12px" },
-  placeholder: { color: "var(--dp-text-dim)", padding: "24px", textAlign: "center" },
+  placeholder: { color: "var(--havn-text-dim)", padding: "24px", textAlign: "center" },
   tableHeader: { display: "flex", alignItems: "center", gap: "12px", padding: "4px 8px 8px", fontSize: "14px", flexWrap: "wrap" },
-  selectedName: { fontFamily: "var(--dp-font-mono)" },
-  colCount: { color: "var(--dp-text-secondary)", fontSize: "12px" },
-  rowCount: { color: "var(--dp-text-dim)", fontSize: "12px", fontFamily: "var(--dp-font-mono)" },
+  selectedName: { fontFamily: "var(--havn-font-mono)" },
+  colCount: { color: "var(--havn-text-secondary)", fontSize: "12px" },
+  rowCount: { color: "var(--havn-text-dim)", fontSize: "12px", fontFamily: "var(--havn-font-mono)" },
   headerActions: { marginLeft: "auto", display: "flex", gap: "6px" },
-  actionBtn: { padding: "4px 12px", background: "var(--dp-btn-bg)", border: "1px solid var(--dp-btn-border)", borderRadius: "var(--dp-radius-lg)", color: "var(--dp-accent)", cursor: "pointer", fontSize: "11px", fontWeight: 500 },
+  actionBtn: { padding: "4px 12px", background: "var(--havn-btn-bg)", border: "1px solid var(--havn-btn-border)", borderRadius: "var(--havn-radius-lg)", color: "var(--havn-accent)", cursor: "pointer", fontSize: "11px", fontWeight: 500 },
   columnsBar: { display: "flex", flexWrap: "wrap", gap: "4px", padding: "4px 8px 12px" },
-  colChip: { background: "var(--dp-btn-bg)", border: "1px solid var(--dp-border)", padding: "3px 8px", borderRadius: "var(--dp-radius)", fontSize: "11px", fontFamily: "var(--dp-font-mono)", cursor: "pointer", color: "var(--dp-text)" },
-  colChipActive: { borderColor: "var(--dp-accent)", color: "var(--dp-accent)", fontWeight: 600 },
-  colType: { color: "var(--dp-text-secondary)", marginLeft: "2px" },
-  sortArrow: { color: "var(--dp-accent)", fontWeight: 700 },
-  statsBar: { padding: "8px 8px 12px", borderTop: "1px solid var(--dp-border)", marginBottom: "4px" },
-  statsLabel: { fontSize: "11px", color: "var(--dp-text-secondary)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.3px" },
+  colChip: { background: "var(--havn-btn-bg)", border: "1px solid var(--havn-border)", padding: "3px 8px", borderRadius: "var(--havn-radius)", fontSize: "11px", fontFamily: "var(--havn-font-mono)", cursor: "pointer", color: "var(--havn-text)" },
+  colChipActive: { borderColor: "var(--havn-accent)", color: "var(--havn-accent)", fontWeight: 600 },
+  colType: { color: "var(--havn-text-secondary)", marginLeft: "2px" },
+  sortArrow: { color: "var(--havn-accent)", fontWeight: 700 },
+  statsBar: { padding: "8px 8px 12px", borderTop: "1px solid var(--havn-border)", marginBottom: "4px" },
+  statsLabel: { fontSize: "11px", color: "var(--havn-text-secondary)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.3px" },
   statsList: { display: "flex", flexWrap: "wrap", gap: "8px", marginTop: "6px" },
-  statItem: { display: "flex", gap: "8px", padding: "4px 10px", background: "var(--dp-bg-tertiary)", borderRadius: "var(--dp-radius)", fontSize: "11px", fontFamily: "var(--dp-font-mono)" },
-  statName: { fontWeight: 600, color: "var(--dp-text)" },
-  statVal: { color: "var(--dp-text-secondary)" },
+  statItem: { display: "flex", gap: "8px", padding: "4px 10px", background: "var(--havn-bg-tertiary)", borderRadius: "var(--havn-radius)", fontSize: "11px", fontFamily: "var(--havn-font-mono)" },
+  statName: { fontWeight: 600, color: "var(--havn-text)" },
+  statVal: { color: "var(--havn-text-secondary)" },
   previewWrap: { overflow: "auto", flex: 1 },
 };

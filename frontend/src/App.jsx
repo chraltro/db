@@ -37,8 +37,8 @@ import { PipelineProvider, usePipeline } from "./PipelineContext";
 const GUIDE_STEPS = [
   {
     id: "welcome",
-    title: "Welcome to dp",
-    description: "dp is your self-hosted data platform. Let's take a quick tour of the interface.",
+    title: "Welcome to havn",
+    description: "havn is your self-hosted data platform. Data in safe waters. Let's take a quick tour of the interface.",
     position: "center",
   },
   {
@@ -143,7 +143,7 @@ function PipelineMenu({ running, streams, onRunStream, onTransform, onLint, onCo
         <div style={pmStyles.menu}>
           <div style={pmStyles.groupLabel}>Pipeline</div>
           <button style={pmStyles.item} disabled={running} onClick={() => { defaultRun(); setOpen(false); }}
-            onMouseEnter={(e) => e.currentTarget.style.background = "var(--dp-btn-bg)"}
+            onMouseEnter={(e) => e.currentTarget.style.background = "var(--havn-btn-bg)"}
             onMouseLeave={(e) => e.currentTarget.style.background = "none"}
           >Run Stream</button>
           <button style={pmStyles.item} disabled={running} onClick={() => {
@@ -151,33 +151,33 @@ function PipelineMenu({ running, streams, onRunStream, onTransform, onLint, onCo
             else addOutput("warn", "No streams defined");
             setOpen(false);
           }}
-            onMouseEnter={(e) => e.currentTarget.style.background = "var(--dp-btn-bg)"}
+            onMouseEnter={(e) => e.currentTarget.style.background = "var(--havn-btn-bg)"}
             onMouseLeave={(e) => e.currentTarget.style.background = "none"}
           >Full Refresh</button>
 
           <div style={pmStyles.divider} />
           <div style={pmStyles.groupLabel}>Build</div>
           <button style={pmStyles.item} disabled={running} onClick={() => { onTransform(false); setOpen(false); }}
-            onMouseEnter={(e) => e.currentTarget.style.background = "var(--dp-btn-bg)"}
+            onMouseEnter={(e) => e.currentTarget.style.background = "var(--havn-btn-bg)"}
             onMouseLeave={(e) => e.currentTarget.style.background = "none"}
           >Transform</button>
           <button style={pmStyles.item} disabled={running} onClick={() => { onTransform(true); setOpen(false); }}
-            onMouseEnter={(e) => e.currentTarget.style.background = "var(--dp-btn-bg)"}
+            onMouseEnter={(e) => e.currentTarget.style.background = "var(--havn-btn-bg)"}
             onMouseLeave={(e) => e.currentTarget.style.background = "none"}
           >Transform (Force)</button>
 
           <div style={pmStyles.divider} />
           <div style={pmStyles.groupLabel}>Validate</div>
           <button style={pmStyles.item} disabled={running} onClick={() => { onLint(false); setOpen(false); }}
-            onMouseEnter={(e) => e.currentTarget.style.background = "var(--dp-btn-bg)"}
+            onMouseEnter={(e) => e.currentTarget.style.background = "var(--havn-btn-bg)"}
             onMouseLeave={(e) => e.currentTarget.style.background = "none"}
           >Lint</button>
           <button style={pmStyles.item} disabled={running} onClick={() => { onLint(true); setOpen(false); }}
-            onMouseEnter={(e) => e.currentTarget.style.background = "var(--dp-btn-bg)"}
+            onMouseEnter={(e) => e.currentTarget.style.background = "var(--havn-btn-bg)"}
             onMouseLeave={(e) => e.currentTarget.style.background = "none"}
           >Lint (Fix)</button>
           <button style={pmStyles.item} disabled={running} onClick={() => { onContracts(); setOpen(false); }}
-            onMouseEnter={(e) => e.currentTarget.style.background = "var(--dp-btn-bg)"}
+            onMouseEnter={(e) => e.currentTarget.style.background = "var(--havn-btn-bg)"}
             onMouseLeave={(e) => e.currentTarget.style.background = "none"}
           >Contracts</button>
         </div>
@@ -189,31 +189,31 @@ function PipelineMenu({ running, streams, onRunStream, onTransform, onLint, onCo
 const pmStyles = {
   wrapper: { position: "relative", display: "inline-flex" },
   btn: {
-    padding: "5px 14px", background: "var(--dp-green)", border: "1px solid var(--dp-green-border)",
-    borderRadius: "var(--dp-radius-lg) 0 0 var(--dp-radius-lg)", color: "#fff", cursor: "pointer",
+    padding: "5px 14px", background: "var(--havn-green)", border: "1px solid var(--havn-green-border)",
+    borderRadius: "var(--havn-radius-lg) 0 0 var(--havn-radius-lg)", color: "#fff", cursor: "pointer",
     fontSize: "12px", fontWeight: 600, letterSpacing: "0.3px",
   },
   chevron: {
-    padding: "5px 7px", background: "var(--dp-green)", border: "1px solid var(--dp-green-border)",
-    borderRadius: "0 var(--dp-radius-lg) var(--dp-radius-lg) 0", color: "#fff", cursor: "pointer",
+    padding: "5px 7px", background: "var(--havn-green)", border: "1px solid var(--havn-green-border)",
+    borderRadius: "0 var(--havn-radius-lg) var(--havn-radius-lg) 0", color: "#fff", cursor: "pointer",
     fontSize: "10px", borderLeft: "1px solid rgba(255,255,255,0.2)", marginLeft: "-1px",
   },
   menu: {
     position: "absolute", top: "100%", right: 0, marginTop: "4px",
-    background: "var(--dp-bg-secondary)", border: "1px solid var(--dp-border)",
-    borderRadius: "var(--dp-radius)", zIndex: 100, minWidth: "170px",
+    background: "var(--havn-bg-secondary)", border: "1px solid var(--havn-border)",
+    borderRadius: "var(--havn-radius)", zIndex: 100, minWidth: "170px",
     boxShadow: "0 4px 16px rgba(0,0,0,0.3)", padding: "4px 0",
   },
   groupLabel: {
     padding: "6px 12px 2px", fontSize: "10px", fontWeight: 600,
-    color: "var(--dp-text-dim)", textTransform: "uppercase", letterSpacing: "0.5px",
+    color: "var(--havn-text-dim)", textTransform: "uppercase", letterSpacing: "0.5px",
   },
   item: {
     display: "block", width: "100%", padding: "6px 12px", background: "none",
-    border: "none", color: "var(--dp-text)", cursor: "pointer", fontSize: "12px",
+    border: "none", color: "var(--havn-text)", cursor: "pointer", fontSize: "12px",
     textAlign: "left", whiteSpace: "nowrap",
   },
-  divider: { height: "1px", background: "var(--dp-border)", margin: "4px 0" },
+  divider: { height: "1px", background: "var(--havn-border)", margin: "4px 0" },
 };
 
 /* ------------------------------------------------------------------ */
@@ -279,18 +279,18 @@ function SchemaTree({ tables, selectedTable, onSelectTable }) {
             const isActive = selectedTable === key;
             return (
               <div
-                data-dp-file=""
+                data-havn-file=""
                 key={key}
                 style={{
                   ...stStyles.tableRow,
-                  background: isActive ? "var(--dp-bg-secondary)" : "transparent",
-                  borderLeft: isActive ? "2px solid var(--dp-accent)" : "2px solid transparent",
+                  background: isActive ? "var(--havn-bg-secondary)" : "transparent",
+                  borderLeft: isActive ? "2px solid var(--havn-accent)" : "2px solid transparent",
                 }}
                 onClick={() => onSelectTable(t.schema, t.name)}
               >
                 <span style={{
                   ...stStyles.typeIcon,
-                  color: t.type === "VIEW" ? "var(--dp-purple)" : "var(--dp-accent)",
+                  color: t.type === "VIEW" ? "var(--havn-purple)" : "var(--havn-accent)",
                 }}>{t.type === "VIEW" ? "V" : "T"}</span>
                 <span style={isActive ? stStyles.tableNameActive : stStyles.tableName}>{t.name}</span>
               </div>
@@ -303,15 +303,15 @@ function SchemaTree({ tables, selectedTable, onSelectTable }) {
 }
 
 const stStyles = {
-  empty: { padding: "12px", color: "var(--dp-text-dim)", fontSize: "12px", textAlign: "center" },
+  empty: { padding: "12px", color: "var(--havn-text-dim)", fontSize: "12px", textAlign: "center" },
   schemaRow: { display: "flex", alignItems: "center", gap: "6px", padding: "4px 8px", cursor: "pointer", margin: "0 4px", borderRadius: "3px" },
-  arrow: { fontSize: "10px", color: "var(--dp-text-secondary)", width: "10px", display: "inline-block", transition: "transform 0.12s ease" },
-  schemaName: { fontSize: "13px", fontWeight: 500, color: "var(--dp-text)" },
-  schemaCount: { fontSize: "10px", color: "var(--dp-text-dim)", marginLeft: "auto" },
-  tableRow: { display: "flex", alignItems: "center", gap: "6px", padding: "3px 8px 3px 30px", cursor: "pointer", fontSize: "12px", fontFamily: "var(--dp-font-mono)", margin: "0 4px", borderRadius: "3px" },
+  arrow: { fontSize: "10px", color: "var(--havn-text-secondary)", width: "10px", display: "inline-block", transition: "transform 0.12s ease" },
+  schemaName: { fontSize: "13px", fontWeight: 500, color: "var(--havn-text)" },
+  schemaCount: { fontSize: "10px", color: "var(--havn-text-dim)", marginLeft: "auto" },
+  tableRow: { display: "flex", alignItems: "center", gap: "6px", padding: "3px 8px 3px 30px", cursor: "pointer", fontSize: "12px", fontFamily: "var(--havn-font-mono)", margin: "0 4px", borderRadius: "3px" },
   typeIcon: { fontSize: "9px", fontWeight: 700, flexShrink: 0 },
-  tableName: { color: "var(--dp-text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
-  tableNameActive: { color: "var(--dp-accent)", fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
+  tableName: { color: "var(--havn-text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
+  tableNameActive: { color: "var(--havn-accent)", fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
 };
 
 /* ------------------------------------------------------------------ */
@@ -641,18 +641,18 @@ function AppContent() {
           style={styles.logo}
           title="Home"
         >
-          dp
+          havn
         </button>
 
         {/* Section navigation */}
-        <nav style={styles.sectionNav} data-dp-guide="tabs">
+        <nav style={styles.sectionNav} data-havn-guide="tabs">
           {SECTIONS.map((section, i) => {
             const isActive = activeSection === section.id;
             return (
               <button
                 key={section.id}
-                data-dp-tab=""
-                data-dp-active={isActive ? "true" : "false"}
+                data-havn-tab=""
+                data-havn-active={isActive ? "true" : "false"}
                 onClick={() => navigateToTab(SECTION_DEFAULT[section.id])}
                 style={isActive ? styles.sectionActive : styles.section}
                 title={`${section.label} (Alt+${i + 1})`}
@@ -664,7 +664,7 @@ function AppContent() {
         </nav>
 
         {/* Right side: run menu + new + env + user */}
-        <div style={styles.headerRight} data-dp-guide="actions">
+        <div style={styles.headerRight} data-havn-guide="actions">
           <PipelineMenu
             running={running}
             streams={streams}
@@ -690,7 +690,7 @@ function AppContent() {
 
       <div style={styles.main}>
         {/* Sidebar */}
-        <aside style={{ ...styles.sidebar, width: sidebarWidth }} data-dp-guide="sidebar">
+        <aside style={{ ...styles.sidebar, width: sidebarWidth }} data-havn-guide="sidebar">
           <div style={styles.sidebarPane}>
             <div style={styles.sidebarSectionHeader}>
               <span>FILES</span>
@@ -723,12 +723,12 @@ function AppContent() {
         <div style={styles.content}>
           {/* Sub-tab bar (shown when section has multiple tabs) */}
           {subTabs.length > 0 && (
-            <div style={styles.subTabBar} data-dp-hint="tab-bar">
+            <div style={styles.subTabBar} data-havn-hint="tab-bar">
               {subTabs.map((tab) => (
                 <button
                   key={tab}
-                  data-dp-tab=""
-                  data-dp-active={activeTab === tab ? "true" : "false"}
+                  data-havn-tab=""
+                  data-havn-active={activeTab === tab ? "true" : "false"}
                   onClick={() => navigateToTab(tab)}
                   style={activeTab === tab ? styles.subTabActive : styles.subTab}
                 >
@@ -737,7 +737,7 @@ function AppContent() {
               ))}
               {/* Editor file actions inline */}
               {activeFile && activeTab === "Editor" && (
-                <div style={styles.fileActions} data-dp-hint="editor-toolbar">
+                <div style={styles.fileActions} data-havn-hint="editor-toolbar">
                   <span style={styles.fileName}>
                     {activeFile}
                     {dirty && <span style={styles.modifiedDot}> *</span>}
@@ -759,7 +759,7 @@ function AppContent() {
           )}
 
           {/* Panel */}
-          <div style={styles.panel} data-dp-guide="editor">
+          <div style={styles.panel} data-havn-guide="editor">
             {activeTab === "Overview" && (
               <ErrorBoundary name="Overview">
                 <OverviewPanel
@@ -799,16 +799,16 @@ function AppContent() {
                   {(preview || previewError || previewRunning) && (
                     <>
                       <ResizeHandle direction="vertical" onResize={(d) => onPreviewResize(-d)} onResizeStart={onPreviewResizeStart} />
-                      <div style={{ height: previewHeight, flexShrink: 0, borderTop: "1px solid var(--dp-border)", display: "flex", flexDirection: "column", overflow: "hidden" }}>
-                        <div style={{ padding: "4px 12px", fontSize: "11px", color: "var(--dp-text-secondary)", borderBottom: "1px solid var(--dp-border)", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
+                      <div style={{ height: previewHeight, flexShrink: 0, borderTop: "1px solid var(--havn-border)", display: "flex", flexDirection: "column", overflow: "hidden" }}>
+                        <div style={{ padding: "4px 12px", fontSize: "11px", color: "var(--havn-text-secondary)", borderBottom: "1px solid var(--havn-border)", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
                           <span>
                             {previewRunning ? "Running\u2026" : previewError ? "Error" : `${preview.rows.length} row${preview.rows.length !== 1 ? "s" : ""}, ${preview.columns.length} col${preview.columns.length !== 1 ? "s" : ""}`}
                           </span>
-                          <button onClick={() => { setPreview(null); setPreviewError(null); }} style={{ background: "none", border: "none", color: "var(--dp-text-dim)", cursor: "pointer", fontSize: "14px", lineHeight: 1 }}>{"\u00D7"}</button>
+                          <button onClick={() => { setPreview(null); setPreviewError(null); }} style={{ background: "none", border: "none", color: "var(--havn-text-dim)", cursor: "pointer", fontSize: "14px", lineHeight: 1 }}>{"\u00D7"}</button>
                         </div>
                         <div style={{ flex: 1, overflow: "auto" }}>
                           {previewError
-                            ? <div style={{ padding: "8px 12px", color: "var(--dp-red)", fontFamily: "var(--dp-font-mono)", fontSize: "12px", whiteSpace: "pre-wrap" }}>{previewError}</div>
+                            ? <div style={{ padding: "8px 12px", color: "var(--havn-red)", fontFamily: "var(--havn-font-mono)", fontSize: "12px", whiteSpace: "pre-wrap" }}>{previewError}</div>
                             : preview && <SortableTable columns={preview.columns} rows={preview.rows} />
                           }
                         </div>
@@ -835,7 +835,7 @@ function AppContent() {
 
           {/* Run summary */}
           {runSummary && (
-            <div data-dp-hint="run-summary">
+            <div data-havn-hint="run-summary">
               <RunSummary
                 summary={runSummary}
                 onNavigate={navigateToTab}
@@ -850,7 +850,7 @@ function AppContent() {
             onResize={(delta) => onOutputResize(-delta)}
             onResizeStart={onOutputResizeStart}
           />
-          <div data-dp-guide="output" style={{ flexShrink: 0 }}>
+          <div data-havn-guide="output" style={{ flexShrink: 0 }}>
             <OutputPanel output={output} onClear={clearOutput} height={outputHeight} onOpenFile={openFileAtLine} />
           </div>
         </div>
@@ -878,7 +878,7 @@ function AppContent() {
 
       {/* Model notebook view overlay */}
       {modelNotebookName && (
-        <div style={{ position: "fixed", inset: 0, background: "var(--dp-bg)", zIndex: 900, overflow: "auto", padding: "16px" }}>
+        <div style={{ position: "fixed", inset: 0, background: "var(--havn-bg)", zIndex: 900, overflow: "auto", padding: "16px" }}>
           <ModelNotebookView
             modelName={modelNotebookName}
             onClose={() => setModelNotebookName(null)}
@@ -945,77 +945,77 @@ export default function App() {
 /* ------------------------------------------------------------------ */
 
 const styles = {
-  container: { display: "flex", flexDirection: "column", height: "100vh", background: "var(--dp-bg)", color: "var(--dp-text)", fontFamily: "var(--dp-font)" },
-  loading: { display: "flex", alignItems: "center", justifyContent: "center", height: "100vh", background: "var(--dp-bg)", color: "var(--dp-text-secondary)", fontFamily: "var(--dp-font)", fontSize: "14px" },
+  container: { display: "flex", flexDirection: "column", height: "100vh", background: "var(--havn-bg)", color: "var(--havn-text)", fontFamily: "var(--havn-font)" },
+  loading: { display: "flex", alignItems: "center", justifyContent: "center", height: "100vh", background: "var(--havn-bg)", color: "var(--havn-text-secondary)", fontFamily: "var(--havn-font)", fontSize: "14px" },
 
   // Header
-  header: { display: "flex", alignItems: "center", padding: "0 16px", borderBottom: "1px solid var(--dp-border)", background: "var(--dp-bg-secondary)", minHeight: "44px", gap: "16px" },
-  logo: { fontSize: "18px", fontWeight: "bold", fontFamily: "var(--dp-font-mono)", color: "var(--dp-accent)", letterSpacing: "-0.5px", background: "none", border: "none", cursor: "pointer", padding: "8px 4px", flexShrink: 0 },
+  header: { display: "flex", alignItems: "center", padding: "0 16px", borderBottom: "1px solid var(--havn-border)", background: "var(--havn-bg-secondary)", minHeight: "44px", gap: "16px" },
+  logo: { fontSize: "18px", fontWeight: "bold", fontFamily: "var(--havn-font-mono)", color: "var(--havn-accent)", letterSpacing: "-0.5px", background: "none", border: "none", cursor: "pointer", padding: "8px 4px", flexShrink: 0 },
 
   // Section navigation (in header)
   sectionNav: { display: "flex", alignItems: "center", gap: "2px", flex: 1 },
   section: {
     padding: "10px 16px", background: "none", border: "none", borderBottom: "2px solid transparent",
-    color: "var(--dp-text-secondary)", cursor: "pointer", fontSize: "13px", whiteSpace: "nowrap",
+    color: "var(--havn-text-secondary)", cursor: "pointer", fontSize: "13px", whiteSpace: "nowrap",
     fontWeight: 500, transition: "color 0.15s",
   },
   sectionActive: {
-    padding: "10px 16px", background: "none", border: "none", borderBottom: "2px solid var(--dp-accent)",
-    color: "var(--dp-text)", cursor: "pointer", fontSize: "13px", whiteSpace: "nowrap",
+    padding: "10px 16px", background: "none", border: "none", borderBottom: "2px solid var(--havn-accent)",
+    color: "var(--havn-text)", cursor: "pointer", fontSize: "13px", whiteSpace: "nowrap",
     fontWeight: 600, transition: "color 0.15s",
   },
 
   // Header right side
   headerRight: { display: "flex", alignItems: "center", gap: "8px", flexShrink: 0 },
   userInfo: { display: "flex", alignItems: "center", gap: "8px", marginLeft: "4px" },
-  userName: { fontSize: "12px", color: "var(--dp-text)", fontWeight: 500 },
-  userRole: { fontSize: "10px", color: "var(--dp-text-secondary)", background: "var(--dp-btn-bg)", padding: "2px 8px", borderRadius: "10px", fontWeight: 500, textTransform: "capitalize" },
-  logoutBtn: { padding: "3px 8px", background: "none", border: "1px solid var(--dp-border-light)", borderRadius: "var(--dp-radius)", color: "var(--dp-text-secondary)", cursor: "pointer", fontSize: "11px" },
+  userName: { fontSize: "12px", color: "var(--havn-text)", fontWeight: 500 },
+  userRole: { fontSize: "10px", color: "var(--havn-text-secondary)", background: "var(--havn-btn-bg)", padding: "2px 8px", borderRadius: "10px", fontWeight: 500, textTransform: "capitalize" },
+  logoutBtn: { padding: "3px 8px", background: "none", border: "1px solid var(--havn-border-light)", borderRadius: "var(--havn-radius)", color: "var(--havn-text-secondary)", cursor: "pointer", fontSize: "11px" },
 
   // Layout
   main: { display: "flex", flex: 1, overflow: "hidden" },
-  sidebar: { borderRight: "1px solid var(--dp-border)", overflow: "hidden", background: "var(--dp-bg-tertiary)", padding: "0", flexShrink: 0, display: "flex", flexDirection: "column" },
+  sidebar: { borderRight: "1px solid var(--havn-border)", overflow: "hidden", background: "var(--havn-bg-tertiary)", padding: "0", flexShrink: 0, display: "flex", flexDirection: "column" },
   sidebarPane: { flex: 1, minHeight: 0, display: "flex", flexDirection: "column" },
   sidebarPaneContent: { flex: 1, overflow: "auto", minHeight: 0, padding: "0 0 8px" },
-  sidebarDivider: { height: "1px", background: "var(--dp-border)", margin: "0 12px", flexShrink: 0 },
-  sidebarSectionHeader: { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 12px 6px", fontSize: "10px", fontWeight: "600", color: "var(--dp-text-dim)", letterSpacing: "1px", textTransform: "uppercase", flexShrink: 0 },
-  sidebarRefreshBtn: { background: "none", border: "none", color: "var(--dp-text-secondary)", cursor: "pointer", fontSize: "13px", padding: "0 2px", lineHeight: 1 },
+  sidebarDivider: { height: "1px", background: "var(--havn-border)", margin: "0 12px", flexShrink: 0 },
+  sidebarSectionHeader: { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 12px 6px", fontSize: "10px", fontWeight: "600", color: "var(--havn-text-dim)", letterSpacing: "1px", textTransform: "uppercase", flexShrink: 0 },
+  sidebarRefreshBtn: { background: "none", border: "none", color: "var(--havn-text-secondary)", cursor: "pointer", fontSize: "13px", padding: "0 2px", lineHeight: 1 },
   content: { flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" },
 
   // Sub-tab bar
   subTabBar: {
-    display: "flex", alignItems: "center", borderBottom: "1px solid var(--dp-border)",
-    padding: "0 12px", background: "var(--dp-bg-tertiary)", minHeight: "32px",
+    display: "flex", alignItems: "center", borderBottom: "1px solid var(--havn-border)",
+    padding: "0 12px", background: "var(--havn-bg-tertiary)", minHeight: "32px",
   },
   subTab: {
     padding: "6px 14px", background: "none", border: "none", borderBottom: "2px solid transparent",
-    color: "var(--dp-text-secondary)", cursor: "pointer", fontSize: "12px", whiteSpace: "nowrap", fontWeight: 500,
+    color: "var(--havn-text-secondary)", cursor: "pointer", fontSize: "12px", whiteSpace: "nowrap", fontWeight: 500,
   },
   subTabActive: {
-    padding: "6px 14px", background: "none", border: "none", borderBottom: "2px solid var(--dp-accent)",
-    color: "var(--dp-text)", cursor: "pointer", fontSize: "12px", whiteSpace: "nowrap", fontWeight: 600,
+    padding: "6px 14px", background: "none", border: "none", borderBottom: "2px solid var(--havn-accent)",
+    color: "var(--havn-text)", cursor: "pointer", fontSize: "12px", whiteSpace: "nowrap", fontWeight: 600,
   },
 
   // File actions (inline in sub-tab bar)
   fileActions: { marginLeft: "auto", display: "flex", alignItems: "center", gap: "8px", paddingLeft: "16px" },
-  fileName: { fontSize: "12px", color: "var(--dp-text-secondary)", fontFamily: "var(--dp-font-mono)" },
-  modifiedDot: { color: "var(--dp-accent)", fontWeight: 700 },
+  fileName: { fontSize: "12px", color: "var(--havn-text-secondary)", fontFamily: "var(--havn-font-mono)" },
+  modifiedDot: { color: "var(--havn-accent)", fontWeight: 700 },
 
   // Panel
   panel: { flex: 1, overflow: "hidden", minHeight: 0 },
 
   // Buttons
-  btn: { padding: "5px 12px", background: "var(--dp-btn-bg)", border: "1px solid var(--dp-btn-border)", borderRadius: "var(--dp-radius-lg)", color: "var(--dp-text)", cursor: "pointer", fontSize: "12px", fontWeight: 500 },
-  btnPrimary: { padding: "5px 12px", background: "var(--dp-green)", border: "1px solid var(--dp-green-border)", borderRadius: "var(--dp-radius-lg)", color: "#fff", cursor: "pointer", fontSize: "12px", fontWeight: 500 },
+  btn: { padding: "5px 12px", background: "var(--havn-btn-bg)", border: "1px solid var(--havn-btn-border)", borderRadius: "var(--havn-radius-lg)", color: "var(--havn-text)", cursor: "pointer", fontSize: "12px", fontWeight: 500 },
+  btnPrimary: { padding: "5px 12px", background: "var(--havn-green)", border: "1px solid var(--havn-green-border)", borderRadius: "var(--havn-radius-lg)", color: "#fff", cursor: "pointer", fontSize: "12px", fontWeight: 500 },
 };
 
 const dcStyles = {
   overlay: { position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 },
-  dialog: { background: "var(--dp-bg-secondary)", border: "1px solid var(--dp-border)", borderRadius: "8px", padding: "20px", width: "420px", maxWidth: "90vw" },
-  title: { fontSize: "14px", fontWeight: 600, color: "var(--dp-text)", marginBottom: "8px" },
-  body: { fontSize: "13px", color: "var(--dp-text-secondary)", marginBottom: "16px", lineHeight: 1.5 },
+  dialog: { background: "var(--havn-bg-secondary)", border: "1px solid var(--havn-border)", borderRadius: "8px", padding: "20px", width: "420px", maxWidth: "90vw" },
+  title: { fontSize: "14px", fontWeight: 600, color: "var(--havn-text)", marginBottom: "8px" },
+  body: { fontSize: "13px", color: "var(--havn-text-secondary)", marginBottom: "16px", lineHeight: 1.5 },
   footer: { display: "flex", justifyContent: "flex-end", gap: "8px" },
-  btnCancel: { padding: "6px 14px", background: "none", border: "1px solid var(--dp-border-light)", borderRadius: "var(--dp-radius-lg)", color: "var(--dp-text-secondary)", cursor: "pointer", fontSize: "12px", fontWeight: 500 },
-  btnSecondary: { padding: "6px 14px", background: "var(--dp-btn-bg)", border: "1px solid var(--dp-btn-border)", borderRadius: "var(--dp-radius-lg)", color: "var(--dp-text)", cursor: "pointer", fontSize: "12px", fontWeight: 500 },
-  btnDanger: { padding: "6px 14px", background: "var(--dp-red, #c53030)", border: "1px solid var(--dp-red, #c53030)", borderRadius: "var(--dp-radius-lg)", color: "#fff", cursor: "pointer", fontSize: "12px", fontWeight: 500 },
+  btnCancel: { padding: "6px 14px", background: "none", border: "1px solid var(--havn-border-light)", borderRadius: "var(--havn-radius-lg)", color: "var(--havn-text-secondary)", cursor: "pointer", fontSize: "12px", fontWeight: 500 },
+  btnSecondary: { padding: "6px 14px", background: "var(--havn-btn-bg)", border: "1px solid var(--havn-btn-border)", borderRadius: "var(--havn-radius-lg)", color: "var(--havn-text)", cursor: "pointer", fontSize: "12px", fontWeight: 500 },
+  btnDanger: { padding: "6px 14px", background: "var(--havn-red, #c53030)", border: "1px solid var(--havn-red, #c53030)", borderRadius: "var(--havn-radius-lg)", color: "#fff", cursor: "pointer", fontSize: "12px", fontWeight: 500 },
 };

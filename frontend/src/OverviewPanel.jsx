@@ -87,7 +87,7 @@ export default function OverviewPanel({ onNavigate, onSelectTable, onOpenFile, o
         {/* Hero / CTA section */}
         {!data.has_data && (
           <div style={st.hero}>
-            <div style={st.heroTitle}>Get started with dp</div>
+            <div style={st.heroTitle}>Get started with havn</div>
             <div style={st.heroDesc}>
               Connect a data source to start building your warehouse. Import a CSV, connect a database, or set up a recurring connector.
             </div>
@@ -126,16 +126,16 @@ export default function OverviewPanel({ onNavigate, onSelectTable, onOpenFile, o
             <div style={st.statLabel}>Connectors</div>
           </div>
           <div
-            style={{ ...st.statCard, cursor: errorCount > 0 ? "pointer" : "default", outline: showFailed ? "2px solid var(--dp-red)" : "none" }}
+            style={{ ...st.statCard, cursor: errorCount > 0 ? "pointer" : "default", outline: showFailed ? "2px solid var(--havn-red)" : "none" }}
             onClick={() => { if (errorCount > 0) setShowFailed(!showFailed); }}
             title={errorCount > 0 ? "Click to show failures" : ""}
           >
-            <div style={{ ...st.statValue, color: errorCount > 0 ? "var(--dp-red)" : "var(--dp-green)" }}>
+            <div style={{ ...st.statValue, color: errorCount > 0 ? "var(--havn-red)" : "var(--havn-green)" }}>
               {recentRuns.length > 0 ? `${successCount}/${recentRuns.length}` : "-"}
             </div>
             <div style={st.statLabel}>Runs OK (latest)</div>
             {errorCount > 0 && (
-              <div style={{ fontSize: "10px", color: "var(--dp-red)", marginTop: "2px" }}>
+              <div style={{ fontSize: "10px", color: "var(--havn-red)", marginTop: "2px" }}>
                 {errorCount} failed {"\u25BE"}
               </div>
             )}
@@ -176,14 +176,14 @@ export default function OverviewPanel({ onNavigate, onSelectTable, onOpenFile, o
 
         {/* Git status */}
         {gitStatus && gitStatus.is_git_repo && (
-          <div data-dp-hint="git-status" style={{ ...st.card, marginBottom: 16, padding: "10px 16px", display: "flex", alignItems: "center", gap: 12, fontSize: 12 }}>
-            <span style={{ fontWeight: 600, color: "var(--dp-text-secondary)" }}>git</span>
-            <span style={{ fontFamily: "var(--dp-font-mono)", color: "var(--dp-accent)" }}>{gitStatus.branch}</span>
-            <span style={{ color: gitStatus.dirty ? "var(--dp-yellow, #eab308)" : "var(--dp-green)", fontWeight: 500 }}>
+          <div data-havn-hint="git-status" style={{ ...st.card, marginBottom: 16, padding: "10px 16px", display: "flex", alignItems: "center", gap: 12, fontSize: 12 }}>
+            <span style={{ fontWeight: 600, color: "var(--havn-text-secondary)" }}>git</span>
+            <span style={{ fontFamily: "var(--havn-font-mono)", color: "var(--havn-accent)" }}>{gitStatus.branch}</span>
+            <span style={{ color: gitStatus.dirty ? "var(--havn-yellow, #eab308)" : "var(--havn-green)", fontWeight: 500 }}>
               {gitStatus.dirty ? `${gitStatus.changed_files?.length || 0} uncommitted` : "clean"}
             </span>
             {gitStatus.last_message && (
-              <span style={{ color: "var(--dp-text-dim)", marginLeft: "auto", maxWidth: 300, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              <span style={{ color: "var(--havn-text-dim)", marginLeft: "auto", maxWidth: 300, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                 {gitStatus.last_message}
               </span>
             )}
@@ -194,7 +194,7 @@ export default function OverviewPanel({ onNavigate, onSelectTable, onOpenFile, o
           {/* Left column */}
           <div style={st.column}>
             {/* Pipeline health */}
-            <div style={st.card} data-dp-hint="pipeline-health">
+            <div style={st.card} data-havn-hint="pipeline-health">
               <div style={st.cardHeader}>
                 <span style={st.cardTitle}>Pipeline Health</span>
                 {lastRun && (
@@ -211,7 +211,7 @@ export default function OverviewPanel({ onNavigate, onSelectTable, onOpenFile, o
                     <div key={run.run_id} style={st.runItem}>
                       <span style={{
                         ...st.statusDot,
-                        background: run.status === "success" ? "var(--dp-green)" : "var(--dp-red)",
+                        background: run.status === "success" ? "var(--havn-green)" : "var(--havn-red)",
                       }} />
                       <span style={st.runType}>{run.run_type}</span>
                       <span
@@ -309,26 +309,26 @@ export default function OverviewPanel({ onNavigate, onSelectTable, onOpenFile, o
 
 const st = {
   container: { display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" },
-  center: { display: "flex", alignItems: "center", justifyContent: "center", height: "100%", color: "var(--dp-text-secondary)", fontSize: "13px" },
+  center: { display: "flex", alignItems: "center", justifyContent: "center", height: "100%", color: "var(--havn-text-secondary)", fontSize: "13px" },
   scrollArea: { flex: 1, overflow: "auto", padding: "20px 24px" },
 
   // Hero
   hero: {
-    background: "linear-gradient(135deg, var(--dp-bg-secondary), var(--dp-bg-tertiary))",
-    border: "1px solid var(--dp-border)",
-    borderRadius: "var(--dp-radius-lg)",
+    background: "linear-gradient(135deg, var(--havn-bg-secondary), var(--havn-bg-tertiary))",
+    border: "1px solid var(--havn-border)",
+    borderRadius: "var(--havn-radius-lg)",
     padding: "32px",
     textAlign: "center",
     marginBottom: "20px",
   },
-  heroTitle: { fontSize: "20px", fontWeight: 700, color: "var(--dp-text)", marginBottom: "8px" },
-  heroDesc: { fontSize: "14px", color: "var(--dp-text-secondary)", lineHeight: 1.6, maxWidth: "480px", margin: "0 auto 20px" },
+  heroTitle: { fontSize: "20px", fontWeight: 700, color: "var(--havn-text)", marginBottom: "8px" },
+  heroDesc: { fontSize: "14px", color: "var(--havn-text-secondary)", lineHeight: 1.6, maxWidth: "480px", margin: "0 auto 20px" },
   heroBtns: { display: "flex", flexDirection: "column", alignItems: "center", gap: "10px" },
   heroCta: {
     padding: "10px 28px",
-    background: "var(--dp-green)",
-    border: "1px solid var(--dp-green-border)",
-    borderRadius: "var(--dp-radius-lg)",
+    background: "var(--havn-green)",
+    border: "1px solid var(--havn-green-border)",
+    borderRadius: "var(--havn-radius-lg)",
     color: "#fff",
     cursor: "pointer",
     fontSize: "14px",
@@ -337,9 +337,9 @@ const st = {
   heroSecondary: {
     padding: "6px 16px",
     background: "none",
-    border: "1px solid var(--dp-border)",
-    borderRadius: "var(--dp-radius-lg)",
-    color: "var(--dp-text-secondary)",
+    border: "1px solid var(--havn-border)",
+    borderRadius: "var(--havn-radius-lg)",
+    color: "var(--havn-text-secondary)",
     cursor: "pointer",
     fontSize: "12px",
     fontWeight: 500,
@@ -353,20 +353,20 @@ const st = {
     marginBottom: "20px",
   },
   statCard: {
-    background: "var(--dp-bg-secondary)",
-    border: "1px solid var(--dp-border)",
-    borderRadius: "var(--dp-radius-lg)",
+    background: "var(--havn-bg-secondary)",
+    border: "1px solid var(--havn-border)",
+    borderRadius: "var(--havn-radius-lg)",
     padding: "16px",
     textAlign: "center",
   },
-  statValue: { fontSize: "24px", fontWeight: 700, color: "var(--dp-text)", fontFamily: "var(--dp-font-mono)" },
-  statLabel: { fontSize: "11px", color: "var(--dp-text-secondary)", marginTop: "4px", textTransform: "uppercase", letterSpacing: "0.5px", fontWeight: 500 },
+  statValue: { fontSize: "24px", fontWeight: 700, color: "var(--havn-text)", fontFamily: "var(--havn-font-mono)" },
+  statLabel: { fontSize: "11px", color: "var(--havn-text-secondary)", marginTop: "4px", textTransform: "uppercase", letterSpacing: "0.5px", fontWeight: 500 },
 
   // Failed runs
   failedCard: {
-    background: "var(--dp-bg-secondary)",
-    border: "1px solid var(--dp-red, #c53030)",
-    borderRadius: "var(--dp-radius-lg)",
+    background: "var(--havn-bg-secondary)",
+    border: "1px solid var(--havn-red, #c53030)",
+    borderRadius: "var(--havn-radius-lg)",
     marginBottom: "20px",
     overflow: "hidden",
   },
@@ -375,39 +375,39 @@ const st = {
     alignItems: "center",
     justifyContent: "space-between",
     padding: "8px 16px",
-    borderBottom: "1px solid var(--dp-border)",
+    borderBottom: "1px solid var(--havn-border)",
   },
-  failedTitle: { fontSize: "12px", fontWeight: 600, color: "var(--dp-red, #c53030)" },
-  failedClose: { background: "none", border: "none", color: "var(--dp-text-dim)", cursor: "pointer", fontSize: "16px", lineHeight: 1, padding: "0 4px" },
+  failedTitle: { fontSize: "12px", fontWeight: 600, color: "var(--havn-red, #c53030)" },
+  failedClose: { background: "none", border: "none", color: "var(--havn-text-dim)", cursor: "pointer", fontSize: "16px", lineHeight: 1, padding: "0 4px" },
   failedItem: {
     display: "flex",
     alignItems: "center",
     gap: "8px",
     padding: "8px 16px",
     fontSize: "12px",
-    borderBottom: "1px solid var(--dp-border)",
+    borderBottom: "1px solid var(--havn-border)",
     flexWrap: "wrap",
   },
-  failedDot: { width: "6px", height: "6px", borderRadius: "50%", background: "var(--dp-red, #c53030)", flexShrink: 0 },
+  failedDot: { width: "6px", height: "6px", borderRadius: "50%", background: "var(--havn-red, #c53030)", flexShrink: 0 },
   failedType: {
     fontSize: "10px",
     fontWeight: 600,
-    color: "var(--dp-text-secondary)",
-    background: "var(--dp-bg-tertiary)",
+    color: "var(--havn-text-secondary)",
+    background: "var(--havn-bg-tertiary)",
     padding: "1px 6px",
-    borderRadius: "var(--dp-radius)",
+    borderRadius: "var(--havn-radius)",
     textTransform: "uppercase",
     flexShrink: 0,
   },
   failedTarget: {
-    fontFamily: "var(--dp-font-mono)",
-    color: "var(--dp-accent)",
+    fontFamily: "var(--havn-font-mono)",
+    color: "var(--havn-accent)",
     cursor: "pointer",
     fontWeight: 500,
   },
-  failedTime: { color: "var(--dp-text-dim)", fontSize: "11px", flexShrink: 0 },
+  failedTime: { color: "var(--havn-text-dim)", fontSize: "11px", flexShrink: 0 },
   failedError: {
-    color: "var(--dp-red, #c53030)",
+    color: "var(--havn-red, #c53030)",
     fontSize: "11px",
     width: "100%",
     paddingLeft: "14px",
@@ -422,9 +422,9 @@ const st = {
 
   // Cards
   card: {
-    background: "var(--dp-bg-secondary)",
-    border: "1px solid var(--dp-border)",
-    borderRadius: "var(--dp-radius-lg)",
+    background: "var(--havn-bg-secondary)",
+    border: "1px solid var(--havn-border)",
+    borderRadius: "var(--havn-radius-lg)",
     overflow: "hidden",
   },
   cardHeader: {
@@ -432,18 +432,18 @@ const st = {
     alignItems: "center",
     justifyContent: "space-between",
     padding: "12px 16px",
-    borderBottom: "1px solid var(--dp-border)",
+    borderBottom: "1px solid var(--havn-border)",
   },
-  cardTitle: { fontSize: "13px", fontWeight: 600, color: "var(--dp-text)" },
-  cardSubtitle: { fontSize: "11px", color: "var(--dp-text-dim)" },
+  cardTitle: { fontSize: "13px", fontWeight: 600, color: "var(--havn-text)" },
+  cardSubtitle: { fontSize: "11px", color: "var(--havn-text-dim)" },
   cardLink: {
     display: "block",
     width: "100%",
     padding: "8px 16px",
     background: "none",
     border: "none",
-    borderTop: "1px solid var(--dp-border)",
-    color: "var(--dp-accent)",
+    borderTop: "1px solid var(--havn-border)",
+    color: "var(--havn-accent)",
     cursor: "pointer",
     fontSize: "12px",
     fontWeight: 500,
@@ -452,7 +452,7 @@ const st = {
 
   emptyState: {
     padding: "20px 16px",
-    color: "var(--dp-text-dim)",
+    color: "var(--havn-text-dim)",
     fontSize: "13px",
     textAlign: "center",
     lineHeight: 1.5,
@@ -466,22 +466,22 @@ const st = {
     gap: "8px",
     padding: "6px 16px",
     fontSize: "12px",
-    borderBottom: "1px solid var(--dp-border)",
+    borderBottom: "1px solid var(--havn-border)",
   },
   statusDot: { width: "6px", height: "6px", borderRadius: "50%", flexShrink: 0 },
   runType: {
     fontSize: "10px",
     fontWeight: 600,
-    color: "var(--dp-text-secondary)",
-    background: "var(--dp-bg-tertiary)",
+    color: "var(--havn-text-secondary)",
+    background: "var(--havn-bg-tertiary)",
     padding: "1px 6px",
-    borderRadius: "var(--dp-radius)",
+    borderRadius: "var(--havn-radius)",
     textTransform: "uppercase",
     flexShrink: 0,
   },
   runTarget: {
-    fontFamily: "var(--dp-font-mono)",
-    color: "var(--dp-accent)",
+    fontFamily: "var(--havn-font-mono)",
+    color: "var(--havn-accent)",
     flex: 1,
     overflow: "hidden",
     textOverflow: "ellipsis",
@@ -490,12 +490,12 @@ const st = {
   runMeta: {
     display: "flex",
     gap: "8px",
-    color: "var(--dp-text-dim)",
+    color: "var(--havn-text-dim)",
     fontSize: "11px",
-    fontFamily: "var(--dp-font-mono)",
+    fontFamily: "var(--havn-font-mono)",
     flexShrink: 0,
   },
-  runTime: { color: "var(--dp-text-dim)", fontSize: "11px", flexShrink: 0 },
+  runTime: { color: "var(--havn-text-dim)", fontSize: "11px", flexShrink: 0 },
 
   // Schemas
   schemaList: { padding: "4px 0" },
@@ -505,32 +505,32 @@ const st = {
     gap: "10px",
     padding: "8px 16px",
     fontSize: "13px",
-    borderBottom: "1px solid var(--dp-border)",
+    borderBottom: "1px solid var(--havn-border)",
   },
   schemaName: {
     fontWeight: 600,
-    fontFamily: "var(--dp-font-mono)",
-    color: "var(--dp-accent)",
+    fontFamily: "var(--havn-font-mono)",
+    color: "var(--havn-accent)",
     minWidth: "70px",
   },
-  schemaStat: { color: "var(--dp-text-secondary)", fontSize: "12px" },
+  schemaStat: { color: "var(--havn-text-secondary)", fontSize: "12px" },
   schemaRows: {
     marginLeft: "auto",
-    fontFamily: "var(--dp-font-mono)",
-    color: "var(--dp-text-dim)",
+    fontFamily: "var(--havn-font-mono)",
+    color: "var(--havn-text-dim)",
     fontSize: "12px",
   },
 
   // Quick actions
-  quickActions: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1px", background: "var(--dp-border)" },
+  quickActions: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1px", background: "var(--havn-border)" },
   quickAction: {
     display: "flex",
     alignItems: "center",
     gap: "8px",
     padding: "14px 16px",
-    background: "var(--dp-bg-secondary)",
+    background: "var(--havn-bg-secondary)",
     border: "none",
-    color: "var(--dp-text)",
+    color: "var(--havn-text)",
     cursor: "pointer",
     fontSize: "13px",
     fontWeight: 500,
@@ -542,12 +542,12 @@ const st = {
     display: "inline-flex",
     alignItems: "center",
     justifyContent: "center",
-    background: "var(--dp-bg-tertiary)",
-    borderRadius: "var(--dp-radius)",
-    fontFamily: "var(--dp-font-mono)",
+    background: "var(--havn-bg-tertiary)",
+    borderRadius: "var(--havn-radius)",
+    fontFamily: "var(--havn-font-mono)",
     fontSize: "14px",
     fontWeight: 700,
-    color: "var(--dp-accent)",
+    color: "var(--havn-accent)",
     flexShrink: 0,
   },
 };

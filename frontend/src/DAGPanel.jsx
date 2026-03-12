@@ -285,7 +285,7 @@ function DetailPanel({ modelName, runId, runs, snapshotsByRun, onClose, onRestor
                     <svg width={w} height={h} style={{ display: "block" }}>
                       <polyline
                         fill="none"
-                        stroke="var(--dp-accent, #58a6ff)"
+                        stroke="var(--havn-accent, #58a6ff)"
                         strokeWidth="1.5"
                         points={counts.map((c, i) =>
                           `${(i / (counts.length - 1)) * w},${h - (c / max) * (h - 4) - 2}`
@@ -342,23 +342,23 @@ function DetailPanel({ modelName, runId, runs, snapshotsByRun, onClose, onRestor
 
 // Detail panel styles
 const ds = {
-  panel: { width: 320, borderLeft: "1px solid var(--dp-border)", display: "flex", flexDirection: "column", overflow: "hidden", background: "var(--dp-bg-secondary)" },
-  panelHeader: { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 12px", borderBottom: "1px solid var(--dp-border)" },
+  panel: { width: 320, borderLeft: "1px solid var(--havn-border)", display: "flex", flexDirection: "column", overflow: "hidden", background: "var(--havn-bg-secondary)" },
+  panelHeader: { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 12px", borderBottom: "1px solid var(--havn-border)" },
   panelTitle: { fontWeight: 600, fontSize: 13 },
-  closeBtn: { background: "none", border: "none", color: "var(--dp-text-secondary)", cursor: "pointer", fontSize: 14, padding: "2px 6px" },
+  closeBtn: { background: "none", border: "none", color: "var(--havn-text-secondary)", cursor: "pointer", fontSize: 14, padding: "2px 6px" },
   panelBody: { flex: 1, overflow: "auto", padding: "10px 12px", fontSize: 12 },
-  statRow: { display: "flex", justifyContent: "space-between", padding: "4px 0", borderBottom: "1px solid var(--dp-border-light)" },
-  statLabel: { color: "var(--dp-text-secondary)", fontSize: 11, fontWeight: 500 },
+  statRow: { display: "flex", justifyContent: "space-between", padding: "4px 0", borderBottom: "1px solid var(--havn-border-light)" },
+  statLabel: { color: "var(--havn-text-secondary)", fontSize: 11, fontWeight: 500 },
   statValue: { fontWeight: 600, fontSize: 12 },
   histSection: { marginTop: 12 },
   sparkContainer: { marginTop: 4 },
   sampleSection: { marginTop: 12 },
-  sampleTable: { marginTop: 4, overflow: "auto", maxHeight: 200, border: "1px solid var(--dp-border-light)", borderRadius: 4 },
+  sampleTable: { marginTop: 4, overflow: "auto", maxHeight: 200, border: "1px solid var(--havn-border-light)", borderRadius: 4 },
   table: { width: "100%", borderCollapse: "collapse", fontSize: 10 },
-  th: { textAlign: "left", padding: "3px 6px", background: "var(--dp-bg-tertiary)", borderBottom: "1px solid var(--dp-border-light)", position: "sticky", top: 0, fontWeight: 600 },
-  td: { padding: "2px 6px", borderBottom: "1px solid var(--dp-border-light)", maxWidth: 120, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
-  restoreBtn: { marginTop: 12, padding: "6px 14px", background: "var(--dp-accent, #58a6ff)", color: "#fff", border: "none", borderRadius: 4, cursor: "pointer", fontSize: 12, fontWeight: 600, width: "100%" },
-  loadingText: { color: "var(--dp-text-dim)", fontStyle: "italic", padding: "8px 0" },
+  th: { textAlign: "left", padding: "3px 6px", background: "var(--havn-bg-tertiary)", borderBottom: "1px solid var(--havn-border-light)", position: "sticky", top: 0, fontWeight: 600 },
+  td: { padding: "2px 6px", borderBottom: "1px solid var(--havn-border-light)", maxWidth: 120, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
+  restoreBtn: { marginTop: 12, padding: "6px 14px", background: "var(--havn-accent, #58a6ff)", color: "#fff", border: "none", borderRadius: 4, cursor: "pointer", fontSize: 12, fontWeight: 600, width: "100%" },
+  loadingText: { color: "var(--havn-text-dim)", fontStyle: "italic", padding: "8px 0" },
 };
 
 // ---------------------------------------------------------------------------
@@ -453,7 +453,7 @@ export default function DAGPanel({ onOpenFile }) {
       if (!from || !to) continue;
 
       const isHighlighted = hovered === e.source || hovered === e.target;
-      ctx.strokeStyle = isHighlighted ? getCV("--dp-accent") : getCV("--dp-border-light");
+      ctx.strokeStyle = isHighlighted ? getCV("--havn-accent") : getCV("--havn-border-light");
       ctx.lineWidth = isHighlighted ? 2 : 1.5;
       ctx.globalAlpha = isHighlighted ? 1 : (hovered ? 0.3 : 0.8);
 
@@ -502,14 +502,14 @@ export default function DAGPanel({ onOpenFile }) {
     ctx.globalAlpha = 1;
 
     // Draw nodes
-    const fontFamily = getCV("--dp-font") || "-apple-system, sans-serif";
-    const monoFamily = getCV("--dp-font-mono") || "monospace";
+    const fontFamily = getCV("--havn-font") || "-apple-system, sans-serif";
+    const monoFamily = getCV("--havn-font-mono") || "monospace";
 
     for (const n of nodes) {
       const pos = positions[n.id];
       if (!pos) continue;
 
-      const color = SCHEMA_COLORS[n.schema] || getCV("--dp-accent");
+      const color = SCHEMA_COLORS[n.schema] || getCV("--havn-accent");
       const isHovered = hovered === n.id;
       const isSelected = selectedNode === n.id;
       const isTable = n.type === "table";
@@ -526,13 +526,13 @@ export default function DAGPanel({ onOpenFile }) {
       }
 
       // Node background
-      ctx.fillStyle = isHovered || isSelected ? getCV("--dp-bg") : getCV("--dp-bg-secondary");
-      ctx.strokeStyle = isSelected ? getCV("--dp-accent") : color;
+      ctx.fillStyle = isHovered || isSelected ? getCV("--havn-bg") : getCV("--havn-bg-secondary");
+      ctx.strokeStyle = isSelected ? getCV("--havn-accent") : color;
       ctx.lineWidth = isHovered || isSelected ? 2.5 : (isTable ? 2 : 1.5);
 
       const r = 6;
       if (isHovered || isSelected) {
-        ctx.shadowColor = isSelected ? getCV("--dp-accent") : color;
+        ctx.shadowColor = isSelected ? getCV("--havn-accent") : color;
         ctx.shadowBlur = 12;
         ctx.shadowOffsetX = 0;
         ctx.shadowOffsetY = 2;
@@ -545,7 +545,7 @@ export default function DAGPanel({ onOpenFile }) {
       ctx.shadowBlur = 0;
 
       // Label
-      ctx.fillStyle = isHovered ? getCV("--dp-accent") : getCV("--dp-text");
+      ctx.fillStyle = isHovered ? getCV("--havn-accent") : getCV("--havn-text");
       ctx.font = `500 11px ${fontFamily}`;
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
@@ -554,7 +554,7 @@ export default function DAGPanel({ onOpenFile }) {
       // Rewind mode: show row count + delta
       if (rewindMode && snap) {
         const rowStr = snap.row_count?.toLocaleString() ?? "?";
-        ctx.fillStyle = "var(--dp-text-secondary, #8b949e)";
+        ctx.fillStyle = "var(--havn-text-secondary, #8b949e)";
         ctx.font = `500 10px ${monoFamily}`;
         ctx.textAlign = "center";
         ctx.fillText(`${rowStr} rows`, pos.x + NODE_W / 2, pos.y + NODE_H - 14, NODE_W - 16);
@@ -658,7 +658,7 @@ export default function DAGPanel({ onOpenFile }) {
   }
 
   if (error) {
-    return <div style={{ padding: "24px", color: "var(--dp-red)", textAlign: "center" }}>{error}</div>;
+    return <div style={{ padding: "24px", color: "var(--havn-red)", textAlign: "center" }}>{error}</div>;
   }
 
   if (!dag) {
@@ -712,9 +712,9 @@ export default function DAGPanel({ onOpenFile }) {
               {['basic', 'full'].map(mode => (
                 <button key={mode} onClick={() => setDagMode(mode)} style={{
                   padding: '3px 10px', borderRadius: 4, fontSize: 11, cursor: 'pointer',
-                  background: dagMode === mode ? 'var(--dp-accent, #58a6ff)' : 'transparent',
-                  color: dagMode === mode ? '#fff' : 'var(--dp-text-secondary)',
-                  border: dagMode === mode ? 'none' : '1px solid var(--dp-border)'
+                  background: dagMode === mode ? 'var(--havn-accent, #58a6ff)' : 'transparent',
+                  color: dagMode === mode ? '#fff' : 'var(--havn-text-secondary)',
+                  border: dagMode === mode ? 'none' : '1px solid var(--havn-border)'
                 }}>{mode === 'basic' ? 'Basic' : 'Full'}</button>
               ))}
             </div>
@@ -723,8 +723,8 @@ export default function DAGPanel({ onOpenFile }) {
             onClick={() => { setRewindMode(!rewindMode); setSelectedNode(null); }}
             style={{
               ...styles.rewindBtn,
-              background: rewindMode ? "var(--dp-accent, #58a6ff)" : "transparent",
-              color: rewindMode ? "#fff" : "var(--dp-text-secondary)",
+              background: rewindMode ? "var(--havn-accent, #58a6ff)" : "transparent",
+              color: rewindMode ? "#fff" : "var(--havn-text-secondary)",
             }}
           >
             Rewind
@@ -745,7 +745,7 @@ export default function DAGPanel({ onOpenFile }) {
 
         return (
           <div style={styles.sliderContainer}>
-            <span style={{ fontSize: 10, color: "var(--dp-text-dim)", whiteSpace: "nowrap", flexShrink: 0 }}>
+            <span style={{ fontSize: 10, color: "var(--havn-text-dim)", whiteSpace: "nowrap", flexShrink: 0 }}>
               {fmtDate(sorted[0].started_at)}<br />{fmtTime(sorted[0].started_at)}
             </span>
             <div
@@ -766,7 +766,7 @@ export default function DAGPanel({ onOpenFile }) {
               }}
             >
               {/* Track line */}
-              <div style={{ position: "absolute", top: 14, left: 0, right: 0, height: 2, background: "var(--dp-border)", borderRadius: 1 }} />
+              <div style={{ position: "absolute", top: 14, left: 0, right: 0, height: 2, background: "var(--havn-border)", borderRadius: 1 }} />
               {/* Run dots */}
               {sorted.map((r, i) => {
                 const t = new Date(r.started_at).getTime();
@@ -784,8 +784,8 @@ export default function DAGPanel({ onOpenFile }) {
                       width: isSelected ? 14 : 8,
                       height: isSelected ? 14 : 8,
                       borderRadius: "50%",
-                      background: isSelected ? "var(--dp-accent, #58a6ff)" : statusColor,
-                      border: isSelected ? "2px solid #fff" : "1px solid var(--dp-bg)",
+                      background: isSelected ? "var(--havn-accent, #58a6ff)" : statusColor,
+                      border: isSelected ? "2px solid #fff" : "1px solid var(--havn-bg)",
                       transform: "translateX(-50%)",
                       transition: "all 0.15s ease",
                       zIndex: isSelected ? 2 : 1,
@@ -795,7 +795,7 @@ export default function DAGPanel({ onOpenFile }) {
                 );
               })}
             </div>
-            <span style={{ fontSize: 10, color: "var(--dp-text-dim)", whiteSpace: "nowrap", flexShrink: 0, textAlign: "right" }}>
+            <span style={{ fontSize: 10, color: "var(--havn-text-dim)", whiteSpace: "nowrap", flexShrink: 0, textAlign: "right" }}>
               {fmtDate(sorted[sorted.length - 1].started_at)}<br />{fmtTime(sorted[sorted.length - 1].started_at)}
             </span>
             {/* Selected run info */}
@@ -808,7 +808,7 @@ export default function DAGPanel({ onOpenFile }) {
                 }}>
                   {currentRun.status}
                 </span>
-                <span style={{ color: "var(--dp-text-dim)", marginLeft: 6, fontSize: 10 }}>
+                <span style={{ color: "var(--havn-text-dim)", marginLeft: 6, fontSize: 10 }}>
                   {currentRun.trigger}
                 </span>
               </div>
@@ -819,14 +819,14 @@ export default function DAGPanel({ onOpenFile }) {
 
       {rewindMode && runs.length === 0 && (
         <div style={styles.sliderContainer}>
-          <span style={{ color: "var(--dp-text-dim)", fontSize: 12 }}>
+          <span style={{ color: "var(--havn-text-dim)", fontSize: 12 }}>
             No pipeline runs recorded. Run a transform to start capturing snapshots.
           </span>
         </div>
       )}
 
       <div style={styles.mainArea}>
-        <div style={{ flex: 1, overflow: "auto", background: "var(--dp-bg-tertiary)" }} data-dp-hint="dag-canvas">
+        <div style={{ flex: 1, overflow: "auto", background: "var(--havn-bg-tertiary)" }} data-havn-hint="dag-canvas">
           <canvas
             ref={canvasRef}
             onMouseMove={handleMouseMove}
@@ -854,16 +854,16 @@ export default function DAGPanel({ onOpenFile }) {
 
 const styles = {
   container: { display: "flex", flexDirection: "column", flex: 1, height: "100%", minHeight: 0, overflow: "hidden" },
-  header: { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 12px", borderBottom: "1px solid var(--dp-border)", fontSize: "13px", flexShrink: 0 },
+  header: { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 12px", borderBottom: "1px solid var(--havn-border)", fontSize: "13px", flexShrink: 0 },
   headerTitle: { fontWeight: 600 },
   headerRight: { display: "flex", alignItems: "center", gap: 12 },
-  legend: { display: "flex", gap: "10px", fontSize: "11px", color: "var(--dp-text-secondary)", alignItems: "center", flexWrap: "wrap" },
+  legend: { display: "flex", gap: "10px", fontSize: "11px", color: "var(--havn-text-secondary)", alignItems: "center", flexWrap: "wrap" },
   legendItem: { display: "flex", alignItems: "center", gap: "4px" },
   legendDot: { width: "8px", height: "8px", borderRadius: "50%", display: "inline-block" },
   mainArea: { flex: 1, display: "flex", overflow: "hidden", minHeight: 0 },
   canvas: { display: "block" },
-  loading: { padding: "24px", color: "var(--dp-text-secondary)", textAlign: "center" },
-  empty: { padding: "24px", color: "var(--dp-text-dim)", textAlign: "center" },
-  rewindBtn: { border: "1px solid var(--dp-border)", borderRadius: 4, padding: "3px 10px", fontSize: 11, fontWeight: 600, cursor: "pointer" },
-  sliderContainer: { display: "flex", alignItems: "center", gap: 10, padding: "8px 16px", borderBottom: "1px solid var(--dp-border)", background: "var(--dp-bg-secondary)", fontSize: 12, flexShrink: 0 },
+  loading: { padding: "24px", color: "var(--havn-text-secondary)", textAlign: "center" },
+  empty: { padding: "24px", color: "var(--havn-text-dim)", textAlign: "center" },
+  rewindBtn: { border: "1px solid var(--havn-border)", borderRadius: 4, padding: "3px 10px", fontSize: 11, fontWeight: 600, cursor: "pointer" },
+  sliderContainer: { display: "flex", alignItems: "center", gap: 10, padding: "8px 16px", borderBottom: "1px solid var(--havn-border)", background: "var(--havn-bg-secondary)", fontSize: 12, flexShrink: 0 },
 };

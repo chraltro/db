@@ -295,8 +295,8 @@ export default function Editor({ content, language, onChange, activeFile, onMoun
     if (onMount) onMount(editor);
 
     editor.addAction({
-      id: "dp-format-sql",
-      label: "Format SQL (dp lint --fix)",
+      id: "havn-format-sql",
+      label: "Format SQL (havn lint --fix)",
       keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyF],
       precondition: null,
       keybindingContext: null,
@@ -304,7 +304,7 @@ export default function Editor({ content, language, onChange, activeFile, onMoun
     });
 
     editor.addAction({
-      id: "dp-preview-sql",
+      id: "havn-preview-sql",
       label: "Preview SQL results",
       keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter],
       precondition: null,
@@ -325,7 +325,7 @@ export default function Editor({ content, language, onChange, activeFile, onMoun
     return (
       <div style={styles.empty}>
         <div style={styles.emptyIcon}>
-          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--dp-text-dim)" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round">
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--havn-text-dim)" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round">
             <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z" />
             <polyline points="14,2 14,8 20,8" />
             <line x1="16" y1="13" x2="8" y2="13" />
@@ -365,7 +365,7 @@ export default function Editor({ content, language, onChange, activeFile, onMoun
         smoothScrolling: true,
         cursorBlinking: "smooth",
         cursorSmoothCaretAnimation: "on",
-        fontFamily: "var(--dp-font-mono)",
+        fontFamily: "var(--havn-font-mono)",
         quickSuggestions: true,
         suggestOnTriggerCharacters: true,
       }}
@@ -374,9 +374,9 @@ export default function Editor({ content, language, onChange, activeFile, onMoun
 }
 
 const styles = {
-  empty: { display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100%", color: "var(--dp-text-secondary)", gap: "8px" },
+  empty: { display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100%", color: "var(--havn-text-secondary)", gap: "8px" },
   emptyIcon: { marginBottom: "4px", opacity: 0.6 },
   emptyText: { fontSize: "16px", marginBottom: "4px", fontWeight: 500 },
-  emptyHint: { fontSize: "13px", textAlign: "center", lineHeight: "1.7", color: "var(--dp-text-dim)" },
-  code: { background: "var(--dp-btn-bg)", padding: "1px 5px", borderRadius: "3px", fontSize: "12px", fontFamily: "var(--dp-font-mono)" },
+  emptyHint: { fontSize: "13px", textAlign: "center", lineHeight: "1.7", color: "var(--havn-text-dim)" },
+  code: { background: "var(--havn-btn-bg)", padding: "1px 5px", borderRadius: "3px", fontSize: "12px", fontFamily: "var(--havn-font-mono)" },
 };

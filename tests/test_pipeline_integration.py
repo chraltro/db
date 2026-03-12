@@ -14,10 +14,10 @@ from pathlib import Path
 import duckdb
 import pytest
 
-from dp.engine.database import connect, ensure_meta_table
-from dp.engine.runner import run_script, run_scripts_in_dir
-from dp.engine.seeds import run_seeds
-from dp.engine.transform import run_transform
+from havn.engine.database import connect, ensure_meta_table
+from havn.engine.runner import run_script, run_scripts_in_dir
+from havn.engine.seeds import run_seeds
+from havn.engine.transform import run_transform
 
 
 # ---------------------------------------------------------------------------
@@ -536,7 +536,7 @@ class TestStreamCLI:
     def test_stream_full_refresh(self, project):
         """The full-refresh stream should complete without errors."""
         from typer.testing import CliRunner
-        from dp.cli import app
+        from havn.cli import app
 
         import os
         original_cwd = os.getcwd()
@@ -552,7 +552,7 @@ class TestStreamCLI:
     def test_stream_nonexistent(self, project):
         """Running a nonexistent stream should exit with error."""
         from typer.testing import CliRunner
-        from dp.cli import app
+        from havn.cli import app
 
         import os
         original_cwd = os.getcwd()
@@ -568,7 +568,7 @@ class TestStreamCLI:
     def test_stream_with_force(self, project):
         """--force flag should rebuild all models."""
         from typer.testing import CliRunner
-        from dp.cli import app
+        from havn.cli import app
 
         import os
         original_cwd = os.getcwd()

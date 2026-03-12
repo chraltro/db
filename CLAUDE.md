@@ -1,8 +1,8 @@
-# CLAUDE.md — Agent Instructions for dp
+# CLAUDE.md — Agent Instructions for havn
 
-## What is dp?
+## What is havn?
 
-dp is a self-hosted data platform — a lightweight alternative to Databricks/Snowflake. It uses **DuckDB** for OLAP analytics, **plain SQL** for transforms, and **Python** for ingest/export scripts. All data lives in a single `warehouse.duckdb` file. No data leaves the machine.
+havn is a self-hosted data platform — a Nordic alternative to Databricks/Snowflake. It uses **DuckDB** for OLAP analytics, **plain SQL** for transforms, and **Python** for ingest/export scripts. All data lives in a single `warehouse.duckdb` file. No data leaves the machine. Data in safe waters.
 
 ## Quick Reference
 
@@ -18,37 +18,37 @@ cd frontend && npm install && npm run build
 pytest tests/
 
 # Lint SQL
-dp lint                       # check
-dp lint --fix                 # auto-fix
+havn lint                       # check
+havn lint --fix                 # auto-fix
 
 # Common commands
-dp init my-project            # scaffold new project
-dp transform                  # build all SQL models
-dp transform --force          # force rebuild (ignore cache)
-dp query "SELECT 1"           # ad-hoc SQL
-dp tables                     # list warehouse objects
-dp serve                      # start web UI on :3000
-dp serve --auth               # with authentication
-dp run ingest/example.py      # run a script
-dp stream full-refresh        # run full pipeline
-dp history                    # show run log
+havn init my-project            # scaffold new project
+havn transform                  # build all SQL models
+havn transform --force          # force rebuild (ignore cache)
+havn query "SELECT 1"           # ad-hoc SQL
+havn tables                     # list warehouse objects
+havn serve                      # start web UI on :3000
+havn serve --auth               # with authentication
+havn run ingest/example.py      # run a script
+havn stream full-refresh        # run full pipeline
+havn history                    # show run log
 ```
 
 ## Project Structure
 
 ```
-src/dp/                       # Python package (the platform itself)
-  cli.py                      # Typer CLI — all commands defined here
-  config.py                   # project.yml parsing, scaffold templates
+src/havn/                       # Python package (the platform itself)
+  cli/                          # Typer CLI — commands split into modules
+  config.py                     # project.yml parsing, scaffold templates
   engine/
     database.py               # DuckDB connection, metadata tables
-    transform.py              # SQL DAG engine with change detection
+    transform/                # SQL DAG engine with change detection
     runner.py                 # Python script executor (ingest/export)
     auth.py                   # Token auth, RBAC (admin/editor/viewer)
     secrets.py                # .env secrets management
     scheduler.py              # Cron scheduler (Huey) + file watcher
     importer.py               # Data import wizard (CSV, Parquet, DB)
-    notebook.py               # .dpnb notebook execution
+    notebook/                 # .dpnb notebook execution
     docs.py                   # Markdown doc generator
   lint/
     linter.py                 # SQLFluff integration
@@ -58,7 +58,7 @@ src/dp/                       # Python package (the platform itself)
 frontend/                     # React + Vite SPA
   src/
     App.jsx                   # Main app, tab routing
-    api.js                    # API client (fetch wrapper)
+    api.ts                    # API client (fetch wrapper)
     Editor.jsx                # Monaco code editor
     FileTree.jsx              # Project file browser
     QueryPanel.jsx            # Ad-hoc SQL runner
@@ -76,13 +76,13 @@ tests/                        # pytest test suite
   test_scheduler.py           # Scheduler
   test_docs.py                # Doc generation
   test_importer.py            # Data import
-  test_notebook.py            # Notebook execution
+  test_notebook_runner.py     # Notebook execution
 ```
 
 ## Architecture
 
 ```
-User project layout (created by `dp init`):
+User project layout (created by `havn init`):
   ingest/         Python scripts (or .dpnb notebooks)
   transform/
     bronze/       Light cleanup SQL
@@ -182,9 +182,9 @@ Tests use temporary DuckDB databases (in-memory or tmp files). No external servi
 
 ### Making Backend Changes
 
-1. Source is in `src/dp/`
-2. CLI commands are in `cli.py` — each `@app.command()` function maps to a `dp <command>`
-3. Engine logic is in `engine/` — transform.py is the core SQL DAG engine
+1. Source is in `src/havn/`
+2. CLI commands are in `cli/` — each `@app.command()` function maps to a `havn <command>`
+3. Engine logic is in `engine/` — transform/ is the core SQL DAG engine
 4. API endpoints are in `server/app.py` — FastAPI with Pydantic models
 5. Run `pytest tests/` after changes
 
@@ -193,13 +193,13 @@ Tests use temporary DuckDB databases (in-memory or tmp files). No external servi
 1. Source is in `frontend/src/`
 2. React 19 + Vite, no TypeScript
 3. Monaco editor for code editing
-4. API client in `api.js` (thin fetch wrapper)
+4. API client in `api.ts` (thin fetch wrapper)
 5. Dev server: `cd frontend && npm run dev` (port 5173, proxies /api to 3000)
 6. Build: `cd frontend && npm run build`
 
 ### Adding a New CLI Command
 
-1. Add `@app.command()` function in `src/dp/cli.py`
+1. Add `@app.command()` function in `src/havn/cli/` (new file or existing module)
 2. Import engine modules lazily (inside the function body)
 3. Use `_resolve_project()` for project dir resolution
 4. Use `rich` Console for output formatting
@@ -217,7 +217,7 @@ Create a `.sql` file in the appropriate `transform/` subdirectory:
 SELECT * FROM silver.dim_customer WHERE active = true
 ```
 
-Run `dp transform` to build it.
+Run `havn transform` to build it.
 
 ## Code Style
 
@@ -242,7 +242,7 @@ Run `dp transform` to build it.
 2. Load data into `landing.table_name`
 3. Add SQL transforms in `transform/bronze/` → `silver/` → `gold/`
 4. Update `project.yml` streams if needed
-5. Test with `dp run ingest/source_name.py` then `dp transform`
+5. Test with `havn run ingest/source_name.py` then `havn transform`
 
 ### "Add a new API endpoint"
 1. Add Pydantic request/response models in `server/app.py`
@@ -253,12 +253,12 @@ Run `dp transform` to build it.
 
 ### "Fix a SQL model"
 1. Edit the `.sql` file in `transform/`
-2. Run `dp transform` — change detection will rebuild only changed models
-3. Use `dp transform --force` to rebuild everything
-4. Validate with `dp query "SELECT * FROM schema.table LIMIT 10"`
+2. Run `havn transform` — change detection will rebuild only changed models
+3. Use `havn transform --force` to rebuild everything
+4. Validate with `havn query "SELECT * FROM schema.table LIMIT 10"`
 
 ### "Debug a failed pipeline"
-1. Check `dp history` for recent failures
+1. Check `havn history` for recent failures
 2. Look at error messages in the run log
-3. Run individual steps: `dp run ingest/script.py`, then `dp transform`
-4. Use `dp query` to inspect data at each layer
+3. Run individual steps: `havn run ingest/script.py`, then `havn transform`
+4. Use `havn query` to inspect data at each layer

@@ -5,7 +5,7 @@ import json
 import duckdb
 import pytest
 
-from dp.engine.notebook import (
+from havn.engine.notebook import (
     execute_cell,
     execute_ingest_cell,
     execute_sql_cell,

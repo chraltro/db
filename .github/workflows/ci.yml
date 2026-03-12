@@ -43,7 +43,7 @@ jobs:
         run: |
           # Only lint if there's a project with SQL files
           if [ -d "transform" ]; then
-            dp lint
+            havn lint
           else
             echo "No transform directory found, skipping SQL lint"
           fi

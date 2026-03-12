@@ -1,6 +1,6 @@
 ---
 name: Bug Report
-about: Report a bug in dp
+about: Report a bug in havn
 title: ""
 labels: bug
 ---
@@ -15,12 +15,12 @@ What should have happened instead.
 
 ## Steps to reproduce
 
-1. Run `dp ...`
+1. Run `havn ...`
 2. ...
 
 ## Environment
 
 - OS:
 - Python version:
-- dp version: (`pip show dp-data`)
+- havn version: (`pip show havn`)
 - DuckDB version: (`python -c "import duckdb; print(duckdb.__version__)"`)

@@ -1,17 +1,17 @@
 # Security Model
 
-dp is a **single-machine data platform**. This document honestly describes what security exists, what's good, what's weak, and what the intended threat model is.
+havn is a **single-machine data platform**. This document honestly describes what security exists, what's good, what's weak, and what the intended threat model is.
 
 ## Threat Model
 
-dp is designed as a **local-first, single-user or small-team tool**. The primary deployment is:
+havn is designed as a **local-first, single-user or small-team tool**. The primary deployment is:
 
 - One machine (laptop, server, or VM)
 - One DuckDB file (`warehouse.duckdb`)
 - Optional web UI on localhost or LAN
 - No cloud deployment, no multi-tenant access
 
-**dp is NOT designed for:**
+**havn is NOT designed for:**
 
 - Internet-facing deployments without a reverse proxy
 - Multi-tenant SaaS scenarios
@@ -22,7 +22,7 @@ dp is designed as a **local-first, single-user or small-team tool**. The primary
 
 ### How it works
 
-Auth is **opt-in** via `dp serve --auth`. Without `--auth`, the web UI has no authentication — anyone who can reach the port can read/write everything.
+Auth is **opt-in** via `havn serve --auth`. Without `--auth`, the web UI has no authentication — anyone who can reach the port can read/write everything.
 
 When enabled:
 
@@ -44,11 +44,11 @@ When enabled:
 ### What's weak
 
 - **Tokens are stored in plain text** in DuckDB — anyone with file access to `warehouse.duckdb` can extract them
-- **No HTTPS** — dp serves plain HTTP. Tokens are transmitted in the clear. You must use a reverse proxy (nginx, Caddy) for TLS in production.
+- **No HTTPS** — havn serves plain HTTP. Tokens are transmitted in the clear. You must use a reverse proxy (nginx, Caddy) for TLS in production.
 - **No session invalidation on password change** — changing a user's password does not revoke existing tokens
 - **No CSRF protection** — the API uses bearer tokens, which mitigates CSRF for API calls, but the web UI loads from the same origin
 - **Single-process token store** — rate limit state is in-memory and resets on restart
-- **Rate limiting uses `request.client.host`** — behind a reverse proxy, all requests appear to come from the proxy's IP unless the proxy sets `X-Forwarded-For` and dp is configured to trust it (it currently isn't). This effectively makes the rate limit per-proxy, not per-user.
+- **Rate limiting uses `request.client.host`** — behind a reverse proxy, all requests appear to come from the proxy's IP unless the proxy sets `X-Forwarded-For` and havn is configured to trust it (it currently isn't). This effectively makes the rate limit per-proxy, not per-user.
 
 ### Roles and Permissions
 
@@ -72,13 +72,13 @@ Every API endpoint calls `_require_permission(request, "read"|"write"|"execute")
 
 Ingest and export scripts are **arbitrary Python** executed with `exec()`. There is **no sandboxing**. A script can:
 
-- Read/write any file the dp process can access
+- Read/write any file the havn process can access
 - Make network requests
 - Import any installed Python module
 - Execute system commands
 - Access environment variables (including secrets loaded from `.env`)
 
-This is by design — dp scripts need full Python capabilities to connect to databases, call APIs, and transform data. The security boundary is:
+This is by design — havn scripts need full Python capabilities to connect to databases, call APIs, and transform data. The security boundary is:
 
 **Only run scripts you trust.** Treat `ingest/` and `export/` like any other code in your project.
 
@@ -100,7 +100,7 @@ This is by design — dp scripts need full Python capabilities to connect to dat
 
 ### How secrets are stored
 
-Secrets live in `.env` at the project root — a plain text file with `KEY="value"` entries. dp's `init` command adds `.env` to `.gitignore`.
+Secrets live in `.env` at the project root — a plain text file with `KEY="value"` entries. havn's `init` command adds `.env` to `.gitignore`.
 
 ```
 # .env
@@ -145,7 +145,7 @@ This is enforced by `validate_identifier()` in:
 
 ### Where SQL is safely constructed
 
-- **Transform models**: SQL is read from `.sql` files verbatim — dp does not interpolate user input into model SQL
+- **Transform models**: SQL is read from `.sql` files verbatim — havn does not interpolate user input into model SQL
 - **Seeds**: CSV paths are escaped with `'` → `''` before use in `read_csv_auto()`
 - **Import wizard**: File paths are escaped, table names are validated
 - **Auth queries**: All user-facing queries use parameterized `?` placeholders
@@ -157,7 +157,7 @@ This is enforced by `validate_identifier()` in:
 
 ## Network Exposure
 
-### `dp serve` (web UI)
+### `havn serve` (web UI)
 
 - Default: **binds to 127.0.0.1:3000** (localhost only) — not accessible from other machines
 - Use `--host 0.0.0.0` to expose to the network (required for remote access)
@@ -168,8 +168,8 @@ This is enforced by `validate_identifier()` in:
 
 1. **Always use `--auth`** when serving to a network
 2. **Use a reverse proxy** (nginx, Caddy, Traefik) for HTTPS
-3. **Restrict network access** with firewall rules — dp should only be accessible to trusted users
-4. **Don't expose dp to the internet** — it's not hardened for hostile traffic
+3. **Restrict network access** with firewall rules — havn should only be accessible to trusted users
+4. **Don't expose havn to the internet** — it's not hardened for hostile traffic
 
 ### What the API exposes
 
@@ -212,18 +212,18 @@ The `/api/query` endpoint is the most powerful — it executes arbitrary SQL, in
 
 ### For personal/development use
 
-dp's default security is fine. Run `dp serve` on localhost, don't share the port, and you're good.
+havn's default security is fine. Run `havn serve` on localhost, don't share the port, and you're good.
 
 ### For team/LAN use
 
-1. Enable auth: `dp serve --auth`
-2. Create users with appropriate roles: `dp user create analyst --role viewer`
+1. Enable auth: `havn serve --auth`
+2. Create users with appropriate roles: `havn user create analyst --role viewer`
 3. Put a reverse proxy in front for HTTPS
 4. Set filesystem permissions on `warehouse.duckdb` and `.env`
 
 ### For anything more
 
-dp is not the right tool for internet-facing, multi-tenant, or compliance-sensitive deployments. Consider:
+havn is not the right tool for internet-facing, multi-tenant, or compliance-sensitive deployments. Consider:
 
 - **Rill Data** or **Evidence** for published dashboards
 - **dbt Cloud** or **Dagster Cloud** for managed pipelines
