@@ -346,6 +346,7 @@ function AppContent() {
   // Resizable panels
   const [sidebarWidth, onSidebarResize, onSidebarResizeStart] = useResizable("dp_sidebar_width", 240, 150, 500);
   const [outputHeight, onOutputResize, onOutputResizeStart] = useResizable("dp_output_height", 180, 80, 500);
+  const [agentWidth, onAgentResize, onAgentResizeStart] = useResizable("dp_agent_width", 340, 240, 600);
 
   // Editor navigation
   const editorRef = useRef(null);
@@ -886,12 +887,19 @@ function AppContent() {
 
         {/* Agent sidebar */}
         {agentSidebarOpen && (
-          <div style={styles.agentPanel}>
-            <AgentSidebar
-              isOpen={agentSidebarOpen}
-              onToggle={() => setAgentSidebarOpen(false)}
+          <>
+            <ResizeHandle
+              direction="horizontal"
+              onResize={(d) => onAgentResize(-d)}
+              onResizeStart={onAgentResizeStart}
             />
-          </div>
+            <div style={{ ...styles.agentPanel, width: agentWidth }}>
+              <AgentSidebar
+                isOpen={agentSidebarOpen}
+                onToggle={() => setAgentSidebarOpen(false)}
+              />
+            </div>
+          </>
         )}
       </div>
 
@@ -1032,7 +1040,7 @@ const styles = {
   sidebarSectionHeader: { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 12px 6px", fontSize: "10px", fontWeight: "600", color: "var(--havn-text-dim)", letterSpacing: "1px", textTransform: "uppercase", flexShrink: 0 },
   sidebarRefreshBtn: { background: "none", border: "none", color: "var(--havn-text-secondary)", cursor: "pointer", fontSize: "13px", padding: "0 2px", lineHeight: 1 },
   content: { flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" },
-  agentPanel: { width: "360px", flexShrink: 0, overflow: "hidden" },
+  agentPanel: { flexShrink: 0, overflow: "hidden" },
 
   // Sub-tab bar
   subTabBar: {
