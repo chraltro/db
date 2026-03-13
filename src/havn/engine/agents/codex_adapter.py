@@ -7,7 +7,7 @@ import json
 import shutil
 from collections.abc import AsyncGenerator
 
-from havn.engine.agents.base import AgentAdapter
+from havn.engine.agents.base import AgentAdapter, spawn_cli
 
 
 class CodexAdapter(AgentAdapter):
@@ -19,6 +19,9 @@ class CodexAdapter(AgentAdapter):
     def __init__(self) -> None:
         self._project_path: str | None = None
         self._system_prompt: str | None = None
+        self._process: asyncio.subprocess.Process | None = None
+        self.permission_mode: str = "auto"
+        self.model: str = ""
 
     async def start_session(
         self, project_path: str, system_prompt: str | None = None
@@ -34,28 +37,39 @@ class CodexAdapter(AgentAdapter):
             "--approval-mode",
             "auto-edit",
         ]
+        if self.model:
+            cmd.extend(["-c", f"model={self.model}"])
         if self._system_prompt:
             cmd.extend(["--instructions", self._system_prompt])
         cmd.append(message)
 
-        process = await asyncio.create_subprocess_exec(
-            *cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            cwd=self._project_path,
-        )
+        try:
+            self._process = await spawn_cli(cmd, cwd=self._project_path)
+        except (FileNotFoundError, OSError):
+            yield {"type": "error", "content": "Codex CLI not found. Install it with: npm install -g @openai/codex"}
+            yield {"type": "done", "content": ""}
+            return
 
-        async for line in process.stdout:  # type: ignore[union-attr]
+        got_output = False
+        async for line in self._process.stdout:  # type: ignore[union-attr]
             text = line.decode().strip()
             if not text:
                 continue
+            got_output = True
             try:
                 event = json.loads(text)
                 yield {"type": "text", "content": self._parse_event(event)}
             except json.JSONDecodeError:
                 yield {"type": "text", "content": text}
 
-        await process.wait()
+        await self._process.wait()
+
+        # Surface stderr if the process failed silently (e.g. auth errors)
+        if (not got_output or self._process.returncode) and self._process.stderr:
+            stderr = (await self._process.stderr.read()).decode().strip()
+            if stderr:
+                yield {"type": "error", "content": stderr}
+
         yield {"type": "done", "content": ""}
 
     def _parse_event(self, event: dict) -> str:
@@ -64,7 +78,12 @@ class CodexAdapter(AgentAdapter):
         return json.dumps(event)
 
     async def stop_session(self) -> None:
-        pass  # exec mode is stateless per invocation
+        if self._process and self._process.returncode is None:
+            self._process.terminate()
+            try:
+                await asyncio.wait_for(self._process.wait(), timeout=5)
+            except asyncio.TimeoutError:
+                self._process.kill()
 
     @classmethod
     def is_available(cls) -> bool:

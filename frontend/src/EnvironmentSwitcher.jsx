@@ -5,7 +5,7 @@ import { api } from "./api";
  * Environment indicator and switcher.
  * Shows the current environment and lets users switch between configured environments.
  */
-export default function EnvironmentSwitcher() {
+export default function EnvironmentSwitcher({ showConfirm }) {
   const [env, setEnv] = useState(null);
   const [loading, setLoading] = useState(true);
   const [switching, setSwitching] = useState(false);
@@ -18,9 +18,12 @@ export default function EnvironmentSwitcher() {
 
   const handleSwitch = async (envName) => {
     if (envName === env.active) return;
-    const confirmed = window.confirm(
-      `Switch to environment "${envName}"? This will reload the page and any unsaved changes will be lost.`
-    );
+    let confirmed;
+    if (showConfirm) {
+      confirmed = await showConfirm("Switch Environment", `Switch to environment "${envName}"? This will reload the page and any unsaved changes will be lost.`, "Switch", true);
+    } else {
+      confirmed = window.confirm(`Switch to environment "${envName}"? This will reload the page and any unsaved changes will be lost.`);
+    }
     if (!confirmed) return;
     setSwitching(true);
     try {

@@ -112,7 +112,7 @@ function CDCSection() {
  * into a single flow. Users pick a method (file, database, connector) and
  * can optionally make it recurring at the end.
  */
-export default function DataSourcesPanel({ addOutput }) {
+export default function DataSourcesPanel({ addOutput, showConfirm }) {
   const [view, setView] = useState("home"); // "home", "file", "database", "connector-catalog", "connector-setup", "manage"
   const [configured, setConfigured] = useState([]);
   const [available, setAvailable] = useState([]);
@@ -353,7 +353,8 @@ export default function DataSourcesPanel({ addOutput }) {
   }
 
   async function doRemove(name) {
-    if (!confirm(`Remove connector "${name}"? This deletes the ingest script and config.`)) return;
+    if (showConfirm && !(await showConfirm("Remove Connector", `Remove connector "${name}"? This deletes the ingest script and config.`, "Remove", true))) return;
+    if (!showConfirm && !confirm(`Remove connector "${name}"? This deletes the ingest script and config.`)) return;
     try {
       await api.removeConnector(name);
       addOutput("info", `Removed connector "${name}"`);

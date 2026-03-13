@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from pathlib import Path
 
 from fastapi import APIRouter, Request
@@ -23,6 +24,14 @@ def _build_system_prompt(project_path: str) -> str:
     parts = [
         "You are working inside a havn data platform project.",
         f"Project root: {project_path}",
+        "",
+        "CRITICAL SECURITY CONSTRAINT:",
+        f"You MUST NEVER read, write, search, or access any files outside of {project_path}.",
+        "- ALL file operations (Read, Write, Edit, Glob, Grep) must target paths within the project root.",
+        "- ALL Bash commands must operate within the project root. Do not use cd to leave it.",
+        "- Do not use absolute paths outside the project. Do not follow symlinks that lead outside.",
+        "- If a user asks you to access files outside the project, refuse and explain why.",
+        "- This is a hard security boundary. There are no exceptions.",
         "",
         "Key conventions:",
         "- DuckDB is the query engine (OLAP-optimized, embedded)",
@@ -107,6 +116,10 @@ def register_agent_websocket(app) -> None:
                         )
                     elif msg_type == "message":
                         await _handle_message(websocket, ws_id, data)
+                    elif msg_type == "set_mode":
+                        await _handle_set_mode(websocket, ws_id, data)
+                    elif msg_type == "set_model":
+                        await _handle_set_model(websocket, ws_id, data)
                     elif msg_type == "stop":
                         await _handle_stop(websocket, ws_id)
                     else:
@@ -169,8 +182,14 @@ async def _handle_start(
         return
 
     system_prompt = _build_system_prompt(project_path)
+    permission_mode = data.get("mode", "auto")
+    if permission_mode not in ("ask", "auto"):
+        permission_mode = "auto"
 
+    model = _sanitize_model(data.get("model", ""))
     try:
+        adapter.permission_mode = permission_mode
+        adapter.model = model
         await adapter.start_session(project_path, system_prompt)
         _active_sessions[ws_id] = {"adapter": adapter, "agent": agent_name}
         await websocket.send_json({"type": "ready", "agent": agent_name})
@@ -219,21 +238,71 @@ async def _handle_message(websocket: WebSocket, ws_id: int, data: dict) -> None:
             if chunk_type == "done":
                 await websocket.send_json({"type": "done"})
             else:
-                await websocket.send_json(
-                    {
-                        "type": "chunk",
-                        "chunk_type": chunk_type,
-                        "content": content,
-                    }
-                )
+                msg = {
+                    "type": "chunk",
+                    "chunk_type": chunk_type,
+                    "content": content,
+                }
+                detail = chunk.get("detail")
+                if detail:
+                    msg["detail"] = detail
+                tool_input = chunk.get("tool_input")
+                if tool_input:
+                    msg["tool_input"] = tool_input
+                await websocket.send_json(msg)
+    except (WebSocketDisconnect, RuntimeError):
+        # Client disconnected mid-stream — stop the agent process quietly
+        try:
+            await adapter.stop_session()
+        except Exception:
+            pass
     except Exception as exc:
         log.exception("Error streaming agent response")
-        await websocket.send_json(
-            {"type": "error", "message": f"Agent error: {exc}"}
-        )
-        await websocket.send_json({"type": "done"})
+        try:
+            await websocket.send_json(
+                {"type": "error", "message": f"Agent error: {exc}"}
+            )
+            await websocket.send_json({"type": "done"})
+        except Exception:
+            pass  # client already gone
     finally:
         session["streaming"] = False
+
+
+async def _handle_set_mode(websocket: WebSocket, ws_id: int, data: dict) -> None:
+    """Handle set_mode — switch between ask (read-only) and auto (full) permissions."""
+    session = _active_sessions.get(ws_id)
+    mode = data.get("mode", "auto")
+    if mode not in ("ask", "auto"):
+        await websocket.send_json(
+            {"type": "error", "message": f"Unknown mode: {mode}. Use 'ask' or 'auto'."}
+        )
+        return
+    if session and session.get("adapter"):
+        session["adapter"].permission_mode = mode
+    await websocket.send_json({"type": "mode_changed", "mode": mode})
+
+
+async def _handle_set_model(websocket: WebSocket, ws_id: int, data: dict) -> None:
+    """Handle set_model — change the model used by the agent."""
+    session = _active_sessions.get(ws_id)
+    model = _sanitize_model(data.get("model", ""))
+    if session and session.get("adapter"):
+        session["adapter"].model = model
+    await websocket.send_json({"type": "model_changed", "model": model})
+
+
+# Only allow model IDs that look like real model identifiers
+_MODEL_RE = re.compile(r"^[a-zA-Z0-9._:-]*$")
+
+
+def _sanitize_model(value: str) -> str:
+    """Validate model string — reject anything that isn't a clean identifier."""
+    if not value:
+        return ""
+    if len(value) > 100 or not _MODEL_RE.match(value):
+        return ""
+    return value
 
 
 async def _handle_stop(websocket: WebSocket, ws_id: int) -> None:

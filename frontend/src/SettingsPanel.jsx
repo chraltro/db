@@ -176,7 +176,7 @@ function SchedulerSection() {
   );
 }
 
-function SecretsSection() {
+function SecretsSection({ showConfirm }) {
   const [secrets, setSecrets] = useState([]);
   const [newKey, setNewKey] = useState("");
   const [newVal, setNewVal] = useState("");
@@ -200,7 +200,8 @@ function SecretsSection() {
   }
 
   async function removeSecret(key) {
-    if (!confirm(`Delete secret "${key}"?`)) return;
+    if (showConfirm && !(await showConfirm("Delete Secret", `Delete secret "${key}"?`, "Delete", true))) return;
+    if (!showConfirm && !confirm(`Delete secret "${key}"?`)) return;
     setError(null);
     try { await api.deleteSecret(key); loadSecrets(); } catch (e) { setError(e.message || "Failed to delete secret"); }
   }
@@ -241,7 +242,7 @@ function SecretsSection() {
   );
 }
 
-function UsersSection() {
+function UsersSection({ showConfirm }) {
   const [users, setUsers] = useState([]);
   const [newUser, setNewUser] = useState("");
   const [newPass, setNewPass] = useState("");
@@ -266,7 +267,8 @@ function UsersSection() {
   }
 
   async function removeUser(username) {
-    if (!confirm(`Delete user "${username}"?`)) return;
+    if (showConfirm && !(await showConfirm("Delete User", `Delete user "${username}"?`, "Delete", true))) return;
+    if (!showConfirm && !confirm(`Delete user "${username}"?`)) return;
     setError(null);
     try { await api.deleteUser(username); loadUsers(); } catch (e) { setError(e.message || "Failed to delete user"); }
   }
@@ -452,7 +454,7 @@ capitalisation_policy = lower
 capitalisation_policy = upper
 `;
 
-function LintConfigSection() {
+function LintConfigSection({ showConfirm }) {
   const [content, setContent] = useState("");
   const [exists, setExists] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -481,7 +483,8 @@ function LintConfigSection() {
   }
 
   async function remove() {
-    if (!confirm("Delete .sqlfluff and revert to default lint settings?")) return;
+    if (showConfirm && !(await showConfirm("Reset Lint Config", "Delete .sqlfluff and revert to default lint settings?", "Delete", true))) return;
+    if (!showConfirm && !confirm("Delete .sqlfluff and revert to default lint settings?")) return;
     setError(null);
     try {
       await api.deleteLintConfig();
@@ -552,17 +555,17 @@ function GuideSection({ onShowGuide }) {
   );
 }
 
-export default function SettingsPanel({ onShowGuide }) {
+export default function SettingsPanel({ onShowGuide, showConfirm }) {
   return (
     <div style={sec.container}>
       <div style={sec.content}>
         {onShowGuide && <GuideSection onShowGuide={onShowGuide} />}
         <HintsSection />
         <ThemeSection />
-        <LintConfigSection />
+        <LintConfigSection showConfirm={showConfirm} />
         <SchedulerSection />
-        <SecretsSection />
-        <UsersSection />
+        <SecretsSection showConfirm={showConfirm} />
+        <UsersSection showConfirm={showConfirm} />
         <AlertsSection />
       </div>
     </div>

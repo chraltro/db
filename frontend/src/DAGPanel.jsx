@@ -205,7 +205,7 @@ function layoutDAG(nodes, edges) {
 // Detail Panel (shown when a node is clicked in rewind mode)
 // ---------------------------------------------------------------------------
 
-function DetailPanel({ modelName, runId, runs, snapshotsByRun, onClose, onRestore }) {
+function DetailPanel({ modelName, runId, runs, snapshotsByRun, onClose, onRestore, showConfirm }) {
   const [sample, setSample] = useState(null);
   const [loading, setLoading] = useState(false);
   const [restoring, setRestoring] = useState(false);
@@ -231,7 +231,8 @@ function DetailPanel({ modelName, runId, runs, snapshotsByRun, onClose, onRestor
   }, [runs, snapshotsByRun, modelName]);
 
   async function handleRestore() {
-    if (!confirm(`Restore ${modelName} from this run? Downstream models will be re-built.`)) return;
+    if (showConfirm && !(await showConfirm("Restore Snapshot", `Restore ${modelName} from this run? Downstream models will be re-built.`, "Restore", true))) return;
+    if (!showConfirm && !confirm(`Restore ${modelName} from this run? Downstream models will be re-built.`)) return;
     setRestoring(true);
     try {
       await onRestore(runId, modelName);
@@ -365,7 +366,7 @@ const ds = {
 // Main DAG Panel
 // ---------------------------------------------------------------------------
 
-export default function DAGPanel({ onOpenFile }) {
+export default function DAGPanel({ onOpenFile, showConfirm }) {
   const canvasRef = useRef(null);
   const [dag, setDag] = useState(null);
   const [hovered, setHovered] = useState(null);
@@ -842,6 +843,7 @@ export default function DAGPanel({ onOpenFile }) {
             snapshotsByRun={snapshotsByRun}
             onClose={() => setSelectedNode(null)}
             onRestore={handleRestore}
+            showConfirm={showConfirm}
           />
         )}
       </div>

@@ -137,7 +137,9 @@ class TestClaudeAdapter:
         }
         chunks = adapter._parse_event(event)
         assert len(chunks) == 1
-        assert chunks[0] == {"type": "tool_use", "content": "Using: Read"}
+        assert chunks[0]["type"] == "tool_use"
+        assert chunks[0]["content"] == "Read"
+        assert "detail" in chunks[0]
 
     def test_parse_result_event(self):
         from havn.engine.agents.claude_adapter import ClaudeCodeAdapter

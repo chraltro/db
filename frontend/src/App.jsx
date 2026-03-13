@@ -326,9 +326,11 @@ function AppContent() {
 
   // Editor state
   const [activeFile, setActiveFile] = useState(null);
+  const activeFileRef = useRef(null);
   const [fileContent, setFileContent] = useState("");
   const [fileLang, setFileLang] = useState("sql");
   const [dirty, setDirty] = useState(false);
+  const dirtyRef = useRef(false);
   const [preview, setPreview] = useState(null);
   const [previewError, setPreviewError] = useState(null);
   const [previewRunning, setPreviewRunning] = useState(false);
@@ -373,6 +375,27 @@ function AppContent() {
   // Delete confirmation dialog state
   const [deleteConfirm, setDeleteConfirm] = useState(null);
   const deleteResolveRef = useRef(null);
+
+  // Agent file conflict dialog state
+  const [agentConflict, setAgentConflict] = useState(null);
+  const agentConflictResolveRef = useRef(null);
+
+  // Generic confirm dialog state (replaces browser confirm())
+  const [confirmDialog, setConfirmDialog] = useState(null);
+  const confirmResolveRef = useRef(null);
+  function showConfirm(title, body, confirmLabel = "Confirm", danger = false) {
+    return new Promise((resolve) => {
+      confirmResolveRef.current = resolve;
+      setConfirmDialog({ title, body, confirmLabel, danger });
+    });
+  }
+  function resolveConfirm(result) {
+    setConfirmDialog(null);
+    if (confirmResolveRef.current) {
+      confirmResolveRef.current(result);
+      confirmResolveRef.current = null;
+    }
+  }
 
   function handleGuideComplete() {
     setGuideOpen(false);
@@ -420,7 +443,8 @@ function AppContent() {
       }
     }
     if (dirty && activeFile) {
-      if (!confirm("Unsaved changes. Discard?")) return;
+      const ok = await showConfirm("Unsaved changes", "Discard unsaved changes and open another file?", "Discard", true);
+      if (!ok) return;
     }
     try {
       const data = await api.readFile(path);
@@ -478,6 +502,39 @@ function AppContent() {
       } catch (e) {
         addOutput("error", `Failed to open: ${e.message}`);
       }
+    }
+  }
+
+  // Keep refs in sync for use in callbacks with stale closures
+  activeFileRef.current = activeFile;
+  dirtyRef.current = dirty;
+
+  // Reload the currently open file from disk (used when agent edits it)
+  async function reloadActiveFile() {
+    const file = activeFileRef.current;
+    if (!file) return;
+    if (dirtyRef.current) {
+      // User has unsaved changes — show custom dialog
+      const choice = await new Promise((resolve) => {
+        agentConflictResolveRef.current = resolve;
+        setAgentConflict({ path: file });
+      });
+      if (choice !== "load") return;
+    }
+    try {
+      const data = await api.readFile(file);
+      setFileContent(data.content);
+      setDirty(false);
+    } catch {
+      // file may have been deleted — ignore
+    }
+  }
+
+  function resolveAgentConflict(choice) {
+    setAgentConflict(null);
+    if (agentConflictResolveRef.current) {
+      agentConflictResolveRef.current(choice);
+      agentConflictResolveRef.current = null;
     }
   }
 
@@ -705,7 +762,7 @@ function AppContent() {
           >
             Agent
           </button>
-          <EnvironmentSwitcher />
+          <EnvironmentSwitcher showConfirm={showConfirm} />
           {currentUser && (
             <div style={styles.userInfo}>
               <span style={styles.userName}>{currentUser.display_name || currentUser.username}</span>
@@ -850,9 +907,9 @@ function AppContent() {
             )}
             {activeTab === "Query" && <ErrorBoundary name="Query"><QueryPanel addOutput={addOutput} /></ErrorBoundary>}
             {activeTab === "Tables" && <ErrorBoundary name="Tables"><TablesPanel selectedTable={selectedTable} onQueryTable={queryTable} /></ErrorBoundary>}
-            {activeTab === "Data Sources" && <ErrorBoundary name="Data Sources"><DataSourcesPanel addOutput={addOutput} /></ErrorBoundary>}
+            {activeTab === "Data Sources" && <ErrorBoundary name="Data Sources"><DataSourcesPanel addOutput={addOutput} showConfirm={showConfirm} /></ErrorBoundary>}
             {activeTab === "Notebooks" && <ErrorBoundary name="Notebooks"><NotebookPanel openPath={notebookPath} /></ErrorBoundary>}
-            {activeTab === "DAG" && <ErrorBoundary name="DAG"><DAGPanel onOpenFile={openFile} /></ErrorBoundary>}
+            {activeTab === "DAG" && <ErrorBoundary name="DAG"><DAGPanel onOpenFile={openFile} showConfirm={showConfirm} /></ErrorBoundary>}
             {activeTab === "Sentinel" && <ErrorBoundary name="Sentinel"><SentinelPanel /></ErrorBoundary>}
             {activeTab === "Diff" && <ErrorBoundary name="Diff"><DiffPanel api={api} addOutput={addOutput} /></ErrorBoundary>}
             {activeTab === "Docs" && <ErrorBoundary name="Docs"><DocsPanel /></ErrorBoundary>}
@@ -860,7 +917,7 @@ function AppContent() {
             {activeTab === "Masking" && <ErrorBoundary name="Masking"><MaskingPanel /></ErrorBoundary>}
             {activeTab === "Wiki" && <ErrorBoundary name="Wiki"><WikiPanel /></ErrorBoundary>}
             {activeTab === "History" && <ErrorBoundary name="History"><HistoryPanel onOpenFile={openFile} /></ErrorBoundary>}
-            {activeTab === "Settings" && <ErrorBoundary name="Settings"><SettingsPanel onShowGuide={showGuide} /></ErrorBoundary>}
+            {activeTab === "Settings" && <ErrorBoundary name="Settings"><SettingsPanel onShowGuide={showGuide} showConfirm={showConfirm} /></ErrorBoundary>}
           </div>
 
           {/* Run summary */}
@@ -897,6 +954,9 @@ function AppContent() {
               <AgentSidebar
                 isOpen={agentSidebarOpen}
                 onToggle={() => setAgentSidebarOpen(false)}
+                onFileChanged={() => { reloadActiveFile(); refreshAll(); }}
+                onOpenFile={openFile}
+                onSelectTable={handleSelectTable}
               />
             </div>
           </>
@@ -931,6 +991,36 @@ function AppContent() {
                 </div>
               </>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Generic confirm dialog */}
+      {confirmDialog && (
+        <div style={dcStyles.overlay} onClick={() => resolveConfirm(false)}>
+          <div style={dcStyles.dialog} onClick={(e) => e.stopPropagation()}>
+            <div style={dcStyles.title}>{confirmDialog.title}</div>
+            <div style={dcStyles.body}>{confirmDialog.body}</div>
+            <div style={dcStyles.footer}>
+              <button onClick={() => resolveConfirm(false)} style={dcStyles.btnCancel}>Cancel</button>
+              <button onClick={() => resolveConfirm(true)} style={confirmDialog.danger ? dcStyles.btnDanger : dcStyles.btnSecondary}>{confirmDialog.confirmLabel}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Agent file conflict dialog */}
+      {agentConflict && (
+        <div style={dcStyles.overlay} onClick={() => resolveAgentConflict("keep")}>
+          <div style={dcStyles.dialog} onClick={(e) => e.stopPropagation()}>
+            <div style={dcStyles.title}>Agent edited {agentConflict.path}</div>
+            <div style={dcStyles.body}>
+              You have unsaved changes to this file. Load the agent's version? Your unsaved changes will be lost.
+            </div>
+            <div style={dcStyles.footer}>
+              <button onClick={() => resolveAgentConflict("keep")} style={dcStyles.btnCancel}>Keep my changes</button>
+              <button onClick={() => resolveAgentConflict("load")} style={dcStyles.btnDanger}>Load agent version</button>
+            </div>
           </div>
         </div>
       )}
@@ -1009,7 +1099,7 @@ const styles = {
 
   // Header
   header: { display: "flex", alignItems: "center", padding: "0 16px", borderBottom: "1px solid var(--havn-border)", background: "var(--havn-bg-secondary)", minHeight: "44px", gap: "16px" },
-  logo: { display: "inline-flex", alignItems: "center", fontSize: "18px", fontWeight: 700, fontFamily: "var(--havn-font)", color: "var(--havn-accent)", letterSpacing: "-0.5px", background: "none", border: "none", cursor: "pointer", padding: "8px 4px", flexShrink: 0 },
+  logo: { display: "inline-flex", alignItems: "center", fontSize: "18px", fontWeight: 700, fontFamily: "var(--havn-font)", color: "#3ECFB4", letterSpacing: "-0.5px", background: "none", border: "none", cursor: "pointer", padding: "8px 4px", flexShrink: 0 },
 
   // Section navigation (in header)
   sectionNav: { display: "flex", alignItems: "center", gap: "2px", flex: 1 },
@@ -1040,7 +1130,7 @@ const styles = {
   sidebarSectionHeader: { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 12px 6px", fontSize: "10px", fontWeight: "600", color: "var(--havn-text-dim)", letterSpacing: "1px", textTransform: "uppercase", flexShrink: 0 },
   sidebarRefreshBtn: { background: "none", border: "none", color: "var(--havn-text-secondary)", cursor: "pointer", fontSize: "13px", padding: "0 2px", lineHeight: 1 },
   content: { flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" },
-  agentPanel: { flexShrink: 0, overflow: "hidden" },
+  agentPanel: { flexShrink: 0, overflow: "hidden", height: "100%", display: "flex", flexDirection: "column" },
 
   // Sub-tab bar
   subTabBar: {
