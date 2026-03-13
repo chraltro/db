@@ -64,6 +64,10 @@ from havn.server.routes.masking import router as masking_router  # noqa: E402
 from havn.server.routes.wiki import router as wiki_router  # noqa: E402
 from havn.server.routes.rewind import router as rewind_router  # noqa: E402
 from havn.server.routes.sentinel import router as sentinel_router  # noqa: E402
+from havn.server.routes.agent import (  # noqa: E402
+    register_agent_websocket,
+    router as agent_router,
+)
 
 app.include_router(auth_router)
 app.include_router(files_router)
@@ -81,9 +85,11 @@ app.include_router(masking_router)
 app.include_router(wiki_router)
 app.include_router(rewind_router)
 app.include_router(sentinel_router)
+app.include_router(agent_router)
 
-# Register WebSocket endpoint (can't use APIRouter for WebSocket)
+# Register WebSocket endpoints (can't use APIRouter for WebSocket)
 register_websocket(app)
+register_agent_websocket(app)
 
 # ---------------------------------------------------------------------------
 # Backward compatibility — expose helpers used by tests
