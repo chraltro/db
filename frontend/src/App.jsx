@@ -30,6 +30,7 @@ import { useHintTriggerFn } from "./HintSystem";
 import EnvironmentSwitcher from "./EnvironmentSwitcher";
 import ModelNotebookView from "./ModelNotebookView";
 import NewModelDialog from "./NewModelDialog";
+import AgentSidebar from "./AgentSidebar";
 import { useAuth } from "./AuthContext";
 import { WarehouseProvider, useWarehouse } from "./WarehouseContext";
 import { PipelineProvider, usePipeline } from "./PipelineContext";
@@ -345,6 +346,7 @@ function AppContent() {
   // Resizable panels
   const [sidebarWidth, onSidebarResize, onSidebarResizeStart] = useResizable("dp_sidebar_width", 240, 150, 500);
   const [outputHeight, onOutputResize, onOutputResizeStart] = useResizable("dp_output_height", 180, 80, 500);
+  const [agentWidth, onAgentResize, onAgentResizeStart] = useResizable("dp_agent_width", 340, 240, 600);
 
   // Editor navigation
   const editorRef = useRef(null);
@@ -364,6 +366,9 @@ function AppContent() {
   const [notebookPath, setNotebookPath] = useState(null);
   const [modelNotebookName, setModelNotebookName] = useState(null);
   const [showNewDialog, setShowNewDialog] = useState(false);
+
+  // Agent sidebar state
+  const [agentSidebarOpen, setAgentSidebarOpen] = useState(false);
 
   // Delete confirmation dialog state
   const [deleteConfirm, setDeleteConfirm] = useState(null);
@@ -693,6 +698,13 @@ function AppContent() {
             addOutput={addOutput}
           />
           <button onClick={() => setShowNewDialog(true)} style={styles.btn}>+ New</button>
+          <button
+            onClick={() => setAgentSidebarOpen((v) => !v)}
+            style={agentSidebarOpen ? styles.btnPrimary : styles.btn}
+            title="Toggle agent sidebar"
+          >
+            Agent
+          </button>
           <EnvironmentSwitcher />
           {currentUser && (
             <div style={styles.userInfo}>
@@ -872,6 +884,23 @@ function AppContent() {
             <OutputPanel output={output} onClear={clearOutput} height={outputHeight} onOpenFile={openFileAtLine} />
           </div>
         </div>
+
+        {/* Agent sidebar */}
+        {agentSidebarOpen && (
+          <>
+            <ResizeHandle
+              direction="horizontal"
+              onResize={(d) => onAgentResize(-d)}
+              onResizeStart={onAgentResizeStart}
+            />
+            <div style={{ ...styles.agentPanel, width: agentWidth }}>
+              <AgentSidebar
+                isOpen={agentSidebarOpen}
+                onToggle={() => setAgentSidebarOpen(false)}
+              />
+            </div>
+          </>
+        )}
       </div>
 
       <Hint onNavigate={navigateToTab} />
@@ -1011,6 +1040,7 @@ const styles = {
   sidebarSectionHeader: { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 12px 6px", fontSize: "10px", fontWeight: "600", color: "var(--havn-text-dim)", letterSpacing: "1px", textTransform: "uppercase", flexShrink: 0 },
   sidebarRefreshBtn: { background: "none", border: "none", color: "var(--havn-text-secondary)", cursor: "pointer", fontSize: "13px", padding: "0 2px", lineHeight: 1 },
   content: { flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" },
+  agentPanel: { flexShrink: 0, overflow: "hidden" },
 
   // Sub-tab bar
   subTabBar: {
