@@ -87,7 +87,7 @@ def register_agent_websocket(app) -> None:
 
             await websocket.accept()
             ws_id = id(websocket)
-            _active_sessions[ws_id] = {"adapter": None}
+            _active_sessions[ws_id] = {"adapter": None, "streaming": False}
 
             try:
                 while True:
@@ -134,13 +134,14 @@ def register_agent_websocket(app) -> None:
 
 
 async def _handle_start(
-    websocket: WebSocket, ws_id: int, data: dict, default_project: Path
+    websocket: WebSocket, ws_id: int, data: dict, project_dir: Path
 ) -> None:
     """Handle agent:start — spawn the adapter and start a session."""
     from havn.engine.agents import get_adapter
 
     agent_name = data.get("agent", "claude")
-    project_path = data.get("project_path") or str(default_project)
+    # Always use server-side project dir — never trust client-provided paths.
+    project_path = str(project_dir)
 
     # Clean up any existing session
     session = _active_sessions.get(ws_id)
@@ -189,6 +190,12 @@ async def _handle_message(websocket: WebSocket, ws_id: int, data: dict) -> None:
         )
         return
 
+    if session.get("streaming"):
+        await websocket.send_json(
+            {"type": "error", "message": "Already processing a message. Wait for it to finish."}
+        )
+        return
+
     message = data.get("message", "").strip()
     if not message:
         await websocket.send_json(
@@ -196,7 +203,14 @@ async def _handle_message(websocket: WebSocket, ws_id: int, data: dict) -> None:
         )
         return
 
+    if len(message) > 100_000:
+        await websocket.send_json(
+            {"type": "error", "message": "Message too long (100K char limit)"}
+        )
+        return
+
     adapter = session["adapter"]
+    session["streaming"] = True
     try:
         async for chunk in adapter.send_message(message):
             chunk_type = chunk.get("type", "text")
@@ -218,6 +232,8 @@ async def _handle_message(websocket: WebSocket, ws_id: int, data: dict) -> None:
             {"type": "error", "message": f"Agent error: {exc}"}
         )
         await websocket.send_json({"type": "done"})
+    finally:
+        session["streaming"] = False
 
 
 async def _handle_stop(websocket: WebSocket, ws_id: int) -> None:

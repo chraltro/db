@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import shutil
-from typing import AsyncIterator
+from collections.abc import AsyncGenerator
 
 from havn.engine.agents.base import AgentAdapter
 
@@ -23,7 +23,7 @@ class GeminiCLIAdapter(AgentAdapter):
     ) -> None:
         self._project_path = project_path
 
-    async def send_message(self, message: str) -> AsyncIterator[dict]:
+    async def send_message(self, message: str) -> AsyncGenerator[dict, None]:
         process = await asyncio.create_subprocess_exec(
             "gemini",
             "--non-interactive",

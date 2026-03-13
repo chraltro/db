@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import AsyncIterator
+from collections.abc import AsyncGenerator
 
 
 class AgentAdapter(ABC):
@@ -23,7 +23,7 @@ class AgentAdapter(ABC):
         """Initialize a new agent session pointed at the project directory."""
 
     @abstractmethod
-    async def send_message(self, message: str) -> AsyncIterator[dict]:
+    async def send_message(self, message: str) -> AsyncGenerator[dict, None]:
         """Send a user message and yield response chunks.
 
         Each chunk is a dict with at minimum:

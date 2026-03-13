@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import shutil
-from typing import AsyncIterator
+from collections.abc import AsyncGenerator
 
 from havn.engine.agents.base import AgentAdapter
 
@@ -25,7 +25,7 @@ class ClaudeCodeAdapter(AgentAdapter):
         self._project_path = project_path
         self._system_prompt = system_prompt
 
-    async def send_message(self, message: str) -> AsyncIterator[dict]:
+    async def send_message(self, message: str) -> AsyncGenerator[dict, None]:
         cmd = ["claude", "--output-format", "stream-json", "--verbose", "-p", message]
         if self._system_prompt:
             cmd.extend(["--append-system-prompt", self._system_prompt])

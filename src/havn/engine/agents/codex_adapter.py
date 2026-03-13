@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import shutil
-from typing import AsyncIterator
+from collections.abc import AsyncGenerator
 
 from havn.engine.agents.base import AgentAdapter
 
@@ -26,7 +26,7 @@ class CodexAdapter(AgentAdapter):
         self._project_path = project_path
         self._system_prompt = system_prompt
 
-    async def send_message(self, message: str) -> AsyncIterator[dict]:
+    async def send_message(self, message: str) -> AsyncGenerator[dict, None]:
         cmd = [
             "codex",
             "exec",

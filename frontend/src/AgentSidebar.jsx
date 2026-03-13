@@ -16,6 +16,8 @@ export default function AgentSidebar({ isOpen, onToggle }) {
   const socketRef = useRef(null);
   const messagesEndRef = useRef(null);
   const reconnectRef = useRef(null);
+  const isOpenRef = useRef(isOpen);
+  isOpenRef.current = isOpen;
 
   // Fetch available agents on mount
   useEffect(() => {
@@ -96,16 +98,16 @@ export default function AgentSidebar({ isOpen, onToggle }) {
 
     ws.onclose = () => {
       setIsConnected(false);
-      // Auto-reconnect after 3s if sidebar is still open
+      // Auto-reconnect after 3s if sidebar is still open (use ref to avoid stale closure)
       reconnectRef.current = setTimeout(() => {
-        if (isOpen) connect();
+        if (isOpenRef.current) connect();
       }, 3000);
     };
 
     ws.onerror = () => {
       setIsConnected(false);
     };
-  }, [selectedAgent, isOpen]);
+  }, [selectedAgent]);
 
   // Connect when sidebar opens, disconnect when it closes
   useEffect(() => {
@@ -162,9 +164,20 @@ export default function AgentSidebar({ isOpen, onToggle }) {
       {/* Header */}
       <div style={s.header}>
         <span style={s.headerTitle}>Agent</span>
-        <button onClick={onToggle} style={s.closeBtn} title="Close sidebar">
-          {"\u00D7"}
-        </button>
+        <div style={{ display: "flex", gap: "4px", alignItems: "center" }}>
+          {messages.length > 0 && (
+            <button
+              onClick={() => setMessages([])}
+              style={s.clearBtn}
+              title="Clear chat"
+            >
+              Clear
+            </button>
+          )}
+          <button onClick={onToggle} style={s.closeBtn} title="Close sidebar">
+            {"\u00D7"}
+          </button>
+        </div>
       </div>
 
       {/* Agent picker */}
@@ -310,6 +323,15 @@ const s = {
     fontSize: "18px",
     lineHeight: 1,
     padding: "0 4px",
+  },
+  clearBtn: {
+    background: "none",
+    border: "1px solid var(--havn-border)",
+    borderRadius: "var(--havn-radius)",
+    color: "var(--havn-text-dim)",
+    cursor: "pointer",
+    fontSize: "10px",
+    padding: "2px 6px",
   },
   picker: {
     display: "flex",
